@@ -7,6 +7,8 @@ import {
   Package,
   Users,
   CreditCard,
+  PieChart,
+  Code2
 } from 'lucide-react';
 
 interface BottomNavProps {
@@ -39,14 +41,29 @@ const TABS = [
     icon:     CreditCard,
     hasBadge: true,
   },
+  {
+    href:     '/stats',
+    tab:      'stats',
+    label:    'إحصائيات',
+    icon:     PieChart,
+  },
+  {
+    href:     '/developer',
+    tab:      'developer',
+    label:    'المطور',
+    icon:     Code2,
+  },
 ];
 
 export default function BottomNav({ debtCount = 0 }: BottomNavProps) {
   const pathname = usePathname();
 
+  // عدم إظهار البار السفلي في صفحة تسجيل الدخول
+  if (pathname === '/login') return null;
+
   return (
     <nav className="bottom-nav" role="navigation" aria-label="التنقل الرئيسي">
-      <div className="max-w-md mx-auto flex items-center justify-around">
+      <div className="max-w-md mx-auto flex items-center justify-around gap-0.5">
         {TABS.map((item) => {
           const Icon     = item.icon;
           const isActive = pathname === item.href;
@@ -63,10 +80,9 @@ export default function BottomNav({ debtCount = 0 }: BottomNavProps) {
               <div className="nav-item-icon">
                 <Icon
                   className="transition-all duration-200"
-                  size={isActive ? 22 : 20}
+                  size={isActive ? 20 : 18}
                   strokeWidth={isActive ? 2.5 : 1.8}
                 />
-                {/* Badge الديون */}
                 {item.hasBadge && debtCount > 0 && (
                   <span className="nav-badge" aria-label={`${debtCount} ديون مستحقة`}>
                     {debtCount > 9 ? '9+' : debtCount}
@@ -74,11 +90,14 @@ export default function BottomNav({ debtCount = 0 }: BottomNavProps) {
                 )}
               </div>
               <span style={{
+                fontSize: '0.6rem',
                 color: isActive
                   ? item.tab === 'home'      ? 'hsl(158 64% 38%)'
                   : item.tab === 'inventory' ? 'hsl(262 83% 52%)'
                   : item.tab === 'contacts'  ? 'hsl(221 83% 52%)'
-                  :                            'hsl(351 83% 52%)'
+                  : item.tab === 'debts'     ? 'hsl(351 83% 52%)'
+                  : item.tab === 'stats'     ? 'hsl(38 92% 50%)'
+                  :                            'hsl(239 84% 67%)'
                   : undefined
               }}>
                 {item.label}
