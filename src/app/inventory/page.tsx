@@ -1,13 +1,17 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { getLocalData, setLocalData, Product, Transaction } from '@/lib/store';
+import {
+  getLocalData, setLocalData, Product, Contact, Transaction,
+  getProductCategories, saveProductCategory
+} from '@/lib/store';
 import { toast } from '@/components/Toast';
 import {
   Package, Plus, Search, X,
   Minus, Camera, Clock, BadgeCheck,
   Edit2, Trash2, Calendar, AlertTriangle,
-  Receipt, ShoppingBag, Eye, History, ArrowDownRight, ArrowUpLeft
+  Receipt, ShoppingBag, Eye, History, ArrowDownRight, ArrowUpLeft,
+  ArrowRight, Tag, Layers
 } from 'lucide-react';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
@@ -29,33 +33,34 @@ function autoEmoji(name: string) {
   if (n.includes('ماء'))      return '💧';
   if (n.includes('خبز'))      return '🍞';
   if (n.includes('جبن') || n.includes('جبنة')) return '🧀';
-  if (n.includes('دجاج'))     return '🍗';
-  if (n.includes('لحم'))      return '🥩';
-  if (n.includes('سمك'))      return '🐟';
   if (n.includes('بيض'))      return '🥚';
-  if (n.includes('حليب'))     return '🥛';
-  if (n.includes('فاكهة') || n.includes('تفاح') || n.includes('موز')) return '🍎';
-  if (n.includes('خضار') || n.includes('طماطم')) return '🥦';
-  if (n.includes('مكيف') || n.includes('ثلاجة') || n.includes('جهاز')) return '📱';
+  if (n.includes('دجاج') || n.includes('لحم')) return '🍗';
   if (n.includes('دواء') || n.includes('صيدل')) return '💊';
   return '📦';
 }
 
 export default function InventoryPage() {
   const [products,     setProducts]     = useState<Product[]>([]);
+  const [contacts,     setContacts]     = useState<Contact[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [searchQuery,  setSearchQuery]  = useState('');
+  const [categories,   setCategories]   = useState<string[]>([]);
 
-  // Modals
+  const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [searchQuery,    setSearchQuery]    = useState('');
+
+  // Modals & Dedicated Subpage
   const [showAddModal,      setShowAddModal]      = useState(false);
   const [showAdjustModal,   setShowAdjustModal]   = useState(false);
-  const [showHistoryModal,  setShowHistoryModal]  = useState(false);
   const [editingProduct,    setEditingProduct]    = useState<Product | null>(null);
   const [adjustingProduct,  setAdjustingProduct]  = useState<Product | null>(null);
-  const [viewingProduct,    setViewingProduct]    = useState<Product | null>(null);
+  const [viewingProduct,    setViewingProduct]    = useState<Product | null>(null); // Dedicated Subpage!
 
   // Form states
   const [name,             setName]             = useState('');
+  const [category,         setCategory]         = useState('مواد غذائية');
+  const [customCategory,   setCustomCategory]   = useState('');
+  const [unitType,         setUnitType]         = useState<'pack' | 'piece' | 'kg' | 'liter'>('piece');
+  const [packQuantity,     setPackQuantity]     = useState(1);
   const [costPrice,        setCostPrice]        = useState(0);
   const [retailPrice,      setRetailPrice]      = useState(0);
   const [stockQuantity,    setStockQuantity]    = useState(10);
@@ -64,13 +69,17 @@ export default function InventoryPage() {
   const [expiryAlertDays,  setExpiryAlertDays]  = useState(30);
   const [photoUrl,         setPhotoUrl]         = useState('');
 
-  // Adjust stock states
-  const [adjustQty,  setAdjustQty]  = useState(10);
-  const [adjustType, setAdjustType] = useState<'add' | 'reduce'>('add');
+  // Adjust stock states (ربط بالمورد والزبون وحساب الكرتونة)
+  const [adjustQty,       setAdjustQty]       = useState(1);
+  const [adjustUnitChoice,setAdjustUnitChoice] = useState<'pack' | 'half_pack' | 'piece'>('piece');
+  const [adjustType,      setAdjustType]      = useState<'add' | 'reduce'>('add');
+  const [selectedPersonId,setSelectedPersonId]= useState('');
 
   useEffect(() => {
     setProducts(getLocalData('tajer_smart_products_v1', []));
+    setContacts(getLocalData('tajer_smart_contacts_v1', []));
     setTransactions(getLocalData('tajer_smart_transactions_v1', []));
+    setCategories(getProductCategories());
   }, []);
 
   const handleProductImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -90,7 +99,9 @@ export default function InventoryPage() {
 
   const openAddModal = () => {
     setEditingProduct(null);
-    setName(''); setCostPrice(0); setRetailPrice(0); setStockQuantity(10);
+    setName(''); setCategory('مواد غذائية'); setCustomCategory('');
+    setUnitType('piece'); setPackQuantity(1);
+    setCostPrice(0); setRetailPrice(0); setStockQuantity(10);
     setMinStockAlert(5); setExpiryDate(''); setExpiryAlertDays(30); setPhotoUrl('');
     setShowAddModal(true);
   };
@@ -98,27 +109,32 @@ export default function InventoryPage() {
   const openEditModal = (p: Product, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setEditingProduct(p);
-    setName(p.name); setCostPrice(p.cost_price); setRetailPrice(p.retail_price);
+    setName(p.name); setCategory(p.category || 'مواد غذائية');
+    setUnitType(p.unit_type || 'piece'); setPackQuantity(p.pack_quantity || 1);
+    setCostPrice(p.cost_price); setRetailPrice(p.retail_price);
     setStockQuantity(p.stock_quantity); setMinStockAlert(p.min_stock_alert);
     setExpiryDate(p.expiry_date || ''); setExpiryAlertDays(p.expiry_alert_days || 30);
     setPhotoUrl(p.photo_url || '');
     setShowAddModal(true);
   };
 
-  const openProductHistory = (p: Product, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    setViewingProduct(p);
-    setShowHistoryModal(true);
-  };
-
   const handleSaveProduct = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) { toast('يرجى كتابة اسم المنتج', 'error'); return; }
 
+    let finalCategory = category;
+    if (category === 'أخرى') {
+      finalCategory = customCategory.trim() || 'عام';
+      const updatedCats = saveProductCategory(finalCategory);
+      setCategories(updatedCats);
+    }
+
     if (editingProduct) {
       const up = products.map(p => p.id === editingProduct.id ? {
         ...p,
-        name: name.trim(), cost_price: +costPrice, retail_price: +retailPrice,
+        name: name.trim(), category: finalCategory,
+        unit_type: unitType, pack_quantity: packQuantity > 0 ? packQuantity : 1,
+        cost_price: +costPrice, retail_price: +retailPrice,
         stock_quantity: +stockQuantity, min_stock_alert: +minStockAlert,
         expiry_date: expiryDate || undefined, expiry_alert_days: +expiryAlertDays,
         photo_url: photoUrl.trim() || undefined,
@@ -126,10 +142,15 @@ export default function InventoryPage() {
       setProducts(up);
       setLocalData('tajer_smart_products_v1', up);
       toast('✅ تم تحديث المنتج بنجاح');
+      if (viewingProduct?.id === editingProduct.id) {
+        setViewingProduct(up.find(x => x.id === editingProduct.id) || null);
+      }
     } else {
       const np: Product = {
         id: 'p_' + Date.now(),
-        name: name.trim(), cost_price: +costPrice, retail_price: +retailPrice,
+        name: name.trim(), category: finalCategory,
+        unit_type: unitType, pack_quantity: packQuantity > 0 ? packQuantity : 1,
+        cost_price: +costPrice, retail_price: +retailPrice,
         stock_quantity: +stockQuantity, min_stock_alert: +minStockAlert,
         expiry_date: expiryDate || undefined, expiry_alert_days: +expiryAlertDays,
         photo_url: photoUrl.trim() || undefined,
@@ -151,7 +172,7 @@ export default function InventoryPage() {
       setProducts(up);
       setLocalData('tajer_smart_products_v1', up);
       toast('تم حذف المنتج من المخزن', 'info');
-      if (viewingProduct?.id === id) setShowHistoryModal(false);
+      if (viewingProduct?.id === id) setViewingProduct(null);
     }
   };
 
@@ -159,7 +180,9 @@ export default function InventoryPage() {
     if (e) e.stopPropagation();
     setAdjustingProduct(p);
     setAdjustType(type);
-    setAdjustQty(10);
+    setAdjustQty(1);
+    setAdjustUnitChoice(p.unit_type === 'pack' ? 'pack' : 'piece');
+    setSelectedPersonId('');
     setShowAdjustModal(true);
   };
 
@@ -167,24 +190,70 @@ export default function InventoryPage() {
     e.preventDefault();
     if (!adjustingProduct || adjustQty <= 0) return;
 
-    const delta = adjustType === 'add' ? adjustQty : -adjustQty;
+    // حساب عدد الحبات الفعلي حسب اختيار الكرتونة أو النصف أو الحبة
+    let actualPieces = adjustQty;
+    if (adjustingProduct.unit_type === 'pack' && adjustingProduct.pack_quantity) {
+      if (adjustUnitChoice === 'pack') {
+        actualPieces = adjustQty * adjustingProduct.pack_quantity;
+      } else if (adjustUnitChoice === 'half_pack') {
+        actualPieces = adjustQty * Math.round(adjustingProduct.pack_quantity / 2);
+      }
+    }
+
+    const delta = adjustType === 'add' ? actualPieces : -actualPieces;
+    const person = contacts.find(c => c.id === selectedPersonId);
+
+    // إنشاء معاملة رسمية تربط الحركة بالمورد أو الزبون
+    if (person) {
+      const isSale = adjustType === 'reduce';
+      const itemPrice = isSale ? adjustingProduct.retail_price : adjustingProduct.cost_price;
+      const totalAmt = itemPrice * actualPieces;
+
+      const newTx: Transaction = {
+        id: 'tx_' + Date.now(),
+        tx_type: isSale ? 'SALE' : 'PURCHASE',
+        contact_id: person.id,
+        contact_name: person.name,
+        total_amount: totalAmt,
+        paid_amount: totalAmt,
+        debt_amount: 0,
+        status: 'PAID',
+        items: [{
+          product_id: adjustingProduct.id,
+          product_name: adjustingProduct.name,
+          quantity: actualPieces,
+          unit_price: itemPrice,
+          cost_price: adjustingProduct.cost_price,
+        }],
+        created_at: new Date().toISOString(),
+      };
+
+      const upTx = [newTx, ...transactions];
+      setTransactions(upTx);
+      setLocalData('tajer_smart_transactions_v1', upTx);
+    }
+
     const up = products.map(p => p.id === adjustingProduct.id ? {
       ...p,
       stock_quantity: Math.max(0, p.stock_quantity + delta),
       last_purchased_at: adjustType === 'add' ? new Date().toISOString() : p.last_purchased_at,
+      last_sold_at: adjustType === 'reduce' ? new Date().toISOString() : p.last_sold_at,
     } : p);
 
     setProducts(up);
     setLocalData('tajer_smart_products_v1', up);
     setShowAdjustModal(false);
-    toast(adjustType === 'add' ? `✅ تم إضافة +${adjustQty} إلى كمية المخزون` : `✅ تم خصم -${adjustQty} من كمية المخزون`);
+    toast(adjustType === 'add' ? `✅ تم إضافة +${actualPieces} حبة للمخزون` : `✅ تم خصم -${actualPieces} حبة من المخزون`);
   };
 
-  // 📅 ترتيب المنتجات تلقائياً حسب تاريخ الصلاحية الأقرب
   const sorted = useMemo(() => {
     const q = searchQuery.toLowerCase();
     return products
-      .filter(p => p.name.toLowerCase().includes(q))
+      .filter(p => {
+        const matchCat = filterCategory === 'all' ? true : p.category === filterCategory;
+        const matchSearch = p.name.toLowerCase().includes(q) || (p.category && p.category.toLowerCase().includes(q));
+        return matchCat && matchSearch;
+      })
       .sort((a, b) => {
         if (a.expiry_date && b.expiry_date) {
           return new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime();
@@ -193,21 +262,129 @@ export default function InventoryPage() {
         if (b.expiry_date) return 1;
         return a.stock_quantity - b.stock_quantity;
       });
-  }, [products, searchQuery]);
+  }, [products, searchQuery, filterCategory]);
 
   const lowCount     = products.filter(p => p.stock_quantity <= p.min_stock_alert).length;
   const expiredCount = products.filter(p => (getExpiryStatus(p.expiry_date, p.expiry_alert_days)?.cardCls === 'expired')).length;
+  const profitPct    = (c: number, r: number) => c > 0 ? Math.round(((r - c) / c) * 100) : 0;
 
-  const profitPct = (c: number, r: number) => c > 0 ? Math.round(((r - c) / c) * 100) : 0;
+  /* ══ 🏛️ الصفحة الفرعية الكملة للمنتج (DEDICATED PRODUCT SUBPAGE) ══ */
+  if (viewingProduct) {
+    const productSales = transactions.filter(t => t.tx_type === 'SALE' && t.items.some(i => i.product_id === viewingProduct.id));
+    const productPurchases = transactions.filter(t => t.tx_type === 'PURCHASE' && t.items.some(i => i.product_id === viewingProduct.id));
 
-  // إحصائيات حركة المنتج المختار
-  const productSales = viewingProduct
-    ? transactions.filter(t => t.tx_type === 'SALE' && t.items.some(i => i.product_id === viewingProduct.id))
-    : [];
-  const productPurchases = viewingProduct
-    ? transactions.filter(t => t.tx_type === 'PURCHASE' && t.items.some(i => i.product_id === viewingProduct.id))
-    : [];
+    return (
+      <div className="space-y-4">
+        <button
+          onClick={() => setViewingProduct(null)}
+          className="flex items-center gap-2 px-3 py-2 bg-slate-900 text-white rounded-xl text-xs font-black shadow-sm touch-active"
+        >
+          <ArrowRight className="w-4 h-4" />
+          العودة للمخزن 📦
+        </button>
 
+        <div className="glass-card p-5 space-y-4 border-2 border-indigo-500/30">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center text-3xl shrink-0 overflow-hidden shadow-md">
+              {viewingProduct.photo_url ? <img src={viewingProduct.photo_url} alt="" className="w-full h-full object-cover rounded-2xl" /> : autoEmoji(viewingProduct.name)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="font-black text-xl text-slate-900 leading-tight truncate">{viewingProduct.name}</h2>
+              {viewingProduct.category && (
+                <span className="text-xs bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-md font-bold inline-block mt-1">
+                  قسم: {viewingProduct.category}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 text-center text-xs font-black">
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl">
+              <p className="text-[10px] text-emerald-700 font-bold">المخزون المتوفر</p>
+              <p className="text-xl text-emerald-900 tabnum mt-0.5">{viewingProduct.stock_quantity} حبة</p>
+            </div>
+            <div className="p-3 bg-slate-100 border rounded-2xl">
+              <p className="text-[10px] text-slate-500 font-bold">سعر الشراء (جملة)</p>
+              <p className="text-base text-slate-800 tabnum mt-0.5">{fmt(viewingProduct.cost_price)} د.ج</p>
+            </div>
+            <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-2xl">
+              <p className="text-[10px] text-indigo-700 font-bold">سعر البيع (تجزئة)</p>
+              <p className="text-base text-indigo-900 tabnum mt-0.5">{fmt(viewingProduct.retail_price)} د.ج</p>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button onClick={(e) => openEditModal(viewingProduct, e)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-black text-xs border">
+              تعديل بيانات المنتج ✏️
+            </button>
+            <button onClick={(e) => handleDeleteProduct(viewingProduct.id, e)} className="py-2.5 px-4 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-black text-xs border border-rose-200">
+              حذف المنتج 🗑️
+            </button>
+          </div>
+        </div>
+
+        {/* 📋 سجل المبيعات بالزبائن والتواريخ */}
+        <div className="glass-card p-4 space-y-3">
+          <h3 className="font-black text-sm text-slate-800 flex items-center gap-2">
+            <ArrowUpLeft className="w-4 h-4 text-emerald-600" />
+            سجل المبيعات (الزبائن الذين اشتروا هذا المنتج)
+          </h3>
+          {productSales.length === 0 ? (
+            <p className="text-xs text-slate-400 font-bold p-4 bg-slate-50 rounded-xl text-center">لا توجد مبيعات مدونة لهذا المنتج بعد</p>
+          ) : (
+            <div className="space-y-2">
+              {productSales.map(tx => {
+                const item = tx.items.find(i => i.product_id === viewingProduct.id);
+                return (
+                  <div key={tx.id} className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 flex justify-between items-center text-xs font-bold">
+                    <div>
+                      <p className="text-emerald-950 font-black">الزبون: {tx.contact_name || 'زبون كاش'}</p>
+                      <p className="text-[10px] text-emerald-600">{new Date(tx.created_at).toLocaleString('ar-EG')}</p>
+                    </div>
+                    <div className="text-left">
+                      <span className="badge badge-success text-[10px]">الكمية: {item?.quantity}</span>
+                      <p className="tabnum font-black text-emerald-800 text-xs mt-0.5">{fmt((item?.unit_price || 0) * (item?.quantity || 1))} د.ج</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 🚚 سجل التوريد بالموردين */}
+        <div className="glass-card p-4 space-y-3">
+          <h3 className="font-black text-sm text-slate-800 flex items-center gap-2">
+            <ArrowDownRight className="w-4 h-4 text-indigo-600" />
+            سجل الشراء والتوريد (الموردون)
+          </h3>
+          {productPurchases.length === 0 ? (
+            <p className="text-xs text-slate-400 font-bold p-4 bg-slate-50 rounded-xl text-center">لا توجد مقتنيات مدونة من الموردين</p>
+          ) : (
+            <div className="space-y-2">
+              {productPurchases.map(tx => {
+                const item = tx.items.find(i => i.product_id === viewingProduct.id);
+                return (
+                  <div key={tx.id} className="p-3 rounded-2xl bg-indigo-50 border border-indigo-200 flex justify-between items-center text-xs font-bold">
+                    <div>
+                      <p className="text-indigo-950 font-black">المورد: {tx.contact_name || 'مورد نقدي'}</p>
+                      <p className="text-[10px] text-indigo-600">{new Date(tx.created_at).toLocaleString('ar-EG')}</p>
+                    </div>
+                    <div className="text-left">
+                      <span className="badge badge-indigo text-[10px]">الكمية: {item?.quantity}</span>
+                      <p className="tabnum font-black text-indigo-800 text-xs mt-0.5">{fmt(tx.total_amount)} د.ج</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  /* ══ 📦 القائمة الرئيسية للمخزن ══ */
   return (
     <div className="space-y-4">
 
@@ -238,6 +415,23 @@ export default function InventoryPage() {
         </button>
       </div>
 
+      {/* ── 🏷️ فلاتر الأقسام التلقائية الملتفة flex-wrap ── */}
+      {categories.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 items-center">
+          <span className="text-[10px] font-bold text-slate-400 ml-1">الأقسام:</span>
+          <button onClick={() => setFilterCategory('all')}
+            className={`px-3 py-1 rounded-xl text-xs font-black ${filterCategory === 'all' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
+            كل الأقسام
+          </button>
+          {categories.map(cat => (
+            <button key={cat} onClick={() => setFilterCategory(cat)}
+              className={`px-3 py-1 rounded-xl text-xs font-black ${filterCategory === cat ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
+              {cat}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* ── قائمة المنتجات مرتبة ── */}
       <div className="space-y-3">
         {sorted.length === 0 ? (
@@ -256,7 +450,7 @@ export default function InventoryPage() {
             return (
               <div
                 key={p.id}
-                onClick={(e) => openProductHistory(p, e)}
+                onClick={() => setViewingProduct(p)}
                 className={`product-card ${cardState} cursor-pointer hover:border-emerald-500 transition-all`}
               >
                 <div className="flex items-start gap-3">
@@ -269,6 +463,7 @@ export default function InventoryPage() {
                   <div className="flex-1 min-w-0">
                     <h3 className="font-black text-slate-900 text-base leading-tight truncate">{p.name}</h3>
                     <div className="flex flex-wrap gap-1 mt-1.5">
+                      {p.category && <span className="badge badge-indigo text-[10px]">{p.category}</span>}
                       {expiry && <span className={expiry.cls}>{expiry.label}</span>}
                       {isLow && cardState !== 'expired' && <span className="badge badge-warning">⚠️ مخزون منخفض</span>}
                     </div>
@@ -302,7 +497,6 @@ export default function InventoryPage() {
                     </div>
                   </div>
 
-                  {/* أزرار الإجراءات */}
                   <div className="flex items-center gap-1 shrink-0">
                     <button onClick={(e) => openAdjustModal(p, 'reduce', e)} className="w-8 h-8 rounded-xl flex items-center justify-center touch-active bg-slate-200 text-slate-700 font-black">
                       <Minus size={14} />
@@ -313,14 +507,11 @@ export default function InventoryPage() {
                     <button onClick={(e) => openEditModal(p, e)} className="p-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200">
                       <Edit2 size={13} />
                     </button>
-                    <button onClick={(e) => handleDeleteProduct(p.id, e)} className="p-2 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100">
-                      <Trash2 size={13} />
-                    </button>
                   </div>
                 </div>
 
                 <div className="pt-2 mt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold text-emerald-700">
-                  <span className="flex items-center gap-1"><History size={12} /> اضغط لاستعراض سجل حركة بيع وشراء المنتج بالكامل</span>
+                  <span className="flex items-center gap-1"><History size={12} /> اضغط لاستعراض سجل الحركة بالكامل</span>
                   <span>👈</span>
                 </div>
               </div>
@@ -328,106 +519,6 @@ export default function InventoryPage() {
           })
         )}
       </div>
-
-      {/* ══ Modal سجل تفاصيل حركة المنتج بالكامل ══ */}
-      {showHistoryModal && viewingProduct && (
-        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowHistoryModal(false); }}>
-          <div className="modal-sheet">
-            <div className="modal-handle" />
-            <div className="modal-header">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-xl shrink-0">
-                  {viewingProduct.photo_url ? <img src={viewingProduct.photo_url} alt="" className="w-full h-full object-cover rounded-xl" /> : autoEmoji(viewingProduct.name)}
-                </div>
-                <div>
-                  <h3 className="font-black text-slate-800 text-base leading-tight">{viewingProduct.name}</h3>
-                  <p className="text-xs text-slate-500 font-bold">حركة ومبيعات هذا المنتج</p>
-                </div>
-              </div>
-              <button onClick={() => setShowHistoryModal(false)} className="btn btn-ghost p-2 rounded-xl">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="modal-body space-y-4">
-              {/* ملخص المنتج الرقمي */}
-              <div className="grid grid-cols-3 gap-2 text-center text-xs">
-                <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
-                  <p className="text-[10px] text-emerald-700 font-bold">المخزون الحالي</p>
-                  <p className="text-lg font-black text-emerald-800 tabnum">{viewingProduct.stock_quantity} حبة</p>
-                </div>
-                <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-200">
-                  <p className="text-[10px] text-indigo-700 font-bold">سعر الشراء بالجملة</p>
-                  <p className="text-lg font-black text-indigo-800 tabnum">{fmt(viewingProduct.cost_price)} د.ج</p>
-                </div>
-                <div className="p-2.5 rounded-xl bg-slate-100 border border-slate-200">
-                  <p className="text-[10px] text-slate-600 font-bold">سعر البيع التجزيئي</p>
-                  <p className="text-lg font-black text-slate-900 tabnum">{fmt(viewingProduct.retail_price)} د.ج</p>
-                </div>
-              </div>
-
-              {/* 📋 سجل مبيعات المنتج بالترتيب */}
-              <div className="space-y-2">
-                <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-                  <ArrowUpLeft className="w-4 h-4 text-emerald-600" />
-                  من اشترى هذا المنتج (سجل المبيعات)
-                </h4>
-                {productSales.length === 0 ? (
-                  <p className="text-xs text-slate-400 font-bold p-3 bg-slate-50 rounded-xl text-center">لا توجد عمليات بيع مدونة لهذا المنتج بعد</p>
-                ) : (
-                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                    {productSales.map(tx => {
-                      const item = tx.items.find(i => i.product_id === viewingProduct.id);
-                      return (
-                        <div key={tx.id} className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 flex justify-between items-center text-xs font-bold">
-                          <div>
-                            <p className="text-emerald-900 font-black">الزبون: {tx.contact_name || 'زبون كاش'}</p>
-                            <p className="text-[10px] text-emerald-600">{new Date(tx.created_at).toLocaleString('ar-EG')}</p>
-                          </div>
-                          <div className="text-left">
-                            <span className="badge badge-success text-[10px]">الكمية: {item?.quantity || 1}</span>
-                            <p className="tabnum font-black text-emerald-800 text-xs mt-0.5">{fmt((item?.unit_price || 0) * (item?.quantity || 1))} د.ج</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* 🚚 سجل شراء المنتج من الموردين */}
-              <div className="space-y-2">
-                <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-                  <ArrowDownRight className="w-4 h-4 text-indigo-600" />
-                  من أين تم توريد هذا المنتج (سجل الشراء)
-                </h4>
-                {productPurchases.length === 0 ? (
-                  <p className="text-xs text-slate-400 font-bold p-3 bg-slate-50 rounded-xl text-center">لا توجد عمليات توريد مدونة</p>
-                ) : (
-                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                    {productPurchases.map(tx => {
-                      const item = tx.items.find(i => i.product_id === viewingProduct.id);
-                      return (
-                        <div key={tx.id} className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-200 flex justify-between items-center text-xs font-bold">
-                          <div>
-                            <p className="text-indigo-900 font-black">المورد: {tx.contact_name || 'مورد نقدي'}</p>
-                            <p className="text-[10px] text-indigo-600">{new Date(tx.created_at).toLocaleString('ar-EG')}</p>
-                          </div>
-                          <div className="text-left">
-                            <span className="badge badge-indigo text-[10px]">الكمية: {item?.quantity || 1}</span>
-                            <p className="tabnum font-black text-indigo-800 text-xs mt-0.5">{fmt(tx.total_amount)} د.ج</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ══ Modal إضافة / تعديل منتج ══ */}
       {showAddModal && (
@@ -448,6 +539,79 @@ export default function InventoryPage() {
                 <label className="block text-xs font-black text-slate-600 mb-1.5">📝 اسم المنتج *</label>
                 <input type="text" required placeholder="مثال: زيت زيتون 1 لتر..."
                   value={name} onChange={e => setName(e.target.value)} className="form-input" />
+              </div>
+
+              {/* 🏷️ قسم الفئة */}
+              <div>
+                <label className="block text-xs font-black text-slate-600 mb-1.5">🏷️ قسم المنتج</label>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {categories.map(cat => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setCategory(cat)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${category === cat ? 'bg-indigo-600 text-white border-transparent' : 'bg-slate-100 text-slate-700 border-slate-200'}`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setCategory('أخرى')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${category === 'أخرى' ? 'bg-indigo-600 text-white border-transparent' : 'bg-slate-100 text-slate-700 border-slate-200'}`}
+                  >
+                    + قسم جديد
+                  </button>
+                </div>
+                {category === 'أخرى' && (
+                  <input
+                    type="text"
+                    required
+                    placeholder="اكتب اسم القسم الجديد (مثلاً: حلويات، مشروبات غازية...)"
+                    value={customCategory}
+                    onChange={e => setCustomCategory(e.target.value)}
+                    className="form-input mt-1"
+                  />
+                )}
+              </div>
+
+              {/* 📦 نوع الوحدة وسعة الكرتونة */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1.5">📦 وحدة التعبئة والبيع</label>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {[
+                      { val: 'piece' as const, label: 'حبة 🥛' },
+                      { val: 'pack'  as const, label: 'كرتونة 📦' },
+                      { val: 'kg'    as const, label: 'كغ ⚖️' },
+                      { val: 'liter' as const, label: 'لتر 🧴' },
+                    ].map(u => (
+                      <button
+                        key={u.val}
+                        type="button"
+                        onClick={() => setUnitType(u.val)}
+                        className={`py-2 rounded-xl text-xs font-black border ${unitType === u.val ? 'bg-slate-900 text-white border-transparent' : 'bg-white text-slate-700 border-slate-200'}`}
+                      >
+                        {u.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {unitType === 'pack' && (
+                  <div>
+                    <label className="block text-xs font-black text-indigo-900 mb-1">🥚 سعة الكرتونة (كم حبة داخلها؟)</label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      placeholder="مثال: 30 حبة للكرتونة"
+                      value={packQuantity || ''}
+                      onChange={e => setPackQuantity(+e.target.value)}
+                      className="form-input font-black tabnum text-indigo-900"
+                    />
+                  </div>
+                )}
               </div>
 
               <div>
@@ -484,7 +648,7 @@ export default function InventoryPage() {
                     className="form-input text-center font-black text-lg tabnum" />
                 </div>
                 <div>
-                  <label className="block text-xs font-black text-slate-600 mb-1.5">حد تنبيه النقص (قطع)</label>
+                  <label className="block text-xs font-black text-slate-600 mb-1.5">حد تنبيه النقص</label>
                   <input type="number" min="1"
                     value={minStockAlert} onChange={e => setMinStockAlert(+e.target.value)}
                     className="form-input text-center tabnum" />
@@ -504,7 +668,6 @@ export default function InventoryPage() {
                       <option value={15}>15 يوم قبل الانتهاء</option>
                       <option value={30}>30 يوم قبل الانتهاء</option>
                       <option value={60}>60 يوم قبل الانتهاء</option>
-                      <option value={90}>90 يوم قبل الانتهاء</option>
                     </select>
                   </div>
                 )}
@@ -519,14 +682,14 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* ══ Modal تعديل الكمية (+ / -) ══ */}
+      {/* ══ Modal تعديل الكمية المرتبط بالأشخاص والوحدات ══ */}
       {showAdjustModal && adjustingProduct && (
         <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowAdjustModal(false); }}>
           <div className="modal-sheet">
             <div className="modal-handle" />
             <div className="modal-header">
               <h3 className="font-black text-slate-800 text-base">
-                {adjustType === 'add' ? 'إضافة كمية للمخزون 📦' : 'خصم كمية من المخزون 🔻'}
+                {adjustType === 'add' ? 'إضافة مخزون (توريد من مورد) 🚚' : 'خصم مخزون (بيع لزبون) 👥'}
               </h3>
               <button onClick={() => setShowAdjustModal(false)} className="btn btn-ghost p-2 rounded-xl">
                 <X size={18} />
@@ -536,13 +699,58 @@ export default function InventoryPage() {
             <form onSubmit={executeAdjustStock} className="modal-body space-y-4">
               <div className="p-3 bg-slate-100 rounded-xl text-xs font-bold text-slate-800 flex justify-between">
                 <span>المنتج: {adjustingProduct.name}</span>
-                <span>الموجود حالياً: {adjustingProduct.stock_quantity} حبة</span>
+                <span>الموجود: {adjustingProduct.stock_quantity} حبة</span>
               </div>
 
+              {/* اختيار الشخص (المورد أو الزبون) */}
               <div>
                 <label className="block text-xs font-black text-slate-700 mb-1.5">
-                  {adjustType === 'add' ? 'أدخل الكمية المضافة ➕' : 'أدخل الكمية المخصومة ➖'}
+                  {adjustType === 'add' ? 'اختر المورد (اختياري)' : 'اختر الزبون (اختياري)'}
                 </label>
+                <select
+                  value={selectedPersonId}
+                  onChange={e => setSelectedPersonId(e.target.value)}
+                  className="form-input"
+                >
+                  <option value="">-- بدون تحديد شخص (نقدي) --</option>
+                  {contacts
+                    .filter(c => adjustType === 'add' ? c.type === 'supplier' || c.type === 'both' : c.type === 'customer' || c.type === 'both')
+                    .map(c => <option key={c.id} value={c.id}>{c.name} ({c.phone || 'بدون هاتف'})</option>)}
+                </select>
+              </div>
+
+              {/* اختيار وحدة الكمية المضافة/المخصومة (كرتونة أو حبة) */}
+              {adjustingProduct.unit_type === 'pack' && (
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1">وحدة الإضافة/الخصم</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAdjustUnitChoice('pack')}
+                      className={`py-2 rounded-xl text-xs font-black border ${adjustUnitChoice === 'pack' ? 'bg-indigo-600 text-white border-transparent' : 'bg-slate-100 text-slate-700'}`}
+                    >
+                      📦 كرتونة كاملة
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAdjustUnitChoice('half_pack')}
+                      className={`py-2 rounded-xl text-xs font-black border ${adjustUnitChoice === 'half_pack' ? 'bg-indigo-600 text-white border-transparent' : 'bg-slate-100 text-slate-700'}`}
+                    >
+                      📦½ نصف كرتونة
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAdjustUnitChoice('piece')}
+                      className={`py-2 rounded-xl text-xs font-black border ${adjustUnitChoice === 'piece' ? 'bg-indigo-600 text-white border-transparent' : 'bg-slate-100 text-slate-700'}`}
+                    >
+                      🥛 بالحبة الفردية
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-1.5">الكمية</label>
                 <input
                   type="number"
                   required
@@ -554,7 +762,7 @@ export default function InventoryPage() {
               </div>
 
               <button type="submit" className="btn btn-primary w-full py-4 text-base shadow-md">
-                تأكيد ضبط الكمية ✅
+                تأكيد العملية وتحديث الحساب ✅
               </button>
             </form>
           </div>

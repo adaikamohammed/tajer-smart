@@ -17,6 +17,15 @@ export interface StockLog {
   product_id: string;
   change: number; // +20 أو -5
   note?: string;
+  contact_id?: string;
+  contact_name?: string;
+  created_at: string;
+}
+
+export interface ProductBatch {
+  id: string;
+  qty: number;
+  expiry_date: string;
   created_at: string;
 }
 
@@ -25,12 +34,16 @@ export interface Product {
   name: string;
   barcode?: string;
   photo_url?: string;
-  cost_price: number;     // سعر الشراء بالجملة
+  category?: string;      // قسم المنتج (مشروبات، حلويات، مواد تنظيف...)
+  unit_type?: 'pack' | 'piece' | 'kg' | 'liter'; // نوع الوحدة
+  pack_quantity?: number; // سعة الكرتونة بالحبة (مثلاً 30 حبة للكرتونة)
+  cost_price: number;     // سعر الشراء بالجملة (للكرتونة أو الوحدة)
   retail_price: number;   // سعر البيع بالتجزئة
-  stock_quantity: number; // كمية المخزون بالحبة
+  stock_quantity: number; // كمية المخزون بالحبة أو الكرتونة
   min_stock_alert: number;
-  expiry_date?: string;   // YYYY-MM-DD
-  expiry_alert_days?: number; // حد التنبيه بالصلاحية بالأيام (15, 30, 60...)
+  expiry_date?: string;   // أقرب تاريخ صلاحية
+  expiry_alert_days?: number; // حد التنبيه بالصلاحية بالأيام
+  batches?: ProductBatch[]; // سجل دفعات الصلاحيات المتعددة
   last_purchased_at?: string;
   last_sold_at?: string;
   created_at: string;
@@ -40,6 +53,7 @@ export interface TransactionItem {
   product_id: string;
   product_name: string;
   quantity: number;
+  unit_type?: string;
   unit_price: number; // سعر البيع التجزيئي أو سعر الشراء الإفرادي
   cost_price: number; // سعر التكلفة للجملة لحساب صافي الأرباح
 }
@@ -109,6 +123,8 @@ const DEFAULT_PRODUCTS: Product[] = [
   {
     id: 'p1',
     name: 'زيت زيتون ممتاز 1 لتر',
+    category: 'مواد غذائية',
+    unit_type: 'piece',
     cost_price: 800,
     retail_price: 1100,
     stock_quantity: 45,
@@ -120,48 +136,43 @@ const DEFAULT_PRODUCTS: Product[] = [
   },
   {
     id: 'p2',
-    name: 'عسل سدر طبيعي 500غ',
-    cost_price: 2500,
-    retail_price: 3400,
-    stock_quantity: 18,
+    name: 'كرتونة بيض (30 حبة)',
+    category: 'مواد غذائية',
+    unit_type: 'pack',
+    pack_quantity: 30,
+    cost_price: 550,
+    retail_price: 700,
+    stock_quantity: 20,
     min_stock_alert: 5,
-    expiry_date: '2028-01-15',
-    expiry_alert_days: 60,
-    last_purchased_at: new Date(Date.now() - 86400000 * 7).toISOString(),
-    created_at: new Date(Date.now() - 86400000 * 15).toISOString(),
+    expiry_date: '2026-09-15',
+    expiry_alert_days: 15,
+    last_purchased_at: new Date(Date.now() - 86400000 * 2).toISOString(),
+    created_at: new Date(Date.now() - 86400000 * 5).toISOString(),
   },
   {
     id: 'p3',
-    name: 'علبة شوكولاتة فاخرة 24 قطعة',
-    cost_price: 1200,
-    retail_price: 1700,
-    stock_quantity: 8,
-    min_stock_alert: 10,
-    expiry_date: '2026-11-30',
-    expiry_alert_days: 15,
-    last_purchased_at: new Date(Date.now() - 86400000 * 2).toISOString(),
-    created_at: new Date(Date.now() - 86400000 * 8).toISOString(),
-  },
-  {
-    id: 'p4',
-    name: 'تمر مجدول ممتاز 1 كغ',
-    cost_price: 900,
-    retail_price: 1300,
+    name: 'مشروب عصير طبيعي 1 لتر',
+    category: 'مشروبات',
+    unit_type: 'piece',
+    cost_price: 150,
+    retail_price: 220,
     stock_quantity: 60,
-    min_stock_alert: 15,
-    expiry_date: '2027-02-28',
+    min_stock_alert: 12,
+    expiry_date: '2026-12-30',
     expiry_alert_days: 30,
     last_purchased_at: new Date(Date.now() - 86400000 * 1).toISOString(),
-    created_at: new Date(Date.now() - 86400000 * 20).toISOString(),
+    created_at: new Date(Date.now() - 86400000 * 8).toISOString(),
   },
 ];
+
+const DEFAULT_PRODUCT_CATEGORIES = ['مواد غذائية', 'مشروبات', 'حلويات', 'مواد تنظيف', 'خضر وفواكه'];
 
 const STORAGE_KEYS = {
   CONTACTS: 'tajer_smart_contacts_v1',
   PRODUCTS: 'tajer_smart_products_v1',
+  PRODUCT_CATEGORIES: 'tajer_smart_product_categories_v1',
   TRANSACTIONS: 'tajer_smart_transactions_v1',
   PAYMENTS: 'tajer_smart_payments_v1',
-  STOCK_LOGS: 'tajer_smart_stock_logs_v1',
 };
 
 export function getLocalData<T>(key: string, defaultValue: T): T {
@@ -184,6 +195,21 @@ export function setLocalData<T>(key: string, value: T): void {
   }
 }
 
+export function getProductCategories(): string[] {
+  return getLocalData(STORAGE_KEYS.PRODUCT_CATEGORIES, DEFAULT_PRODUCT_CATEGORIES);
+}
+
+export function saveProductCategory(newCat: string): string[] {
+  const cats = getProductCategories();
+  const trimmed = newCat.trim();
+  if (trimmed && !cats.includes(trimmed)) {
+    const updated = [...cats, trimmed];
+    setLocalData(STORAGE_KEYS.PRODUCT_CATEGORIES, updated);
+    return updated;
+  }
+  return cats;
+}
+
 export function initStorageIfEmpty(): void {
   if (typeof window === 'undefined') return;
   if (!localStorage.getItem(STORAGE_KEYS.CONTACTS)) {
@@ -191,6 +217,9 @@ export function initStorageIfEmpty(): void {
   }
   if (!localStorage.getItem(STORAGE_KEYS.PRODUCTS)) {
     setLocalData(STORAGE_KEYS.PRODUCTS, DEFAULT_PRODUCTS);
+  }
+  if (!localStorage.getItem(STORAGE_KEYS.PRODUCT_CATEGORIES)) {
+    setLocalData(STORAGE_KEYS.PRODUCT_CATEGORIES, DEFAULT_PRODUCT_CATEGORIES);
   }
   if (!localStorage.getItem(STORAGE_KEYS.TRANSACTIONS)) {
     setLocalData(STORAGE_KEYS.TRANSACTIONS, []);
@@ -201,7 +230,10 @@ export function initStorageIfEmpty(): void {
 }
 
 export function createWhatsAppLink(phone: string, text: string): string {
-  const cleanPhone = phone.replace(/[^\d]/g, '');
+  let cleanPhone = phone.replace(/[^\d]/g, '');
+  if (cleanPhone.startsWith('0')) {
+    cleanPhone = '213' + cleanPhone.substring(1);
+  }
   const encodedText = encodeURIComponent(text);
   return `https://wa.me/${cleanPhone}?text=${encodedText}`;
 }
@@ -209,9 +241,9 @@ export function createWhatsAppLink(phone: string, text: string): string {
 export function generateAccountStatementText(contactName: string, balance: number, transactions: Transaction[]): string {
   const dateStr = new Date().toLocaleDateString('ar-EG');
   let statusText = balance > 0 
-    ? `⚠️ الرصيد المتبقي المستحق عليك: ${balance.toLocaleString('en-US')} د.ج`
+    ? `⚠️ الرصيد المتبقي المستحق عليك (نطالبك به): ${balance.toLocaleString('en-US')} د.ج`
     : balance < 0 
-    ? `✅ الرصيد المستحق لك لدينا: ${Math.abs(balance).toLocaleString('en-US')} د.ج`
+    ? `✅ الرصيد المستحق لك لدينا (تطالبنا به): ${Math.abs(balance).toLocaleString('en-US')} د.ج`
     : `✅ الحساب مصفى بالكامل (0 د.ج)`;
 
   let msg = `🧾 *كشف حساب - التاجر المتنقل*\n`;

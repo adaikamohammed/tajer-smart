@@ -9,7 +9,7 @@ import { toast } from '@/components/Toast';
 import {
   Users, UserPlus, Phone, MessageCircle,
   Search, X, Camera, MapPin, Tag, AlertTriangle,
-  Edit2, Trash2, Receipt, Copy, Check
+  Edit2, Trash2, Receipt, Copy, Check, ArrowRight
 } from 'lucide-react';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
@@ -35,12 +35,12 @@ export default function ContactsPage() {
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [searchQuery,    setSearchQuery]    = useState('');
 
-  // Modals
+  // Modals & Dedicated Subpage
   const [showAddModal,       setShowAddModal]       = useState(false);
-  const [showProfileModal,   setShowProfileModal]   = useState(false);
   const [showStatementModal, setShowStatementModal] = useState(false);
   const [editingContact,     setEditingContact]     = useState<Contact | null>(null);
   const [viewingContact,     setViewingContact]     = useState<Contact | null>(null);
+  const [statementContact,   setStatementContact]   = useState<Contact | null>(null);
   const [copiedStatement,    setCopiedStatement]    = useState(false);
 
   // Form states
@@ -131,6 +131,9 @@ export default function ContactsPage() {
       setContacts(updated);
       setLocalData('tajer_smart_contacts_v1', updated);
       toast('✅ تم تحديث بيانات الشخص بنجاح', 'success');
+      if (viewingContact?.id === editingContact.id) {
+        setViewingContact(updated.find(x => x.id === editingContact.id) || null);
+      }
     } else {
       const nc: Contact = {
         id: 'c_' + Date.now(),
@@ -149,32 +152,27 @@ export default function ContactsPage() {
     setShowAddModal(false);
   };
 
-  const handleDeleteContact = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDeleteContact = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     if (confirm('هل أنت تأكد من حذف هذا الشخص من القائمة؟')) {
       const updated = contacts.filter(c => c.id !== id);
       setContacts(updated);
       setLocalData('tajer_smart_contacts_v1', updated);
       toast('تم حذف الشخص من القائمة', 'info');
-      if (viewingContact?.id === id) setShowProfileModal(false);
+      if (viewingContact?.id === id) setViewingContact(null);
     }
-  };
-
-  const openProfile = (c: Contact) => {
-    setViewingContact(c);
-    setShowProfileModal(true);
   };
 
   const openStatement = (c: Contact, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    setViewingContact(c);
+    setStatementContact(c);
     setCopiedStatement(false);
     setShowStatementModal(true);
   };
 
   const copyStatementText = () => {
-    if (!viewingContact) return;
-    const text = generateAccountStatementText(viewingContact.name, viewingContact.balance, []);
+    if (!statementContact) return;
+    const text = generateAccountStatementText(statementContact.name, statementContact.balance, []);
     navigator.clipboard.writeText(text);
     setCopiedStatement(true);
     toast('✅ تم نسخ نص كشف الحساب للحافظة', 'success');
@@ -183,7 +181,6 @@ export default function ContactsPage() {
 
   const availableCategories = Array.from(new Set(contacts.map(c => c.category).filter(Boolean)));
 
-  // 🔄 فلترة شاملة تضم خيار "كلاهما"
   const filtered = contacts
     .filter(c => {
       const matchType =
@@ -206,170 +203,271 @@ export default function ContactsPage() {
   return (
     <div className="space-y-4">
 
-      {/* ── شريط البحث والإضافة ── */}
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
-          <input type="text" placeholder="ابحث بالاسم، الهاتف، المكان..."
-            value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="form-input pr-9" />
-        </div>
-        <button onClick={openAddModal} className="btn btn-primary shrink-0 gap-1.5 py-2.5 px-4">
-          <UserPlus size={18} strokeWidth={2.5} />
-          <span className="hidden sm:inline">إضافة</span>
-        </button>
-      </div>
-
-      {/* ── 🔄 فلترة نوع الجهة (تضم زبون / مورد / كلاهما) ── */}
-      <div className="space-y-2">
-        <div className="flex gap-1.5 scrollbar-hide overflow-x-auto pb-0.5">
-          <button onClick={() => setFilterType('all')}
-            className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-black transition-all ${filterType === 'all' ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
-            الكل ({contacts.length})
+      {/* ══ 🏛️ الصفحة الفرعية الكاملة للشخص ══ */}
+      {viewingContact ? (
+        <div className="space-y-4">
+          <button
+            onClick={() => setViewingContact(null)}
+            className="flex items-center gap-2 px-3 py-2 bg-slate-900 text-white rounded-xl text-xs font-black shadow-sm touch-active"
+          >
+            <ArrowRight className="w-4 h-4" />
+            العودة لقائمة الأشخاص 👥
           </button>
-          <button onClick={() => setFilterType('customer')}
-            className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-black transition-all ${filterType === 'customer' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
-            الزبائن 👥
-          </button>
-          <button onClick={() => setFilterType('supplier')}
-            className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-black transition-all ${filterType === 'supplier' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
-            الموردين 🚚
-          </button>
-          <button onClick={() => setFilterType('both')}
-            className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-black transition-all ${filterType === 'both' ? 'bg-amber-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
-            كلاهما 🔄
-          </button>
-        </div>
 
-        {availableCategories.length > 0 && (
-          <div className="flex items-center gap-1.5 scrollbar-hide overflow-x-auto pb-0.5">
-            <span className="text-[10px] font-bold text-slate-400 shrink-0">النشاط:</span>
-            <button onClick={() => setFilterCategory('all')}
-              className={`shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-bold ${filterCategory === 'all' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
-              كل الأنشطة
-            </button>
-            {availableCategories.map(cat => (
-              <button key={cat} onClick={() => setFilterCategory(cat!)}
-                className={`shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-bold ${filterCategory === cat ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                {cat}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* ── قائمة الأشخاص ── */}
-      <div className="space-y-3">
-        {filtered.length === 0 ? (
-          <div className="empty-state">
-            <Users size={40} className="opacity-25" />
-            <p className="font-bold text-sm">
-              {searchQuery ? 'لا يوجد شخص مطابق للبحث' : 'لا يوجد أشخاص بعد — أضف أول شخص!'}
-            </p>
-          </div>
-        ) : (
-          filtered.map(c => {
-            const isSupplier  = c.type === 'supplier' || c.type === 'both';
-            const hasDebt     = c.balance > 0;
-            const hasCredit   = c.balance < 0;
-            const isSettled   = c.balance === 0;
-            const isOverLimit = c.credit_limit && c.balance > c.credit_limit;
-
-            return (
-              <div
-                key={c.id}
-                onClick={() => openProfile(c)}
-                className="glass-card p-4 space-y-3 cursor-pointer hover:border-emerald-400 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className="avatar w-13 h-13 text-xl relative"
-                    style={{ width: 52, height: 52, background: avatarGrad(c.name) }}
-                  >
-                    {c.photo_url
-                      ? <img src={c.photo_url} alt={c.name} className="w-full h-full object-cover rounded-full" />
-                      : c.name.charAt(0)
-                    }
-                    <span className="absolute -bottom-0.5 -left-0.5 w-5 h-5 rounded-full bg-white border flex items-center justify-center text-[10px]">
-                      {c.type === 'both' ? '🔄' : isSupplier ? '🚚' : '👥'}
-                    </span>
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-black text-slate-900 text-base leading-tight truncate">{c.name}</h3>
-                      {c.category && (
-                        <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-bold shrink-0">
-                          {c.category}
-                        </span>
-                      )}
-                    </div>
-                    
-                    <div className="flex items-center gap-2 mt-1">
-                      <p className="text-xs text-slate-500 font-semibold flex items-center gap-1">
-                        <Phone size={11} className="text-slate-400 shrink-0" />
-                        {c.phone || 'بدون هاتف'}
-                      </p>
-                      {c.location && (
-                        <p className="text-xs text-emerald-700 font-bold flex items-center gap-0.5 truncate bg-emerald-50 px-1.5 py-0.5 rounded">
-                          <MapPin size={10} className="shrink-0" />
-                          {c.location}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 🟢/🔴 المصطلحات المائة بالمائة مبسطة */}
-                  <div className="shrink-0 text-left">
-                    {hasDebt && (
-                      <div className="px-2.5 py-1 rounded-xl bg-rose-50 border border-rose-200 text-center">
-                        <p className="text-[10px] font-black text-rose-700">نطالبه بمبلغ 📥</p>
-                        <p className="font-black text-sm tabnum text-rose-800">{fmt(c.balance)} <span className="text-[9px]">د.ج</span></p>
-                      </div>
-                    )}
-                    {hasCredit && (
-                      <div className="px-2.5 py-1 rounded-xl bg-blue-50 border border-blue-200 text-center">
-                        <p className="text-[10px] font-black text-blue-700">يطالبنا بمبلغ 📤</p>
-                        <p className="font-black text-sm tabnum text-blue-800">{fmt(Math.abs(c.balance))} <span className="text-[9px]">د.ج</span></p>
-                      </div>
-                    )}
-                    {isSettled && <span className="badge badge-success">✅ مصفى</span>}
-                  </div>
-                </div>
-
-                {isOverLimit && (
-                  <div className="bg-amber-50 border border-amber-300 p-2 rounded-xl flex items-center gap-2 text-amber-800 text-xs font-bold">
-                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                    <span>تجاوز سقف الدين المحدد ({fmt(c.credit_limit!)} د.ج)!</span>
-                  </div>
-                )}
-
-                {/* أزرار الإجراءات مع الاتصال والمعاينة */}
-                <div className="flex items-center justify-between pt-1 border-t border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <button onClick={(e) => openEditModal(c, e)} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1">
-                      <Edit2 size={13} /> تعديل
-                    </button>
-                    <button onClick={(e) => handleDeleteContact(c.id, e)} className="p-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold flex items-center gap-1">
-                      <Trash2 size={13} /> حذف
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    {c.phone && (
-                      <a href={`tel:${c.phone}`} onClick={e => e.stopPropagation()} className="p-2 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-bold flex items-center gap-1" title="اتصال هاتفي مباشر">
-                        <Phone size={13} /> اتصال
-                      </a>
-                    )}
-                    <button onClick={(e) => openStatement(c, e)} className="p-2 rounded-xl bg-emerald-50 text-emerald-800 hover:bg-emerald-100 text-xs font-bold flex items-center gap-1">
-                      <MessageCircle size={13} /> كشف حساب 📜
-                    </button>
-                  </div>
-                </div>
+          <div className="glass-card p-5 space-y-4 border-2 border-emerald-500/30">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-white font-black text-2xl shadow-md" style={{ background: avatarGrad(viewingContact.name) }}>
+                {viewingContact.photo_url ? <img src={viewingContact.photo_url} alt="" className="w-full h-full rounded-2xl object-cover" /> : viewingContact.name.charAt(0)}
               </div>
-            );
-          })
-        )}
-      </div>
+              <div className="flex-1 min-w-0">
+                <h2 className="font-black text-xl text-slate-900 leading-tight truncate">{viewingContact.name}</h2>
+                <p className="text-xs text-slate-500 font-bold mt-1 flex items-center gap-1">
+                  <Phone size={13} className="text-slate-400" />
+                  {viewingContact.phone || 'بدون رقم هاتف'}
+                </p>
+                {viewingContact.location && (
+                  <p className="text-xs text-emerald-700 font-bold mt-0.5 flex items-center gap-1">
+                    <MapPin size={13} />
+                    {viewingContact.location}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              {viewingContact.category && (
+                <div className="bg-slate-100 p-2.5 rounded-xl font-bold text-slate-700 flex items-center gap-1.5">
+                  <Tag className="w-4 h-4 text-emerald-600" />
+                  <span>النشاط: {viewingContact.category}</span>
+                </div>
+              )}
+              <div className="bg-slate-100 p-2.5 rounded-xl font-bold text-slate-700 flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-indigo-600" />
+                <span>الصفة: {viewingContact.type === 'customer' ? 'زبون' : viewingContact.type === 'supplier' ? 'مورد' : 'زبون ومورد'}</span>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 text-white space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-slate-300 font-bold">حالة الرصيد والديون المالية</span>
+                {viewingContact.credit_limit && (
+                  <span className="text-[11px] bg-slate-700 px-2 py-0.5 rounded font-bold">
+                    سقف الدين: {fmt(viewingContact.credit_limit)} د.ج
+                  </span>
+                )}
+              </div>
+              <p className="text-2xl font-black tabnum">
+                {fmt(Math.abs(viewingContact.balance))} <span className="text-xs">د.ج</span>
+                <span className="text-xs font-semibold mr-2">
+                  ({viewingContact.balance > 0 ? 'نطالبه بمبلغ 📥' : viewingContact.balance < 0 ? 'يطالبنا بمبلغ 📤' : 'مصفى ✅'})
+                </span>
+              </p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              {viewingContact.phone && (
+                <a href={`tel:${viewingContact.phone}`} className="py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl font-black text-xs flex items-center justify-center gap-1 border border-blue-200">
+                  <Phone size={14} /> اتصال 📞
+                </a>
+              )}
+              <button onClick={() => openStatement(viewingContact)} className="py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs flex items-center justify-center gap-1 shadow-sm">
+                <MessageCircle size={14} /> كشف حساب 📜
+              </button>
+              <button onClick={(e) => openEditModal(viewingContact, e)} className="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-black text-xs flex items-center justify-center gap-1 border">
+                <Edit2 size={14} /> تعديل ✏️
+              </button>
+            </div>
+          </div>
+
+          <div className="glass-card p-4 space-y-3">
+            <h3 className="font-black text-sm text-slate-800 flex items-center gap-2">
+              <Receipt className="w-4 h-4 text-emerald-600" />
+              سجل التعاملات المباشرة (المبيعات والمشتريات)
+            </h3>
+
+            {transactions.filter(t => t.contact_id === viewingContact.id).length === 0 ? (
+              <p className="text-xs text-slate-400 font-bold p-4 bg-slate-50 rounded-xl text-center">لا توجد عمليات بيع أو شراء مدونة بعد لهذا الشخص</p>
+            ) : (
+              <div className="space-y-2">
+                {transactions.filter(t => t.contact_id === viewingContact.id).map(tx => (
+                  <div key={tx.id} className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5">
+                    <div className="flex justify-between items-center text-xs font-black">
+                      <span className={tx.tx_type === 'SALE' ? 'text-emerald-700' : 'text-indigo-700'}>
+                        {tx.tx_type === 'SALE' ? '🛒 بيع للزبون' : '📦 شراء من المورد'}
+                      </span>
+                      <span className="text-slate-400 font-normal text-[10px]">
+                        {new Date(tx.created_at).toLocaleString('ar-EG')}
+                      </span>
+                    </div>
+
+                    <div className="text-xs text-slate-800 font-bold">
+                      المنتجات: {tx.items.map(i => `${i.product_name} (${i.quantity} قطعة)`).join(', ')}
+                    </div>
+
+                    <div className="flex justify-between items-center text-xs pt-1 border-t border-slate-200/60">
+                      <span className="text-slate-600 font-bold">الإجمالي: <strong className="tabnum text-slate-900">{fmt(tx.total_amount)} د.ج</strong></span>
+                      <span className="text-emerald-700 font-bold">المدفوع: <strong className="tabnum">{fmt(tx.paid_amount)} د.ج</strong></span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* ══ 👥 القائمة الرئيسية للأشخاص ══ */
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
+              <input type="text" placeholder="ابحث بالاسم، الهاتف، المكان..."
+                value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="form-input pr-9" />
+            </div>
+            <button onClick={openAddModal} className="btn btn-primary shrink-0 gap-1.5 py-2.5 px-4">
+              <UserPlus size={18} strokeWidth={2.5} />
+              <span className="hidden sm:inline">إضافة</span>
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-1.5">
+              <button onClick={() => setFilterType('all')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${filterType === 'all' ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
+                الكل ({contacts.length})
+              </button>
+              <button onClick={() => setFilterType('customer')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${filterType === 'customer' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
+                الزبائن 👥
+              </button>
+              <button onClick={() => setFilterType('supplier')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${filterType === 'supplier' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
+                الموردين 🚚
+              </button>
+              <button onClick={() => setFilterType('both')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${filterType === 'both' ? 'bg-amber-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
+                كلاهما 🔄
+              </button>
+            </div>
+
+            {availableCategories.length > 0 && (
+              <div className="flex flex-wrap gap-1 items-center">
+                <span className="text-[10px] font-bold text-slate-400 ml-1">النشاط:</span>
+                <button onClick={() => setFilterCategory('all')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold ${filterCategory === 'all' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'}`}>
+                  كل الأنشطة
+                </button>
+                {availableCategories.map(cat => (
+                  <button key={cat} onClick={() => setFilterCategory(cat!)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold ${filterCategory === cat ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            {filtered.length === 0 ? (
+              <div className="empty-state">
+                <Users size={40} className="opacity-25" />
+                <p className="font-bold text-sm">
+                  {searchQuery ? 'لا يوجد شخص مطابق للبحث' : 'لا يوجد أشخاص بعد — أضف أول شخص!'}
+                </p>
+              </div>
+            ) : (
+              filtered.map(c => {
+                const isSupplier  = c.type === 'supplier' || c.type === 'both';
+                const hasDebt     = c.balance > 0;
+                const hasCredit   = c.balance < 0;
+                const isSettled   = c.balance === 0;
+                const isOverLimit = c.credit_limit && c.balance > c.credit_limit;
+
+                return (
+                  <div
+                    key={c.id}
+                    onClick={() => setViewingContact(c)}
+                    className="glass-card p-4 space-y-3 cursor-pointer hover:border-emerald-400 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="avatar w-13 h-13 text-xl relative"
+                        style={{ width: 52, height: 52, background: avatarGrad(c.name) }}
+                      >
+                        {c.photo_url
+                          ? <img src={c.photo_url} alt={c.name} className="w-full h-full object-cover rounded-full" />
+                          : c.name.charAt(0)
+                        }
+                        <span className="absolute -bottom-0.5 -left-0.5 w-5 h-5 rounded-full bg-white border flex items-center justify-center text-[10px]">
+                          {c.type === 'both' ? '🔄' : isSupplier ? '🚚' : '👥'}
+                        </span>
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-black text-slate-900 text-base leading-tight truncate">{c.name}</h3>
+                          {c.category && (
+                            <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-bold shrink-0">
+                              {c.category}
+                            </span>
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2 mt-1">
+                          <p className="text-xs text-slate-500 font-semibold flex items-center gap-1">
+                            <Phone size={11} className="text-slate-400 shrink-0" />
+                            {c.phone || 'بدون هاتف'}
+                          </p>
+                          {c.location && (
+                            <p className="text-xs text-emerald-700 font-bold flex items-center gap-0.5 truncate bg-emerald-50 px-1.5 py-0.5 rounded">
+                              <MapPin size={10} className="shrink-0" />
+                              {c.location}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 text-left">
+                        {hasDebt && (
+                          <div className="px-2.5 py-1 rounded-xl bg-rose-50 border border-rose-200 text-center">
+                            <p className="text-[10px] font-black text-rose-700">نطالبه بمبلغ 📥</p>
+                            <p className="font-black text-sm tabnum text-rose-800">{fmt(c.balance)} <span className="text-[9px]">د.ج</span></p>
+                          </div>
+                        )}
+                        {hasCredit && (
+                          <div className="px-2.5 py-1 rounded-xl bg-blue-50 border border-blue-200 text-center">
+                            <p className="text-[10px] font-black text-blue-700">يطالبنا بمبلغ 📤</p>
+                            <p className="font-black text-sm tabnum text-blue-800">{fmt(Math.abs(c.balance))} <span className="text-[9px]">د.ج</span></p>
+                          </div>
+                        )}
+                        {isSettled && <span className="badge badge-success">✅ مصفى</span>}
+                      </div>
+                    </div>
+
+                    {isOverLimit && (
+                      <div className="bg-amber-50 border border-amber-300 p-2 rounded-xl flex items-center gap-2 text-amber-800 text-xs font-bold">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>تجاوز سقف الدين المحدد ({fmt(c.credit_limit!)} د.ج)!</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-100 text-xs font-bold text-emerald-600">
+                      <div className="flex items-center gap-2">
+                        <button onClick={(e) => openEditModal(c, e)} className="p-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 flex items-center gap-1">
+                          <Edit2 size={13} /> تعديل
+                        </button>
+                        <button onClick={(e) => handleDeleteContact(c.id, e)} className="p-2 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 flex items-center gap-1">
+                          <Trash2 size={13} /> حذف
+                        </button>
+                      </div>
+                      <span>فتح الملف الكامل والحركة 👈</span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ══ Modal إضافة / تعديل شخص ══ */}
       {showAddModal && (
@@ -393,7 +491,7 @@ export default function ContactsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">📱 رقم الهاتف (مثال: 0550123456)</label>
+                <label className="block text-xs font-black text-slate-600 mb-1.5">📱 رقم الهاتف</label>
                 <input type="tel" placeholder="0550123456"
                   value={phone} onChange={e => setPhone(e.target.value)} className="form-input" />
               </div>
@@ -489,16 +587,13 @@ export default function ContactsPage() {
         </div>
       )}
 
-      {/* ══ Modal معاينة كشف الحساب قبل الإرسال (مع النسخ والواتساب والاتصال) ══ */}
-      {showStatementModal && viewingContact && (
+      {/* ══ Modal معاينة كشف الحساب ══ */}
+      {showStatementModal && statementContact && (
         <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowStatementModal(false); }}>
           <div className="modal-sheet">
             <div className="modal-handle" />
             <div className="modal-header">
-              <div className="flex items-center gap-2">
-                <MessageCircle className="w-5 h-5 text-emerald-600" />
-                <h3 className="font-black text-slate-800 text-base">معاينة كشف الحساب</h3>
-              </div>
+              <h3 className="font-black text-slate-800 text-base">معاينة كشف الحساب</h3>
               <button onClick={() => setShowStatementModal(false)} className="btn btn-ghost p-2 rounded-xl">
                 <X size={18} />
               </button>
@@ -506,14 +601,13 @@ export default function ContactsPage() {
 
             <div className="modal-body space-y-4">
               <div className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-xs leading-relaxed whitespace-pre-wrap shadow-inner border border-slate-800">
-                {generateAccountStatementText(viewingContact.name, viewingContact.balance, [])}
+                {generateAccountStatementText(statementContact.name, statementContact.balance, [])}
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                {/* 📲 إرسال عبر الواتساب المباشر */}
-                {viewingContact.phone ? (
+                {statementContact.phone ? (
                   <a
-                    href={createWhatsAppLink(viewingContact.phone, generateAccountStatementText(viewingContact.name, viewingContact.balance, []))}
+                    href={createWhatsAppLink(statementContact.phone, generateAccountStatementText(statementContact.name, statementContact.balance, []))}
                     target="_blank" rel="noreferrer"
                     className="py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs flex items-center justify-center gap-1.5 touch-active shadow-md"
                   >
@@ -526,91 +620,12 @@ export default function ContactsPage() {
                   </p>
                 )}
 
-                {/* 📋 نسخ النص */}
                 <button
                   onClick={copyStatementText}
                   className="py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 touch-active border border-slate-200"
                 >
                   {copiedStatement ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
                   {copiedStatement ? 'تم النسخ!' : 'نسخ النص 📋'}
-                </button>
-              </div>
-
-              {/* 📞 اتصال مباشر */}
-              {viewingContact.phone && (
-                <a
-                  href={`tel:${viewingContact.phone}`}
-                  className="w-full py-3 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl font-black text-xs flex items-center justify-center gap-2 border border-blue-200 touch-active"
-                >
-                  <Phone size={16} />
-                  اتصال هاتفي مباشر 📞 ({viewingContact.phone})
-                </a>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ══ Modal الملف الشخصي الكامل للشخص ══ */}
-      {showProfileModal && viewingContact && (
-        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowProfileModal(false); }}>
-          <div className="modal-sheet">
-            <div className="modal-handle" />
-            <div className="modal-header">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-black text-lg" style={{ background: avatarGrad(viewingContact.name) }}>
-                  {viewingContact.photo_url ? <img src={viewingContact.photo_url} alt="" className="w-full h-full rounded-full object-cover" /> : viewingContact.name.charAt(0)}
-                </div>
-                <div>
-                  <h3 className="font-black text-slate-800 text-base leading-tight">{viewingContact.name}</h3>
-                  <p className="text-xs text-slate-500 font-semibold">{viewingContact.phone || 'بدون هاتف'}</p>
-                </div>
-              </div>
-              <button onClick={() => setShowProfileModal(false)} className="btn btn-ghost p-2 rounded-xl">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="modal-body space-y-4">
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                {viewingContact.category && (
-                  <div className="bg-slate-100 p-2.5 rounded-xl font-bold text-slate-700 flex items-center gap-1.5">
-                    <Tag className="w-4 h-4 text-emerald-600" />
-                    <span>النشاط: {viewingContact.category}</span>
-                  </div>
-                )}
-                {viewingContact.location && (
-                  <div className="bg-slate-100 p-2.5 rounded-xl font-bold text-slate-700 flex items-center gap-1.5">
-                    <MapPin className="w-4 h-4 text-indigo-600" />
-                    <span>العنوان: {viewingContact.location}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 text-white space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-slate-300 font-bold">حالة الرصيد المالية</span>
-                  {viewingContact.credit_limit && (
-                    <span className="text-[11px] bg-slate-700 px-2 py-0.5 rounded font-bold">
-                      سقف الدين: {fmt(viewingContact.credit_limit)} د.ج
-                    </span>
-                  )}
-                </div>
-                <p className="text-2xl font-black tabnum">
-                  {fmt(Math.abs(viewingContact.balance))} <span className="text-xs">د.ج</span>
-                  <span className="text-xs font-semibold mr-2">
-                    ({viewingContact.balance > 0 ? 'نطالبه بمبلغ 📥' : viewingContact.balance < 0 ? 'يطالبنا بمبلغ 📤' : 'مصفى ✅'})
-                  </span>
-                </p>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => openStatement(viewingContact)}
-                  className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xs flex items-center justify-center gap-2 touch-active shadow-md"
-                >
-                  <MessageCircle className="w-4 h-4" />
-                  معاينة وإرسال كشف الحساب 📜
                 </button>
               </div>
             </div>
