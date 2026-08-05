@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { getLocalData, setLocalData, Product } from '@/lib/store';
+import { getLocalData, setLocalData, Product, Transaction } from '@/lib/store';
 import { toast } from '@/components/Toast';
 import {
   Package, Plus, Search, X,
   Minus, Camera, Clock, BadgeCheck,
-  Edit2, Trash2, Calendar, AlertTriangle
+  Edit2, Trash2, Calendar, AlertTriangle,
+  Receipt, ShoppingBag, Eye, History, ArrowDownRight, ArrowUpLeft
 } from 'lucide-react';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
@@ -42,13 +43,16 @@ function autoEmoji(name: string) {
 
 export default function InventoryPage() {
   const [products,     setProducts]     = useState<Product[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [searchQuery,  setSearchQuery]  = useState('');
 
   // Modals
   const [showAddModal,      setShowAddModal]      = useState(false);
   const [showAdjustModal,   setShowAdjustModal]   = useState(false);
+  const [showHistoryModal,  setShowHistoryModal]  = useState(false);
   const [editingProduct,    setEditingProduct]    = useState<Product | null>(null);
   const [adjustingProduct,  setAdjustingProduct]  = useState<Product | null>(null);
+  const [viewingProduct,    setViewingProduct]    = useState<Product | null>(null);
 
   // Form states
   const [name,             setName]             = useState('');
@@ -66,6 +70,7 @@ export default function InventoryPage() {
 
   useEffect(() => {
     setProducts(getLocalData('tajer_smart_products_v1', []));
+    setTransactions(getLocalData('tajer_smart_transactions_v1', []));
   }, []);
 
   const handleProductImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -90,13 +95,20 @@ export default function InventoryPage() {
     setShowAddModal(true);
   };
 
-  const openEditModal = (p: Product) => {
+  const openEditModal = (p: Product, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     setEditingProduct(p);
     setName(p.name); setCostPrice(p.cost_price); setRetailPrice(p.retail_price);
     setStockQuantity(p.stock_quantity); setMinStockAlert(p.min_stock_alert);
     setExpiryDate(p.expiry_date || ''); setExpiryAlertDays(p.expiry_alert_days || 30);
     setPhotoUrl(p.photo_url || '');
     setShowAddModal(true);
+  };
+
+  const openProductHistory = (p: Product, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setViewingProduct(p);
+    setShowHistoryModal(true);
   };
 
   const handleSaveProduct = (e: React.FormEvent) => {
@@ -132,16 +144,19 @@ export default function InventoryPage() {
     setShowAddModal(false);
   };
 
-  const handleDeleteProduct = (id: string) => {
+  const handleDeleteProduct = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     if (confirm('هل أنت تأكد من حذف هذا المنتج من المخزن؟')) {
       const up = products.filter(p => p.id !== id);
       setProducts(up);
       setLocalData('tajer_smart_products_v1', up);
       toast('تم حذف المنتج من المخزن', 'info');
+      if (viewingProduct?.id === id) setShowHistoryModal(false);
     }
   };
 
-  const openAdjustModal = (p: Product, type: 'add' | 'reduce') => {
+  const openAdjustModal = (p: Product, type: 'add' | 'reduce', e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     setAdjustingProduct(p);
     setAdjustType(type);
     setAdjustQty(10);
@@ -185,15 +200,23 @@ export default function InventoryPage() {
 
   const profitPct = (c: number, r: number) => c > 0 ? Math.round(((r - c) / c) * 100) : 0;
 
+  // إحصائيات حركة المنتج المختار
+  const productSales = viewingProduct
+    ? transactions.filter(t => t.tx_type === 'SALE' && t.items.some(i => i.product_id === viewingProduct.id))
+    : [];
+  const productPurchases = viewingProduct
+    ? transactions.filter(t => t.tx_type === 'PURCHASE' && t.items.some(i => i.product_id === viewingProduct.id))
+    : [];
+
   return (
     <div className="space-y-4">
 
       {/* ── ملخص المخزن ── */}
       <div className="grid grid-cols-3 gap-2">
         {[
-          { label: 'منتج',         val: products.length, color: 'hsl(158 64% 38%)', bg: 'hsl(158 64% 38% / 0.08)' },
-          { label: 'نقص المخزون',  val: lowCount,        color: 'hsl(28 80% 40%)',  bg: 'hsl(38 92% 50% / 0.08)' },
-          { label: 'منتهي الصلاح', val: expiredCount,    color: 'hsl(351 83% 52%)', bg: 'hsl(351 83% 58% / 0.08)' },
+          { label: 'منتج بالترتيب', val: products.length, color: 'hsl(158 64% 38%)', bg: 'hsl(158 64% 38% / 0.08)' },
+          { label: 'نقص المخزون',   val: lowCount,        color: 'hsl(28 80% 40%)',  bg: 'hsl(38 92% 50% / 0.08)' },
+          { label: 'منتهي الصلاح',  val: expiredCount,    color: 'hsl(351 83% 52%)', bg: 'hsl(351 83% 58% / 0.08)' },
         ].map(s => (
           <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: s.bg, border: `1px solid ${s.color}30` }}>
             <p className="font-black text-2xl tabnum leading-none" style={{ color: s.color }}>{s.val}</p>
@@ -215,7 +238,7 @@ export default function InventoryPage() {
         </button>
       </div>
 
-      {/* ── قائمة المنتجات مرتبة حسب الصلاحية ── */}
+      {/* ── قائمة المنتجات مرتبة ── */}
       <div className="space-y-3">
         {sorted.length === 0 ? (
           <div className="empty-state">
@@ -231,7 +254,11 @@ export default function InventoryPage() {
             const stockPct  = Math.min(100, Math.round((p.stock_quantity / Math.max(1, p.min_stock_alert * 4)) * 100));
 
             return (
-              <div key={p.id} className={`product-card ${cardState}`}>
+              <div
+                key={p.id}
+                onClick={(e) => openProductHistory(p, e)}
+                className={`product-card ${cardState} cursor-pointer hover:border-emerald-500 transition-all`}
+              >
                 <div className="flex items-start gap-3">
                   <div className="w-14 h-14 rounded-xl flex items-center justify-center text-2xl shrink-0 overflow-hidden bg-slate-100">
                     {p.photo_url
@@ -275,27 +302,132 @@ export default function InventoryPage() {
                     </div>
                   </div>
 
-                  {/* أزرار الضبط الدقيقة */}
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button onClick={() => openAdjustModal(p, 'reduce')} className="w-8 h-8 rounded-xl flex items-center justify-center touch-active bg-slate-200 text-slate-700 font-black">
-                      <Minus size={15} />
+                  {/* أزرار الإجراءات */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button onClick={(e) => openAdjustModal(p, 'reduce', e)} className="w-8 h-8 rounded-xl flex items-center justify-center touch-active bg-slate-200 text-slate-700 font-black">
+                      <Minus size={14} />
                     </button>
-                    <button onClick={() => openAdjustModal(p, 'add')} className="w-8 h-8 rounded-xl flex items-center justify-center touch-active text-white font-black shadow-sm" style={{ background: 'var(--grad-emerald)' }}>
-                      <Plus size={15} />
+                    <button onClick={(e) => openAdjustModal(p, 'add', e)} className="w-8 h-8 rounded-xl flex items-center justify-center touch-active text-white font-black shadow-sm" style={{ background: 'var(--grad-emerald)' }}>
+                      <Plus size={14} />
                     </button>
-                    <button onClick={() => openEditModal(p)} className="p-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200">
+                    <button onClick={(e) => openEditModal(p, e)} className="p-2 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200">
                       <Edit2 size={13} />
                     </button>
-                    <button onClick={() => handleDeleteProduct(p.id)} className="p-2 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100">
+                    <button onClick={(e) => handleDeleteProduct(p.id, e)} className="p-2 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100">
                       <Trash2 size={13} />
                     </button>
                   </div>
+                </div>
+
+                <div className="pt-2 mt-2 border-t border-slate-100 flex items-center justify-between text-[11px] font-bold text-emerald-700">
+                  <span className="flex items-center gap-1"><History size={12} /> اضغط لاستعراض سجل حركة بيع وشراء المنتج بالكامل</span>
+                  <span>👈</span>
                 </div>
               </div>
             );
           })
         )}
       </div>
+
+      {/* ══ Modal سجل تفاصيل حركة المنتج بالكامل ══ */}
+      {showHistoryModal && viewingProduct && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowHistoryModal(false); }}>
+          <div className="modal-sheet">
+            <div className="modal-handle" />
+            <div className="modal-header">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-xl shrink-0">
+                  {viewingProduct.photo_url ? <img src={viewingProduct.photo_url} alt="" className="w-full h-full object-cover rounded-xl" /> : autoEmoji(viewingProduct.name)}
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-800 text-base leading-tight">{viewingProduct.name}</h3>
+                  <p className="text-xs text-slate-500 font-bold">حركة ومبيعات هذا المنتج</p>
+                </div>
+              </div>
+              <button onClick={() => setShowHistoryModal(false)} className="btn btn-ghost p-2 rounded-xl">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="modal-body space-y-4">
+              {/* ملخص المنتج الرقمي */}
+              <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
+                  <p className="text-[10px] text-emerald-700 font-bold">المخزون الحالي</p>
+                  <p className="text-lg font-black text-emerald-800 tabnum">{viewingProduct.stock_quantity} حبة</p>
+                </div>
+                <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-200">
+                  <p className="text-[10px] text-indigo-700 font-bold">سعر الشراء بالجملة</p>
+                  <p className="text-lg font-black text-indigo-800 tabnum">{fmt(viewingProduct.cost_price)} د.ج</p>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-100 border border-slate-200">
+                  <p className="text-[10px] text-slate-600 font-bold">سعر البيع التجزيئي</p>
+                  <p className="text-lg font-black text-slate-900 tabnum">{fmt(viewingProduct.retail_price)} د.ج</p>
+                </div>
+              </div>
+
+              {/* 📋 سجل مبيعات المنتج بالترتيب */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                  <ArrowUpLeft className="w-4 h-4 text-emerald-600" />
+                  من اشترى هذا المنتج (سجل المبيعات)
+                </h4>
+                {productSales.length === 0 ? (
+                  <p className="text-xs text-slate-400 font-bold p-3 bg-slate-50 rounded-xl text-center">لا توجد عمليات بيع مدونة لهذا المنتج بعد</p>
+                ) : (
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                    {productSales.map(tx => {
+                      const item = tx.items.find(i => i.product_id === viewingProduct.id);
+                      return (
+                        <div key={tx.id} className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 flex justify-between items-center text-xs font-bold">
+                          <div>
+                            <p className="text-emerald-900 font-black">الزبون: {tx.contact_name || 'زبون كاش'}</p>
+                            <p className="text-[10px] text-emerald-600">{new Date(tx.created_at).toLocaleString('ar-EG')}</p>
+                          </div>
+                          <div className="text-left">
+                            <span className="badge badge-success text-[10px]">الكمية: {item?.quantity || 1}</span>
+                            <p className="tabnum font-black text-emerald-800 text-xs mt-0.5">{fmt((item?.unit_price || 0) * (item?.quantity || 1))} د.ج</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* 🚚 سجل شراء المنتج من الموردين */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                  <ArrowDownRight className="w-4 h-4 text-indigo-600" />
+                  من أين تم توريد هذا المنتج (سجل الشراء)
+                </h4>
+                {productPurchases.length === 0 ? (
+                  <p className="text-xs text-slate-400 font-bold p-3 bg-slate-50 rounded-xl text-center">لا توجد عمليات توريد مدونة</p>
+                ) : (
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                    {productPurchases.map(tx => {
+                      const item = tx.items.find(i => i.product_id === viewingProduct.id);
+                      return (
+                        <div key={tx.id} className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-200 flex justify-between items-center text-xs font-bold">
+                          <div>
+                            <p className="text-indigo-900 font-black">المورد: {tx.contact_name || 'مورد نقدي'}</p>
+                            <p className="text-[10px] text-indigo-600">{new Date(tx.created_at).toLocaleString('ar-EG')}</p>
+                          </div>
+                          <div className="text-left">
+                            <span className="badge badge-indigo text-[10px]">الكمية: {item?.quantity || 1}</span>
+                            <p className="tabnum font-black text-indigo-800 text-xs mt-0.5">{fmt(tx.total_amount)} د.ج</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ══ Modal إضافة / تعديل منتج ══ */}
       {showAddModal && (
@@ -359,7 +491,6 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              {/* 📅 تاريخ الصلاحية وحد التنبيه بالأيام */}
               <div className="p-3 bg-slate-50 border rounded-2xl space-y-2">
                 <div>
                   <label className="block text-xs font-black text-slate-700 mb-1">📅 تاريخ انتهاء الصلاحية (اختياري)</label>
@@ -388,7 +519,7 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* ══ Modal تعديل الكمية (+ / -) وتأكيدها ══ */}
+      {/* ══ Modal تعديل الكمية (+ / -) ══ */}
       {showAdjustModal && adjustingProduct && (
         <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowAdjustModal(false); }}>
           <div className="modal-sheet">

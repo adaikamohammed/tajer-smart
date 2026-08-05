@@ -9,8 +9,7 @@ import { toast } from '@/components/Toast';
 import {
   Users, UserPlus, Phone, MessageCircle,
   Search, X, Camera, MapPin, Tag, AlertTriangle,
-  Edit2, Trash2, ShieldAlert, ShoppingBag, Receipt,
-  CheckCircle2, Clock
+  Edit2, Trash2, Receipt, Copy, Check
 } from 'lucide-react';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
@@ -32,15 +31,17 @@ export default function ContactsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [payments,     setPayments]     = useState<DebtPayment[]>([]);
 
-  const [filterType,     setFilterType]     = useState<'all' | 'customer' | 'supplier'>('all');
+  const [filterType,     setFilterType]     = useState<'all' | 'customer' | 'supplier' | 'both'>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [searchQuery,    setSearchQuery]    = useState('');
 
   // Modals
-  const [showAddModal,    setShowAddModal]    = useState(false);
-  const [showProfileModal, setShowProfileModal] = useState(false);
-  const [editingContact,  setEditingContact]  = useState<Contact | null>(null);
-  const [viewingContact,  setViewingContact]  = useState<Contact | null>(null);
+  const [showAddModal,       setShowAddModal]       = useState(false);
+  const [showProfileModal,   setShowProfileModal]   = useState(false);
+  const [showStatementModal, setShowStatementModal] = useState(false);
+  const [editingContact,     setEditingContact]     = useState<Contact | null>(null);
+  const [viewingContact,     setViewingContact]     = useState<Contact | null>(null);
+  const [copiedStatement,    setCopiedStatement]    = useState(false);
 
   // Form states
   const [name,             setName]             = useState('');
@@ -164,15 +165,32 @@ export default function ContactsPage() {
     setShowProfileModal(true);
   };
 
-  // قائمة تصفية الأنشطة المتاحة
+  const openStatement = (c: Contact, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setViewingContact(c);
+    setCopiedStatement(false);
+    setShowStatementModal(true);
+  };
+
+  const copyStatementText = () => {
+    if (!viewingContact) return;
+    const text = generateAccountStatementText(viewingContact.name, viewingContact.balance, []);
+    navigator.clipboard.writeText(text);
+    setCopiedStatement(true);
+    toast('✅ تم نسخ نص كشف الحساب للحافظة', 'success');
+    setTimeout(() => setCopiedStatement(false), 3000);
+  };
+
   const availableCategories = Array.from(new Set(contacts.map(c => c.category).filter(Boolean)));
 
+  // 🔄 فلترة شاملة تضم خيار "كلاهما"
   const filtered = contacts
     .filter(c => {
       const matchType =
         filterType === 'all' ? true :
-        filterType === 'customer' ? c.type === 'customer' || c.type === 'both' :
-        c.type === 'supplier' || c.type === 'both';
+        filterType === 'customer' ? c.type === 'customer' :
+        filterType === 'supplier' ? c.type === 'supplier' :
+        c.type === 'both';
 
       const matchCat = filterCategory === 'all' ? true : c.category === filterCategory;
 
@@ -201,24 +219,27 @@ export default function ContactsPage() {
         </button>
       </div>
 
-      {/* ── فلترة الأنشطة ونوع الجهة ── */}
+      {/* ── 🔄 فلترة نوع الجهة (تضم زبون / مورد / كلاهما) ── */}
       <div className="space-y-2">
-        <div className="flex gap-2 scrollbar-hide overflow-x-auto pb-0.5">
+        <div className="flex gap-1.5 scrollbar-hide overflow-x-auto pb-0.5">
           <button onClick={() => setFilterType('all')}
-            className={`shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-black transition-all ${filterType === 'all' ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
+            className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-black transition-all ${filterType === 'all' ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
             الكل ({contacts.length})
           </button>
           <button onClick={() => setFilterType('customer')}
-            className={`shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-black transition-all ${filterType === 'customer' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
+            className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-black transition-all ${filterType === 'customer' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
             الزبائن 👥
           </button>
           <button onClick={() => setFilterType('supplier')}
-            className={`shrink-0 px-3.5 py-1.5 rounded-xl text-xs font-black transition-all ${filterType === 'supplier' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
+            className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-black transition-all ${filterType === 'supplier' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
             الموردين 🚚
+          </button>
+          <button onClick={() => setFilterType('both')}
+            className={`shrink-0 px-3 py-1.5 rounded-xl text-xs font-black transition-all ${filterType === 'both' ? 'bg-amber-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
+            كلاهما 🔄
           </button>
         </div>
 
-        {/* فلترة بالنشاط التجاري */}
         {availableCategories.length > 0 && (
           <div className="flex items-center gap-1.5 scrollbar-hide overflow-x-auto pb-0.5">
             <span className="text-[10px] font-bold text-slate-400 shrink-0">النشاط:</span>
@@ -269,7 +290,7 @@ export default function ContactsPage() {
                       : c.name.charAt(0)
                     }
                     <span className="absolute -bottom-0.5 -left-0.5 w-5 h-5 rounded-full bg-white border flex items-center justify-center text-[10px]">
-                      {isSupplier ? '🚚' : '👥'}
+                      {c.type === 'both' ? '🔄' : isSupplier ? '🚚' : '👥'}
                     </span>
                   </div>
 
@@ -297,16 +318,17 @@ export default function ContactsPage() {
                     </div>
                   </div>
 
+                  {/* 🟢/🔴 المصطلحات المائة بالمائة مبسطة */}
                   <div className="shrink-0 text-left">
                     {hasDebt && (
                       <div className="px-2.5 py-1 rounded-xl bg-rose-50 border border-rose-200 text-center">
-                        <p className="text-[10px] font-black text-rose-700">عليه لنا</p>
+                        <p className="text-[10px] font-black text-rose-700">نطالبه بمبلغ 📥</p>
                         <p className="font-black text-sm tabnum text-rose-800">{fmt(c.balance)} <span className="text-[9px]">د.ج</span></p>
                       </div>
                     )}
                     {hasCredit && (
                       <div className="px-2.5 py-1 rounded-xl bg-blue-50 border border-blue-200 text-center">
-                        <p className="text-[10px] font-black text-blue-700">له علينا</p>
+                        <p className="text-[10px] font-black text-blue-700">يطالبنا بمبلغ 📤</p>
                         <p className="font-black text-sm tabnum text-blue-800">{fmt(Math.abs(c.balance))} <span className="text-[9px]">د.ج</span></p>
                       </div>
                     )}
@@ -314,7 +336,6 @@ export default function ContactsPage() {
                   </div>
                 </div>
 
-                {/* تحذير سقف الدين */}
                 {isOverLimit && (
                   <div className="bg-amber-50 border border-amber-300 p-2 rounded-xl flex items-center gap-2 text-amber-800 text-xs font-bold">
                     <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
@@ -322,7 +343,7 @@ export default function ContactsPage() {
                   </div>
                 )}
 
-                {/* أزرار الإجراءات */}
+                {/* أزرار الإجراءات مع الاتصال والمعاينة */}
                 <div className="flex items-center justify-between pt-1 border-t border-slate-100">
                   <div className="flex items-center gap-2">
                     <button onClick={(e) => openEditModal(c, e)} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1">
@@ -333,7 +354,16 @@ export default function ContactsPage() {
                     </button>
                   </div>
 
-                  <span className="text-xs font-bold text-emerald-600 hover:underline">الملف الشخصي 👈</span>
+                  <div className="flex items-center gap-1.5">
+                    {c.phone && (
+                      <a href={`tel:${c.phone}`} onClick={e => e.stopPropagation()} className="p-2 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 text-xs font-bold flex items-center gap-1" title="اتصال هاتفي مباشر">
+                        <Phone size={13} /> اتصال
+                      </a>
+                    )}
+                    <button onClick={(e) => openStatement(c, e)} className="p-2 rounded-xl bg-emerald-50 text-emerald-800 hover:bg-emerald-100 text-xs font-bold flex items-center gap-1">
+                      <MessageCircle size={13} /> كشف حساب 📜
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -363,12 +393,11 @@ export default function ContactsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">📱 رقم الهاتف</label>
+                <label className="block text-xs font-black text-slate-600 mb-1.5">📱 رقم الهاتف (مثال: 0550123456)</label>
                 <input type="tel" placeholder="0550123456"
                   value={phone} onChange={e => setPhone(e.target.value)} className="form-input" />
               </div>
 
-              {/* 🏷️ نوع التجارة / النشاط مع خيارات سريعة */}
               <div>
                 <label className="block text-xs font-black text-slate-600 mb-1.5">🏷️ نوع التجارة / النشاط</label>
                 <div className="grid grid-cols-2 gap-2 mb-2">
@@ -401,14 +430,12 @@ export default function ContactsPage() {
                   value={location} onChange={e => setLocation(e.target.value)} className="form-input" />
               </div>
 
-              {/* ⚠️ سقف الدين المسموح به */}
               <div>
                 <label className="block text-xs font-black text-slate-600 mb-1.5">⚠️ سقف الدين المسموح به (د.ج)</label>
                 <input type="number" min="0" placeholder="مثال: 50,000"
                   value={creditLimit || ''} onChange={e => setCreditLimit(+e.target.value)} className="form-input tabnum" />
               </div>
 
-              {/* 📷 رفع صورة الشخص من المعرض أو الكاميرا */}
               <div>
                 <label className="block text-xs font-black text-slate-600 mb-1.5">📷 صورة الشخص / المحل</label>
                 <div className="flex items-center gap-3">
@@ -437,17 +464,16 @@ export default function ContactsPage() {
                 </div>
               </div>
 
-              {/* الرصيد الابتدائي بـ زرين */}
               <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
                 <label className="block text-xs font-black text-slate-700">💰 الرصيد الابتدائي (إن وجد)</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button type="button" onClick={() => setBalanceDirection('customer_owes')}
                     className={`py-2 px-2 rounded-xl text-xs font-black border ${balanceDirection === 'customer_owes' ? 'bg-rose-600 text-white border-transparent' : 'bg-white text-slate-600 border-slate-200'}`}>
-                    🟢 عليه لنا (نطالبه)
+                    🟢 نطالبه بمبلغ (يدفع لي 📥)
                   </button>
                   <button type="button" onClick={() => setBalanceDirection('we_owe_customer')}
                     className={`py-2 px-2 rounded-xl text-xs font-black border ${balanceDirection === 'we_owe_customer' ? 'bg-blue-600 text-white border-transparent' : 'bg-white text-slate-600 border-slate-200'}`}>
-                    🔴 له علينا (يطالبنا)
+                    🔴 يطالبنا بمبلغ (أسدد له 📤)
                   </button>
                 </div>
                 <input type="number" min="0" placeholder="المبلغ (د.ج)"
@@ -459,6 +485,68 @@ export default function ContactsPage() {
                 حفظ بيانات الشخص 💾
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ══ Modal معاينة كشف الحساب قبل الإرسال (مع النسخ والواتساب والاتصال) ══ */}
+      {showStatementModal && viewingContact && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowStatementModal(false); }}>
+          <div className="modal-sheet">
+            <div className="modal-handle" />
+            <div className="modal-header">
+              <div className="flex items-center gap-2">
+                <MessageCircle className="w-5 h-5 text-emerald-600" />
+                <h3 className="font-black text-slate-800 text-base">معاينة كشف الحساب</h3>
+              </div>
+              <button onClick={() => setShowStatementModal(false)} className="btn btn-ghost p-2 rounded-xl">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="modal-body space-y-4">
+              <div className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-xs leading-relaxed whitespace-pre-wrap shadow-inner border border-slate-800">
+                {generateAccountStatementText(viewingContact.name, viewingContact.balance, [])}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {/* 📲 إرسال عبر الواتساب المباشر */}
+                {viewingContact.phone ? (
+                  <a
+                    href={createWhatsAppLink(viewingContact.phone, generateAccountStatementText(viewingContact.name, viewingContact.balance, []))}
+                    target="_blank" rel="noreferrer"
+                    className="py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs flex items-center justify-center gap-1.5 touch-active shadow-md"
+                  >
+                    <MessageCircle size={16} />
+                    إرسال واتساب 📲
+                  </a>
+                ) : (
+                  <p className="col-span-2 text-xs text-rose-600 font-bold text-center p-2 bg-rose-50 rounded-xl">
+                    ⚠️ أضف رقم هاتف للشخص لتمكين الإرسال المباشر
+                  </p>
+                )}
+
+                {/* 📋 نسخ النص */}
+                <button
+                  onClick={copyStatementText}
+                  className="py-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 touch-active border border-slate-200"
+                >
+                  {copiedStatement ? <Check size={16} className="text-emerald-600" /> : <Copy size={16} />}
+                  {copiedStatement ? 'تم النسخ!' : 'نسخ النص 📋'}
+                </button>
+              </div>
+
+              {/* 📞 اتصال مباشر */}
+              {viewingContact.phone && (
+                <a
+                  href={`tel:${viewingContact.phone}`}
+                  className="w-full py-3 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl font-black text-xs flex items-center justify-center gap-2 border border-blue-200 touch-active"
+                >
+                  <Phone size={16} />
+                  اتصال هاتفي مباشر 📞 ({viewingContact.phone})
+                </a>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -484,7 +572,6 @@ export default function ContactsPage() {
             </div>
 
             <div className="modal-body space-y-4">
-              {/* بطاقات البيانات الأساسية */}
               <div className="grid grid-cols-2 gap-2 text-xs">
                 {viewingContact.category && (
                   <div className="bg-slate-100 p-2.5 rounded-xl font-bold text-slate-700 flex items-center gap-1.5">
@@ -500,10 +587,9 @@ export default function ContactsPage() {
                 )}
               </div>
 
-              {/* الرصيد الحالي وسقف الدين */}
               <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 text-white space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs text-slate-300 font-bold">الرصيد الحسابي الحالي</span>
+                  <span className="text-xs text-slate-300 font-bold">حالة الرصيد المالية</span>
                   {viewingContact.credit_limit && (
                     <span className="text-[11px] bg-slate-700 px-2 py-0.5 rounded font-bold">
                       سقف الدين: {fmt(viewingContact.credit_limit)} د.ج
@@ -513,45 +599,20 @@ export default function ContactsPage() {
                 <p className="text-2xl font-black tabnum">
                   {fmt(Math.abs(viewingContact.balance))} <span className="text-xs">د.ج</span>
                   <span className="text-xs font-semibold mr-2">
-                    ({viewingContact.balance > 0 ? 'عليه لنا' : viewingContact.balance < 0 ? 'له علينا' : 'مصفى'})
+                    ({viewingContact.balance > 0 ? 'نطالبه بمبلغ 📥' : viewingContact.balance < 0 ? 'يطالبنا بمبلغ 📤' : 'مصفى ✅'})
                   </span>
                 </p>
               </div>
 
-              {/* سجل المعاملات التاريخية */}
-              <div className="space-y-2">
-                <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-                  <Receipt className="w-4 h-4 text-emerald-600" />
-                  سجل المعاملات مع التاجر
-                </h4>
-                {transactions.filter(t => t.contact_id === viewingContact.id).length === 0 ? (
-                  <p className="text-xs text-slate-400 font-bold p-3 bg-slate-50 rounded-xl text-center">لا توجد عمليات سابقة مدونة بعد</p>
-                ) : (
-                  <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                    {transactions.filter(t => t.contact_id === viewingContact.id).map(tx => (
-                      <div key={tx.id} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex justify-between text-xs font-bold">
-                        <div>
-                          <p className="text-slate-800">{tx.tx_type === 'SALE' ? 'بيع' : 'شراء'}: {tx.items[0]?.product_name}</p>
-                          <p className="text-[10px] text-slate-400">{new Date(tx.created_at).toLocaleString('ar-EG')}</p>
-                        </div>
-                        <span className="tabnum text-slate-900 font-black">{fmt(tx.total_amount)} د.ج</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* زر الواتساب لكشف الحساب */}
-              {viewingContact.phone && (
-                <a
-                  href={createWhatsAppLink(viewingContact.phone, generateAccountStatementText(viewingContact.name, viewingContact.balance, []))}
-                  target="_blank" rel="noreferrer"
-                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xs flex items-center justify-center gap-2 touch-active shadow-md"
+              <div className="flex gap-2">
+                <button
+                  onClick={() => openStatement(viewingContact)}
+                  className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xs flex items-center justify-center gap-2 touch-active shadow-md"
                 >
                   <MessageCircle className="w-4 h-4" />
-                  إرسال كشف حساب واتساب 📲
-                </a>
-              )}
+                  معاينة وإرسال كشف الحساب 📜
+                </button>
+              </div>
             </div>
           </div>
         </div>

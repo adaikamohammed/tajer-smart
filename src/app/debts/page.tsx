@@ -105,19 +105,21 @@ export default function DebtsPage() {
   return (
     <div className="space-y-4">
 
-      {/* ── بطاقتا الإجمالي ── */}
+      {/* ── بطاقتا الإجمالي بمصطلحات صريحة ومفهومة للجميع ── */}
       <div className="grid grid-cols-2 gap-3">
         {[
           {
             tab: 'to_us' as const,
-            label: 'لي على الزبائن',
+            label: 'نطالبهم بمبلغ 📥',
+            subLabel: 'ديون لي على الزبائن',
             total: totalOwedToUs, count: debtorCount, unit: 'مدين',
             colorText: 'hsl(351 83% 42%)', colorBg: 'hsl(351 83% 58% / 0.08)',
             Icon: ArrowUpRight, activeBorder: 'hsl(351 83% 52%)',
           },
           {
             tab: 'we_owe' as const,
-            label: 'عليّ للموردين',
+            label: 'يطالبوننا بمبلغ 📤',
+            subLabel: 'ديون عليّ للموردين',
             total: totalWeOwe, count: creditorCount, unit: 'مورد دائن',
             colorText: 'hsl(221 83% 45%)', colorBg: 'hsl(221 83% 58% / 0.08)',
             Icon: ArrowDownLeft, activeBorder: 'hsl(221 83% 52%)',
@@ -143,7 +145,7 @@ export default function DebtsPage() {
               {fmt(s.total)} <span className="text-xs font-semibold">د.ج</span>
             </p>
             <p className="text-[10px] font-bold mt-1" style={{ color: s.colorText, opacity: 0.7 }}>
-              {s.count} {s.unit}
+              {s.count} {s.unit} ({s.subLabel})
             </p>
           </button>
         ))}
@@ -170,7 +172,7 @@ export default function DebtsPage() {
           <div className="empty-state">
             <Receipt size={40} className="opacity-25" />
             <p className="font-bold text-sm">
-              {activeTab === 'to_us' ? '🎉 لا يوجد ديون على الزبائن!' : '🎉 لا يوجد ديون للموردين!'}
+              {activeTab === 'to_us' ? '🎉 لا يوجد ديون نطالب بها الناس!' : '🎉 لا يوجد ديون يطالبنا بها الموردون!'}
             </p>
           </div>
         ) : (
@@ -196,7 +198,7 @@ export default function DebtsPage() {
                   </div>
 
                   <div className="text-left shrink-0">
-                    <p className="text-[10px] text-slate-400 font-bold">المستحق</p>
+                    <p className="text-[10px] text-slate-400 font-bold">{isCustomer ? 'نطالبه بمبلغ 📥' : 'يطالبنا بمبلغ 📤'}</p>
                     <p className="font-black text-2xl tabnum leading-tight" style={{ color: isCustomer ? 'hsl(351 83% 42%)' : 'hsl(221 83% 45%)' }}>
                       {fmt(amount)} <span className="text-xs font-semibold">د.ج</span>
                     </p>
@@ -218,7 +220,7 @@ export default function DebtsPage() {
                   </button>
 
                   {c.phone && (
-                    <a href={createWhatsAppLink(c.phone, generateAccountStatementText(c.name, c.balance, []))} target="_blank" rel="noreferrer" className="px-3 py-2.5 rounded-xl bg-emerald-50 text-emerald-800 font-bold text-xs flex items-center gap-1 border border-emerald-200">
+                    <a href={createWhatsAppLink(c.phone, generateAccountStatementText(c.name, c.balance, []))} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="px-3 py-2.5 rounded-xl bg-emerald-50 text-emerald-800 font-bold text-xs flex items-center gap-1 border border-emerald-200">
                       <MessageCircle size={14} />
                     </a>
                   )}
@@ -229,7 +231,7 @@ export default function DebtsPage() {
         )}
       </div>
 
-      {/* ══ Modal تسوية الدين دون أزرار النسبة السريعة ══ */}
+      {/* ══ Modal تسوية الدين ══ */}
       {showSettleModal && selectedContact && (
         <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowSettleModal(false); }}>
           <div className="modal-sheet">
@@ -252,7 +254,7 @@ export default function DebtsPage() {
             <form onSubmit={executeSettlement} className="modal-body space-y-4">
               <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-rose-700">الدين الحالي المستحق</span>
+                  <span className="text-xs font-bold text-rose-700">المبلغ الحالي المستحق</span>
                   <span className="font-black text-2xl text-rose-700 tabnum">{fmt(Math.abs(selectedContact.balance))} د.ج</span>
                 </div>
               </div>
@@ -302,7 +304,6 @@ export default function DebtsPage() {
             </div>
 
             <div className="modal-body space-y-4">
-              {/* سجل الدفعات المسددة */}
               <div className="space-y-2">
                 <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
                   <Clock className="w-4 h-4 text-emerald-600" />
@@ -325,7 +326,6 @@ export default function DebtsPage() {
                 )}
               </div>
 
-              {/* سجل العمليات والشراء */}
               <div className="space-y-2">
                 <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
                   <Receipt className="w-4 h-4 text-indigo-600" />
@@ -347,7 +347,6 @@ export default function DebtsPage() {
                   </div>
                 )}
               </div>
-
             </div>
           </div>
         </div>

@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getLocalData, Transaction, Contact } from '@/lib/store';
+import { getLocalData, Transaction, Contact, Product } from '@/lib/store';
 import {
   TrendingUp, DollarSign, Wallet, Users,
-  BarChart3, Info, AlertCircle
+  BarChart3, Info, Package, ArrowUpRight, ArrowDownLeft, ShieldCheck
 } from 'lucide-react';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
@@ -12,18 +12,29 @@ const fmt = (n: number) => n.toLocaleString('en-US');
 export default function StatsPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [contacts,     setContacts]     = useState<Contact[]>([]);
+  const [products,     setProducts]     = useState<Product[]>([]);
 
   useEffect(() => {
     setTransactions(getLocalData('tajer_smart_transactions_v1', []));
     setContacts(getLocalData('tajer_smart_contacts_v1', []));
+    setProducts(getLocalData('tajer_smart_products_v1', []));
   }, []);
 
-  // المبيعات والديون
+  // 1️⃣ إجمالي سعر شراء البضاعة الموجودة في المخزن حالياً (تكلفة المخزون)
+  const totalStockCostValue = products.reduce((sum, p) => sum + (p.cost_price * p.stock_quantity), 0);
+
+  // 2️⃣ إجمالي الربح الكلي المتوقع عند بيع كل البضاعة الموجودة في المخزن
+  const totalExpectedStockProfit = products.reduce((sum, p) => sum + ((p.retail_price - p.cost_price) * p.stock_quantity), 0);
+
+  // 3️⃣ الديون البسيطة المباشرة
+  const totalOwedToUs = contacts.filter(c => c.balance > 0).reduce((sum, c) => sum + c.balance, 0);
+  const totalWeOwe    = contacts.filter(c => c.balance < 0).reduce((sum, c) => sum + Math.abs(c.balance), 0);
+
+  // 4️⃣ المبيعات والأرباح النقدية الفعلية
   const salesTx = transactions.filter(t => t.tx_type === 'SALE');
   const totalSales = salesTx.reduce((sum, t) => sum + t.total_amount, 0);
   const totalPaidCash = salesTx.reduce((sum, t) => sum + t.paid_amount, 0);
 
-  // إجمالي الأرباح النظري
   const totalGrossProfit = salesTx.reduce((sum, t) => {
     const itemProfit = t.items.reduce((pSum, item) => {
       const margin = item.unit_price - (item.cost_price || 0);
@@ -32,92 +43,104 @@ export default function StatsPage() {
     return sum + itemProfit;
   }, 0);
 
-  // الأرباح المحصلة نقداً كاش (نسبة الربح من المبالغ المدفوعة نقدياً)
   const cashProfitRatio = totalSales > 0 ? (totalPaidCash / totalSales) : 1;
   const cashCollectedProfit = Math.round(totalGrossProfit * cashProfitRatio);
 
-  // الديون المتبقية بالخارج والديون للموردين
-  const totalDebtsOwedToUs = contacts.filter(c => c.balance > 0).reduce((s, c) => s + c.balance, 0);
-  const totalDebtsWeOwe    = contacts.filter(c => c.balance < 0).reduce((s, c) => s + Math.abs(c.balance), 0);
+  const profitProgressPct = totalGrossProfit > 0 ? Math.min(100, Math.round((cashCollectedProfit / totalGrossProfit) * 100)) : 100;
 
   return (
     <div className="space-y-4">
 
-      {/* ── العنوان والشرح ── */}
+      {/* ── عنوان الصفحة البسيط ── */}
       <div className="bg-gradient-to-r from-emerald-800 to-teal-950 p-4 rounded-2xl text-white space-y-1 shadow-md">
         <h2 className="font-black text-lg flex items-center gap-2">
           <BarChart3 className="w-5 h-5 text-emerald-400" />
-          مؤشرات الأرباح والحسابات الدقيقة
+          حسابات المتجر والأرباح البسيطة
         </h2>
         <p className="text-xs text-emerald-200 font-semibold">
-          حسابات شفافة توضح لك الدخل النقدي الفعلي والديون المتبقية
+          ملخص مالي مبسط ومفهوم يوضح لك بضاعتك وأرباحك وديونك
         </p>
       </div>
 
-      {/* ── مربعات الحسابات الدقيقة ── */}
+      {/* ── 📦 قيمة المخزون والربح المتوقع ببطاقتين بارزتين ── */}
       <div className="grid grid-cols-2 gap-3">
-        {/* المبيعات الكلية */}
+        {/* ثمن شراء كل البضاعة */}
         <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-1">
           <div className="flex justify-between items-center text-slate-500">
-            <span className="text-xs font-bold">إجمالي المبيعات</span>
-            <DollarSign className="w-4 h-4 text-emerald-600" />
+            <span className="text-xs font-bold text-slate-700">قيمة شراء البضاعة 📦</span>
+            <Package className="w-4 h-4 text-slate-600" />
           </div>
-          <p className="text-xl font-black tabnum text-slate-900">{fmt(totalSales)} <span className="text-xs">د.ج</span></p>
-          <p className="text-[10px] font-bold text-slate-400">شاملة النقدي والدين</p>
+          <p className="text-xl font-black tabnum text-slate-900 leading-tight">{fmt(totalStockCostValue)} <span className="text-xs">د.ج</span></p>
+          <p className="text-[10px] font-bold text-slate-400">تكلفة البضاعة بالمخزن بالجملة</p>
         </div>
 
-        {/* الكاش المحصل فعلياً */}
-        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 shadow-sm space-y-1">
-          <div className="flex justify-between items-center text-emerald-700">
-            <span className="text-xs font-bold">المحصل كاش 💵</span>
-            <Wallet className="w-4 h-4 text-emerald-600" />
+        {/* الربح المتوقع عند بيع البضاعة كاملة */}
+        <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200 shadow-sm space-y-1">
+          <div className="flex justify-between items-center text-indigo-700">
+            <span className="text-xs font-bold">ربحك لو باعتها كلها 📈</span>
+            <TrendingUp className="w-4 h-4 text-indigo-600" />
           </div>
-          <p className="text-xl font-black tabnum text-emerald-800">{fmt(totalPaidCash)} <span className="text-xs">د.ج</span></p>
-          <p className="text-[10px] font-bold text-emerald-600">المبالغ المستلمة يداً بيد</p>
+          <p className="text-xl font-black tabnum text-indigo-800 leading-tight">+{fmt(totalExpectedStockProfit)} <span className="text-xs">د.ج</span></p>
+          <p className="text-[10px] font-bold text-indigo-600">فارق سعر البيع للجملة والتجزئة</p>
         </div>
       </div>
 
-      {/* ── الأرباح الدقيقة ── */}
-      <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
-        <h3 className="font-black text-sm text-slate-800 flex items-center gap-1.5">
-          <TrendingUp className="w-4 h-4 text-emerald-600" />
-          تفاصيل صافي الأرباح
-        </h3>
-
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-900">
-            <p className="font-bold text-[11px] text-emerald-700">الربح المحصل كاش 💵</p>
-            <p className="text-lg font-black tabnum mt-1">+{fmt(cashCollectedProfit)} د.ج</p>
-            <p className="text-[10px] text-emerald-600 mt-0.5">الربح الفعلي من المبيعات المسددة</p>
+      {/* ── 🟢/🔴 الديون بمصطلحات صريحة ومفهومة ── */}
+      <div className="grid grid-cols-2 gap-3">
+        {/* نطالبهم بمبلغ */}
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 space-y-1">
+          <div className="flex justify-between items-center text-rose-700">
+            <span className="text-xs font-bold">نطالبهم بمبلغ (يدفعون لي) 📥</span>
+            <ArrowUpRight className="w-4 h-4 text-rose-600" />
           </div>
+          <p className="text-2xl font-black tabnum text-rose-800">{fmt(totalOwedToUs)} <span className="text-xs">د.ج</span></p>
+          <p className="text-[10px] font-bold text-rose-600">ديون لي عند الزبائن</p>
+        </div>
 
-          <div className="p-3 bg-indigo-50 rounded-xl border border-indigo-200 text-indigo-900">
-            <p className="font-bold text-[11px] text-indigo-700">إجمالي الأرباح المتوقعة 📊</p>
-            <p className="text-lg font-black tabnum mt-1">+{fmt(totalGrossProfit)} د.ج</p>
-            <p className="text-[10px] text-indigo-600 mt-0.5">الربح الكامل بعد تحصيل كافة الديون</p>
+        {/* يطالبوننا بمبلغ */}
+        <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 space-y-1">
+          <div className="flex justify-between items-center text-blue-700">
+            <span className="text-xs font-bold">يطالبوننا بمبلغ (أسدد لهم) 📤</span>
+            <ArrowDownLeft className="w-4 h-4 text-blue-600" />
           </div>
+          <p className="text-2xl font-black tabnum text-blue-800">{fmt(totalWeOwe)} <span className="text-xs">د.ج</span></p>
+          <p className="text-[10px] font-bold text-blue-600">ديون عليّ للموردين</p>
         </div>
       </div>
 
-      {/* ── الديون بالخارج والديون للموردين ── */}
-      <div className="grid grid-cols-2 gap-3 text-xs">
-        <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 space-y-1">
-          <p className="font-bold text-rose-700">ديون لي على الزبائن</p>
-          <p className="text-lg font-black tabnum text-rose-800">{fmt(totalDebtsOwedToUs)} د.ج</p>
-          <p className="text-[10px] text-rose-600">مبالغ غير محصلة بعد</p>
+      {/* ── 💵 بطاقة الأرباح المحصلة كاش في جيبك ── */}
+      <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 shadow-sm space-y-3">
+        <div className="flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <Wallet className="w-5 h-5 text-emerald-700" />
+            <h3 className="font-black text-sm text-emerald-900">صافي الربح النقدي في جيبك (كاش) 💵</h3>
+          </div>
+          <span className="badge badge-success text-[10px] font-black">{profitProgressPct}% محصل</span>
         </div>
 
-        <div className="p-3.5 rounded-2xl bg-blue-50 border border-blue-200 text-blue-900 space-y-1">
-          <p className="font-bold text-blue-700">ديون عليّ للموردين</p>
-          <p className="text-lg font-black tabnum text-blue-800">{fmt(totalDebtsWeOwe)} د.ج</p>
-          <p className="text-[10px] text-blue-600">مستحقات واجبة السداد</p>
+        <div className="flex items-baseline justify-between">
+          <p className="text-3xl font-black tabnum text-emerald-800">
+            +{fmt(cashCollectedProfit)} <span className="text-sm">د.ج</span>
+          </p>
+          <p className="text-xs font-bold text-emerald-700">
+            من أصل <strong className="tabnum">{fmt(totalGrossProfit)}</strong> د.ج ربح مبيعات
+          </p>
+        </div>
+
+        {/* شريط التقدم البصري */}
+        <div className="w-full bg-emerald-200/60 rounded-full h-2.5 overflow-hidden">
+          <div
+            className="bg-emerald-600 h-full rounded-full transition-all duration-500"
+            style={{ width: `${profitProgressPct}%` }}
+          />
         </div>
       </div>
 
-      <div className="p-3 rounded-xl bg-slate-100 border border-slate-200 flex items-start gap-2 text-xs font-semibold text-slate-600">
-        <Info className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+      {/* توضيح مبسط ختامي */}
+      <div className="p-3.5 rounded-2xl bg-white border border-slate-200 flex items-start gap-2.5 text-xs font-semibold text-slate-700">
+        <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
         <span>
-          عندما يقوم الزبون بتسديد دينه في صفحة الديون، يتم تحويل أرباح ذلك الدين تلقائياً لخانة <strong>"الربح المحصل كاش"</strong>!
+          <strong>ملاحظة بسيطة:</strong> عند قيام أي زبون بتسديد ما عليه في صفحة الديون، يُضاف ربحه فوراً إلى <strong>"ربح الكاش في جيبك"</strong> تلقائياً!
         </span>
       </div>
 
