@@ -6,7 +6,6 @@
    🎨 نظام الألوان — التاجر الذكي Premium
    ============================================================ */
 :root {
-  /* الألوان الرئيسية */
   --primary:        158 64% 40%;
   --primary-light:  158 64% 52%;
   --primary-dark:   158 60% 28%;
@@ -17,28 +16,23 @@
   --success:        142 71% 42%;
   --violet:         262 83% 58%;
 
-  /* الخلفيات */
   --background:     220 30% 97%;
   --surface:        0   0%  100%;
   --surface-2:      220 20% 95%;
 
-  /* النصوص */
   --foreground:     224 71% 8%;
   --text-muted:     220 15% 48%;
   --text-subtle:    220 12% 65%;
 
-  /* الحدود */
   --border:         220 15% 89%;
   --border-light:   220 15% 93%;
 
-  /* الكروت */
   --card:           0   0%  100%;
   --card-hover:     220 30% 98%;
 
   --ring:           158 64% 40%;
   --radius:         1.25rem;
 
-  /* Gradients مخزّنة */
   --grad-emerald: linear-gradient(135deg, hsl(158 64% 38%), hsl(162 60% 28%));
   --grad-indigo:  linear-gradient(135deg, hsl(239 84% 67%), hsl(262 83% 58%));
   --grad-rose:    linear-gradient(135deg, hsl(351 83% 60%), hsl(0 72% 50%));
@@ -47,7 +41,6 @@
   --grad-header:  linear-gradient(145deg, hsl(158 64% 30%) 0%, hsl(162 60% 20%) 100%);
 }
 
-/* الثيم الداكن */
 .dark {
   --background:   224 40% 7%;
   --surface:      224 35% 10%;
@@ -62,9 +55,6 @@
   --ring:         158 64% 45%;
 }
 
-/* ============================================================
-   Base
-   ============================================================ */
 @layer base {
   * {
     box-sizing: border-box;
@@ -92,7 +82,6 @@
       radial-gradient(ellipse 60% 40% at 80% 100%,  hsl(221 83% 58% / 0.04) 0%, transparent 60%);
   }
 
-  /* أرقام لاتينية monospace للقيم المالية */
   .num {
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum";
@@ -108,19 +97,10 @@
   input, select, textarea, button {
     font-family: 'Cairo', 'Tajawal', sans-serif;
   }
-
-  ::selection {
-    background: hsl(var(--primary) / 0.2);
-    color: hsl(var(--primary));
-  }
 }
 
-/* ============================================================
-   🧱 Components Layer
-   ============================================================ */
 @layer components {
 
-  /* ─── Glass Card ─── */
   .glass-card {
     background: hsl(var(--card));
     border: 1px solid hsl(var(--border));
@@ -140,16 +120,6 @@
     transform: translateY(-2px);
   }
 
-  .dark .glass-card {
-    background: hsl(var(--card));
-    border-color: hsl(var(--border));
-    box-shadow:
-      0 1px 3px  hsl(0 0% 0% / 0.2),
-      0 4px 16px hsl(0 0% 0% / 0.15),
-      inset 0 1px 0 hsl(0 0% 100% / 0.03);
-  }
-
-  /* ─── Stat Card (بطاقات الإجماليات) ─── */
   .stat-card {
     border-radius: var(--radius);
     padding: 1rem 1.1rem;
@@ -160,54 +130,23 @@
     cursor: pointer;
   }
 
-  .stat-card::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    opacity: 0.07;
-    transition: opacity 0.25s ease;
-  }
-
-  .stat-card:hover {
-    transform: translateY(-3px);
-  }
-
-  .stat-card:hover::before { opacity: 0.12; }
-
   .stat-card.emerald {
     background: linear-gradient(135deg, hsl(158 64% 98%) 0%, hsl(162 70% 95%) 100%);
     border-color: hsl(158 64% 82%);
   }
-  .stat-card.emerald::before { background: var(--grad-emerald); }
-  .dark .stat-card.emerald {
-    background: linear-gradient(135deg, hsl(158 40% 10%) 0%, hsl(162 40% 8%) 100%);
-    border-color: hsl(158 40% 20%);
-  }
-
   .stat-card.rose {
     background: linear-gradient(135deg, hsl(351 83% 98%) 0%, hsl(0 72% 96%) 100%);
     border-color: hsl(351 83% 84%);
   }
-  .stat-card.rose::before { background: var(--grad-rose); }
-  .dark .stat-card.rose {
-    background: linear-gradient(135deg, hsl(351 40% 10%) 0%, hsl(0 40% 8%) 100%);
-    border-color: hsl(351 40% 20%);
-  }
-
   .stat-card.indigo {
     background: linear-gradient(135deg, hsl(239 84% 98%) 0%, hsl(262 83% 96%) 100%);
     border-color: hsl(239 84% 84%);
   }
-  .stat-card.indigo::before { background: var(--grad-indigo); }
-
   .stat-card.sky {
     background: linear-gradient(135deg, hsl(199 89% 97%) 0%, hsl(221 83% 96%) 100%);
     border-color: hsl(199 89% 82%);
   }
-  .stat-card.sky::before { background: var(--grad-sky); }
 
-  /* ─── Action Button (أزرار بيع/شراء ضخمة) ─── */
   .action-btn {
     display: flex;
     flex-direction: column;
@@ -221,51 +160,20 @@
     transition: all 0.2s cubic-bezier(0.34, 1.4, 0.64, 1);
     position: relative;
     overflow: hidden;
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  .action-btn::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(180deg, hsl(0 0% 100% / 0.15) 0%, transparent 60%);
-    border-radius: inherit;
-    pointer-events: none;
-  }
-
-  .action-btn:active {
-    transform: scale(0.95) translateY(2px);
   }
 
   .action-btn.sale {
     background: var(--grad-emerald);
-    box-shadow:
-      0 6px 24px hsl(158 64% 38% / 0.4),
-      0 2px 8px  hsl(158 64% 38% / 0.2),
-      inset 0 1px 0 hsl(0 0% 100% / 0.2);
+    box-shadow: 0 6px 24px hsl(158 64% 38% / 0.4);
     color: white;
   }
 
   .action-btn.purchase {
     background: var(--grad-indigo);
-    box-shadow:
-      0 6px 24px hsl(239 84% 67% / 0.4),
-      0 2px 8px  hsl(239 84% 67% / 0.2),
-      inset 0 1px 0 hsl(0 0% 100% / 0.2);
+    box-shadow: 0 6px 24px hsl(239 84% 67% / 0.4);
     color: white;
   }
 
-  .action-btn:hover {
-    transform: translateY(-3px) scale(1.02);
-  }
-  .action-btn:hover.sale {
-    box-shadow: 0 10px 32px hsl(158 64% 38% / 0.5), 0 4px 12px hsl(158 64% 38% / 0.25);
-  }
-  .action-btn:hover.purchase {
-    box-shadow: 0 10px 32px hsl(239 84% 67% / 0.5), 0 4px 12px hsl(239 84% 67% / 0.25);
-  }
-
-  /* ─── زر أساسي ─── */
   .btn {
     display: inline-flex;
     align-items: center;
@@ -280,43 +188,19 @@
     border: none;
     outline: none;
     transition: all 0.18s cubic-bezier(0.34, 1.2, 0.64, 1);
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
   }
-
-  .btn:active { transform: scale(0.95); }
 
   .btn-primary {
     background: var(--grad-emerald);
     color: white;
     box-shadow: 0 4px 16px hsl(var(--primary) / 0.35);
   }
-  .btn-primary:hover {
-    box-shadow: 0 6px 24px hsl(var(--primary) / 0.45);
-    transform: translateY(-1px);
-  }
-
-  .btn-danger {
-    background: hsl(var(--danger) / 0.1);
-    color: hsl(var(--danger));
-    border: 1px solid hsl(var(--danger) / 0.2);
-  }
-  .btn-danger:hover {
-    background: hsl(var(--danger));
-    color: white;
-    border-color: transparent;
-  }
 
   .btn-ghost {
     background: transparent;
     color: hsl(var(--text-muted));
   }
-  .btn-ghost:hover {
-    background: hsl(var(--surface-2));
-    color: hsl(var(--foreground));
-  }
 
-  /* ─── Form Input ─── */
   .form-input {
     width: 100%;
     padding: 0.8rem 1rem;
@@ -328,24 +212,8 @@
     font-weight: 600;
     font-size: 0.9rem;
     outline: none;
-    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
-    -webkit-appearance: none;
   }
 
-  .form-input::placeholder { color: hsl(var(--text-subtle)); font-weight: 500; }
-
-  .form-input:focus {
-    border-color: hsl(var(--primary) / 0.6);
-    background: hsl(var(--surface));
-    box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
-  }
-
-  .dark .form-input {
-    background: hsl(var(--surface-2));
-    border-color: hsl(var(--border));
-  }
-
-  /* ─── Badges ─── */
   .badge {
     display: inline-flex;
     align-items: center;
@@ -354,17 +222,12 @@
     border-radius: 999px;
     font-size: 0.68rem;
     font-weight: 800;
-    letter-spacing: 0.01em;
   }
 
   .badge-success { background: hsl(var(--success) / 0.12); color: hsl(142 65% 30%); }
   .badge-danger  { background: hsl(var(--danger) / 0.1);   color: hsl(var(--danger)); }
   .badge-warning { background: hsl(var(--warning) / 0.12); color: hsl(28 80% 35%); }
-  .badge-info    { background: hsl(var(--info) / 0.1);     color: hsl(var(--info)); }
-  .badge-violet  { background: hsl(var(--violet) / 0.1);   color: hsl(var(--violet)); }
-  .badge-muted   { background: hsl(var(--border)); color: hsl(var(--text-muted)); }
 
-  /* ─── Progress Bar ─── */
   .progress-bar {
     height: 6px;
     width: 100%;
@@ -378,56 +241,16 @@
     transition: width 0.7s cubic-bezier(0.34, 1.2, 0.64, 1);
     background: var(--grad-emerald);
   }
-  .progress-bar-fill.danger { background: var(--grad-rose); }
-  .progress-bar-fill.warning { background: var(--grad-amber); }
 
-  /* ─── Skeleton ─── */
-  .skeleton {
-    background: linear-gradient(90deg,
-      hsl(var(--surface-2)) 25%,
-      hsl(var(--border)) 50%,
-      hsl(var(--surface-2)) 75%
-    );
-    background-size: 200% 100%;
-    animation: shimmer 1.5s infinite;
-    border-radius: var(--radius);
-  }
-
-  /* ─── Empty State ─── */
-  .empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 3rem 1.5rem;
-    border: 2px dashed hsl(var(--border));
-    border-radius: calc(var(--radius) * 1.2);
-    color: hsl(var(--text-muted));
-    gap: 0.75rem;
-  }
-
-  /* ─── Header ─── */
   .app-header {
     position: sticky;
     top: 0;
     z-index: 40;
     background: var(--grad-header);
     padding: 0.75rem 1rem 0.7rem;
-    box-shadow:
-      0 4px 20px hsl(158 60% 20% / 0.35),
-      0 1px 4px  hsl(158 60% 20% / 0.2);
+    box-shadow: 0 4px 20px hsl(158 60% 20% / 0.35);
   }
 
-  .app-header::after {
-    content: '';
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, hsl(0 0% 100% / 0.2), transparent);
-  }
-
-  /* ─── Bottom Nav ─── */
   .bottom-nav {
     position: fixed;
     bottom: 0; left: 0; right: 0;
@@ -436,9 +259,7 @@
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
     border-top: 1px solid hsl(var(--border));
-    box-shadow:
-      0 -8px 32px hsl(var(--foreground) / 0.07),
-      0 -2px 8px  hsl(var(--foreground) / 0.04);
+    box-shadow: 0 -8px 32px hsl(var(--foreground) / 0.07);
     padding: 0.4rem 0.75rem;
     padding-bottom: max(0.4rem, env(safe-area-inset-bottom));
   }
@@ -453,12 +274,7 @@
     padding: 0.35rem 0.25rem;
     border-radius: 0.875rem;
     cursor: pointer;
-    transition: all 0.22s cubic-bezier(0.34, 1.4, 0.64, 1);
-    position: relative;
-    -webkit-tap-highlight-color: transparent;
     text-decoration: none;
-    border: none;
-    background: transparent;
   }
 
   .nav-item-icon {
@@ -466,112 +282,55 @@
     align-items: center;
     justify-content: center;
     width: 44px;
-    height: 36px;
+    height: 34px;
     border-radius: 0.75rem;
     transition: all 0.22s cubic-bezier(0.34, 1.4, 0.64, 1);
-    position: relative;
   }
 
-  .nav-item span {
-    font-size: 0.63rem;
-    font-weight: 700;
-    line-height: 1;
-    transition: color 0.2s;
-    color: hsl(var(--text-subtle));
-  }
-
-  /* الحالة النشطة */
   .nav-item.active .nav-item-icon {
     background: hsl(var(--primary) / 0.12);
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px hsl(var(--primary) / 0.2);
-  }
-  .nav-item.active span { color: hsl(var(--primary)); }
-
-  .nav-item:not(.active) .nav-item-icon { color: hsl(var(--text-subtle)); }
-  .nav-item:not(.active):hover .nav-item-icon {
-    background: hsl(var(--surface-2));
-    color: hsl(var(--text-muted));
   }
 
-  /* ألوان الأيقونة النشطة لكل تبويب */
-  .nav-item.active[data-tab="home"] .nav-item-icon {
-    background: hsl(158 64% 40% / 0.12);
-    color: hsl(158 64% 38%);
-    box-shadow: 0 4px 12px hsl(158 64% 38% / 0.2);
-  }
-  .nav-item.active[data-tab="inventory"] .nav-item-icon {
-    background: hsl(262 83% 58% / 0.12);
-    color: hsl(262 83% 52%);
-    box-shadow: 0 4px 12px hsl(262 83% 52% / 0.2);
-  }
-  .nav-item.active[data-tab="contacts"] .nav-item-icon {
-    background: hsl(221 83% 58% / 0.12);
-    color: hsl(221 83% 52%);
-    box-shadow: 0 4px 12px hsl(221 83% 52% / 0.2);
-  }
-  .nav-item.active[data-tab="debts"] .nav-item-icon {
-    background: hsl(351 83% 58% / 0.12);
-    color: hsl(351 83% 52%);
-    box-shadow: 0 4px 12px hsl(351 83% 52% / 0.2);
-  }
-
-  /* Badge الإشعارات */
-  .nav-badge {
-    position: absolute;
-    top: -2px;
-    right: -2px;
-    min-width: 17px;
-    height: 17px;
-    padding: 0 4px;
-    border-radius: 999px;
-    background: hsl(var(--danger));
-    color: white;
-    font-size: 0.6rem;
-    font-weight: 900;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 2px solid hsl(var(--surface));
-    animation: pulse-badge 2s infinite;
-  }
-
-  /* ─── Modal / Sheet ─── */
+  /* ════════════════════════════════════════
+     🚨 FIX FOR MODAL POPUPS OVERLAPPING BOTTOM NAV
+     ======================================== */
   .modal-overlay {
     position: fixed;
     inset: 0;
-    z-index: 60;
-    background: hsl(var(--foreground) / 0.5);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    z-index: 100; /* Elevated high above bottom nav */
+    background: hsl(var(--foreground) / 0.55);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
     display: flex;
     align-items: flex-end;
     justify-content: center;
+    padding-bottom: calc(75px + env(safe-area-inset-bottom)); /* LIFTS SHEET ABOVE BOTTOM NAV! */
+    padding-top: 20px;
     animation: fade-in 0.2s ease;
   }
   @media (min-width: 640px) {
-    .modal-overlay { align-items: center; padding: 1rem; }
+    .modal-overlay { align-items: center; padding: 1.5rem; }
   }
 
   .modal-sheet {
     background: hsl(var(--surface));
-    width: 100%;
+    width: calc(100% - 1rem);
     max-width: 28rem;
-    border-radius: 1.75rem 1.75rem 0 0;
+    border-radius: 1.75rem; /* Full rounded box, elevated nicely */
     padding: 0;
-    max-height: 93dvh;
+    max-height: 80dvh;
     overflow-y: auto;
-    animation: slide-up-spring 0.38s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    animation: slide-up-spring 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
     overscroll-behavior: contain;
-  }
-  @media (min-width: 640px) {
-    .modal-sheet { border-radius: 1.75rem; max-height: 88dvh; }
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    border: 1px solid hsl(var(--border));
   }
 
   .modal-header {
     position: sticky;
     top: 0;
-    z-index: 1;
+    z-index: 10;
     background: hsl(var(--surface));
     padding: 1rem 1.25rem 0.75rem;
     border-bottom: 1px solid hsl(var(--border));
@@ -590,13 +349,12 @@
 
   .modal-body { padding: 1.1rem 1.25rem 1.5rem; }
 
-  /* ─── Toast ─── */
   .toast-container {
     position: fixed;
-    bottom: 88px;
+    bottom: 90px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 100;
+    z-index: 110;
     display: flex;
     flex-direction: column-reverse;
     gap: 0.5rem;
@@ -614,18 +372,12 @@
     font-weight: 700;
     font-size: 0.875rem;
     pointer-events: all;
-    box-shadow:
-      0 8px 24px hsl(0 0% 0% / 0.15),
-      0 2px 8px  hsl(0 0% 0% / 0.1);
-    animation: toast-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
   }
 
-  .toast-success { background: hsl(142 71% 40%);  color: white; }
+  .toast-success { background: hsl(142 71% 40%); color: white; }
   .toast-error   { background: hsl(var(--danger)); color: white; }
-  .toast-warning { background: hsl(38 90% 54%);   color: hsl(28 80% 15%); }
-  .toast-info    { background: hsl(var(--info));   color: white; }
 
-  /* ─── Product Card Accent ─── */
   .product-card {
     border-radius: var(--radius);
     background: hsl(var(--surface));
@@ -633,17 +385,11 @@
     border-right: 4px solid;
     padding: 1rem;
     transition: all 0.22s ease;
-    box-shadow: 0 2px 8px hsl(var(--foreground) / 0.04);
-  }
-  .product-card:hover {
-    box-shadow: 0 4px 20px hsl(var(--foreground) / 0.08);
-    transform: translateY(-1px);
   }
   .product-card.ok      { border-right-color: hsl(var(--success)); }
   .product-card.low     { border-right-color: hsl(var(--warning)); }
   .product-card.expired { border-right-color: hsl(var(--danger)); }
 
-  /* ─── Avatar ─── */
   .avatar {
     border-radius: 999px;
     display: flex;
@@ -652,13 +398,8 @@
     font-weight: 900;
     color: white;
     flex-shrink: 0;
-    position: relative;
   }
-  .avatar-ring-debt   { outline: 3px solid hsl(var(--danger) / 0.4);  outline-offset: 2px; }
-  .avatar-ring-credit { outline: 3px solid hsl(var(--info) / 0.4);    outline-offset: 2px; }
-  .avatar-ring-ok     { outline: 3px solid hsl(var(--success) / 0.4); outline-offset: 2px; }
 
-  /* ─── Quick Amount Buttons ─── */
   .quick-btn {
     flex: 1;
     padding: 0.6rem;
@@ -668,147 +409,16 @@
     font-weight: 800;
     font-size: 0.8rem;
     cursor: pointer;
-    transition: all 0.18s ease;
-    color: hsl(var(--text-muted));
     text-align: center;
   }
-  .quick-btn:hover, .quick-btn.active {
-    background: hsl(var(--primary));
-    border-color: hsl(var(--primary));
-    color: white;
-  }
-
-  /* ─── Divider ─── */
-  .divider {
-    height: 1px;
-    background: linear-gradient(90deg, transparent, hsl(var(--border)), transparent);
-    margin: 0.75rem 0;
-  }
-
-  /* ─── Page container ─── */
-  .page-container {
-    animation: page-fade-in 0.3s ease both;
-  }
-}
-
-/* ============================================================
-   🌀 Animations & Keyframes
-   ============================================================ */
-@keyframes shimmer {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
 }
 
 @keyframes slide-up-spring {
-  from { transform: translateY(100%); opacity: 0; }
+  from { transform: translateY(80px); opacity: 0; }
   to   { transform: translateY(0);    opacity: 1; }
 }
 
 @keyframes fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
-}
-
-@keyframes page-fade-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes bounce-in {
-  0%   { transform: scale(0.7);  opacity: 0; }
-  60%  { transform: scale(1.1);  opacity: 1; }
-  100% { transform: scale(1);    opacity: 1; }
-}
-
-@keyframes toast-in {
-  from { transform: translateY(16px) scale(0.94); opacity: 0; }
-  to   { transform: translateY(0)    scale(1);    opacity: 1; }
-}
-
-@keyframes pulse-badge {
-  0%, 100% { transform: scale(1); }
-  50%       { transform: scale(1.15); }
-}
-
-@keyframes icon-tap {
-  0%   { transform: scale(1); }
-  40%  { transform: scale(0.88); }
-  70%  { transform: scale(1.08); }
-  100% { transform: scale(1); }
-}
-
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50%       { transform: translateY(-4px); }
-}
-
-@keyframes number-up {
-  from { transform: translateY(6px); opacity: 0; }
-  to   { transform: translateY(0);   opacity: 1; }
-}
-
-.animate-number { animation: number-up 0.4s cubic-bezier(0.34, 1.2, 0.64, 1) both; }
-.animate-float  { animation: float 3s ease-in-out infinite; }
-.animate-bounce-in { animation: bounce-in 0.4s cubic-bezier(0.34, 1.4, 0.64, 1) both; }
-
-/* ============================================================
-   🔧 Utilities
-   ============================================================ */
-@layer utilities {
-  .touch-active {
-    -webkit-tap-highlight-color: transparent;
-    transition: transform 0.12s ease, opacity 0.12s ease;
-  }
-  .touch-active:active { transform: scale(0.95); opacity: 0.85; }
-
-  .text-gradient-emerald {
-    background-clip: text;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-image: var(--grad-emerald);
-  }
-
-  .text-gradient-rose {
-    background-clip: text;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-image: var(--grad-rose);
-  }
-
-  .glow-emerald { box-shadow: 0 0 24px hsl(var(--primary) / 0.3); }
-  .glow-rose    { box-shadow: 0 0 24px hsl(var(--danger) / 0.3); }
-
-  .scrollbar-hide {
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-  .scrollbar-hide::-webkit-scrollbar { display: none; }
-
-  .pb-safe { padding-bottom: max(1rem, env(safe-area-inset-bottom)); }
-
-  /* Monospace numbers */
-  .tabnum {
-    font-variant-numeric: tabular-nums;
-    font-feature-settings: "tnum";
-  }
-}
-
-/* ============================================================
-   Scrollbar
-   ============================================================ */
-::-webkit-scrollbar       { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: hsl(var(--primary) / 0.2);
-  border-radius: 10px;
-}
-::-webkit-scrollbar-thumb:hover { background: hsl(var(--primary) / 0.4); }
-
-/* ============================================================
-   Global transitions (non-layout elements only)
-   ============================================================ */
-a, button, input, select, textarea, [role="button"] {
-  transition-property: background-color, border-color, color, box-shadow, opacity, transform;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 180ms;
 }

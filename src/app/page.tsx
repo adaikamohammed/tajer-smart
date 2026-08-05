@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
   initStorageIfEmpty,
   getLocalData,
@@ -16,20 +17,18 @@ import {
   ArrowUpRight, ArrowDownLeft, X,
   ShoppingCart, ShoppingBag, Sparkles,
   ChevronLeft, Clock3, CheckCircle,
-  Banknote, Package,
+  Banknote, Package, Calendar, Filter
 } from 'lucide-react';
 
-/* ────────────────── وقت الترحيب ────────────────── */
 function getGreeting() {
   const h = new Date().getHours();
   if (h < 5)  return { emoji: '🌙', msg: 'سهران يا تاجر؟' };
   if (h < 12) return { emoji: '🌅', msg: 'صباح الرزق والبركة!' };
   if (h < 17) return { emoji: '☀️', msg: 'نهار موفق يا تاجر!' };
-  if (h < 21) return { emoji: '🌇', msg: 'مساء الخير والرزق!' };
+  if (h < 21) return { emoji: '<ctrl42>', msg: 'مساء الخير والرزق!' };
   return              { emoji: '🌙', msg: 'مساء النجاح!' };
 }
 
-/* ────────────────── تنسيق الأرقام لاتيني ────────────────── */
 const fmt = (n: number) => n.toLocaleString('en-US');
 
 export default function HomePage() {
@@ -37,6 +36,10 @@ export default function HomePage() {
   const [products,     setProducts]     = useState<Product[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [mounted,      setMounted]      = useState(false);
+
+  // فلترة بالتقويم والتاريخ
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [dateFilterMode, setDateFilterMode] = useState<'today' | 'all' | 'custom'>('today');
 
   const [showSaleModal, setShowSaleModal] = useState(false);
   const [showBuyModal,  setShowBuyModal]  = useState(false);
@@ -77,7 +80,7 @@ export default function HomePage() {
     );
   }
 
-  /* ── حسابات ── */
+  /* ── حسابات الديون والملخص ── */
   const customersDebt = contacts
     .filter(c => c.type !== 'supplier' && c.balance > 0)
     .reduce((a, c) => a + c.balance, 0);
@@ -88,10 +91,15 @@ export default function HomePage() {
   const creditorCount = contacts.filter(c => c.balance < 0).length;
   const lowStockCount = products.filter(p => p.stock_quantity <= p.min_stock_alert).length;
 
-  const today = new Date().toDateString();
-  const todayTx = transactions.filter(tx => new Date(tx.created_at).toDateString() === today);
-  const todaySales  = todayTx.filter(tx => tx.tx_type === 'SALE').length;
-  const todayProfit = todayTx
+  /* ── فلترة حسب التقويم المختار ── */
+  const filteredTx = transactions.filter(tx => {
+    if (dateFilterMode === 'all') return true;
+    const txDate = new Date(tx.created_at).toISOString().split('T')[0];
+    return txDate === selectedDate;
+  });
+
+  const periodSales  = filteredTx.filter(tx => tx.tx_type === 'SALE').length;
+  const periodProfit = filteredTx
     .filter(tx => tx.tx_type === 'SALE')
     .reduce((acc, tx) =>
       acc + tx.items.reduce((s, item) => s + (item.unit_price - item.cost_price) * item.quantity, 0), 0
@@ -180,7 +188,6 @@ export default function HomePage() {
     toast(debt > 0 ? `📦 تم الشراء — دين للمورد: ${fmt(debt)} د.ج` : '📦 تم الشراء نقداً!');
   };
 
-  /* ── Helpers ── */
   const closeOnBg = (setter: (v: boolean) => void) =>
     (e: React.MouseEvent) => { if (e.target === e.currentTarget) setter(false); };
 
@@ -190,36 +197,58 @@ export default function HomePage() {
   return (
     <div className="space-y-3.5">
 
-      {/* ══ بطاقة الترحيب والملخص اليومي ══ */}
+      {/* ══ بطاقة الترحيب + فلتر التقويم التفاعلي ══ */}
       <div
-        className="rounded-2xl p-4 relative overflow-hidden"
+        className="rounded-3xl p-4 relative overflow-hidden space-y-3"
         style={{
-          background: 'linear-gradient(135deg, hsl(158 64% 38% / 0.08) 0%, hsl(221 83% 58% / 0.05) 100%)',
+          background: 'linear-gradient(135deg, hsl(158 64% 38% / 0.09) 0%, hsl(221 83% 58% / 0.05) 100%)',
           border: '1px solid hsl(158 64% 38% / 0.15)',
         }}
       >
-        {/* نجمة زخرفية */}
-        <div className="absolute top-3 left-3 opacity-10">
-          <Sparkles size={48} className="text-emerald-500" />
-        </div>
-
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-2xl leading-none mb-1">{greeting.emoji}</p>
             <h2 className="font-black text-slate-800 text-sm leading-snug">{greeting.msg}</h2>
-            <p className="text-xs text-slate-500 mt-0.5 font-semibold">
+            <p className="text-xs text-slate-500 mt-0.5 font-bold">
               {new Date().toLocaleDateString('ar-EG', { weekday: 'long', day: 'numeric', month: 'long' })}
             </p>
           </div>
 
-          {/* إجمالي اليوم */}
           <div className="text-left shrink-0">
-            <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wide">ربح اليوم</p>
-            <p className={`font-black text-xl tabnum leading-tight ${todayProfit > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
-              {todayProfit > 0 ? '+' : ''}{fmt(todayProfit)}
+            <p className="text-[10px] text-slate-500 font-bold uppercase">الربح المحسوب</p>
+            <p className={`font-black text-xl tabnum leading-tight ${periodProfit > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+              {periodProfit > 0 ? '+' : ''}{fmt(periodProfit)}
               <span className="text-xs font-semibold"> د.ج</span>
             </p>
-            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">{todaySales} بيعة اليوم</p>
+            <p className="text-[10px] text-slate-400 font-semibold mt-0.5">{periodSales} بيعة في الفترة</p>
+          </div>
+        </div>
+
+        {/* 📅 التقويم وفلترة التواريخ */}
+        <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => { setDateFilterMode('today'); setSelectedDate(new Date().toISOString().split('T')[0]); }}
+              className={`px-2.5 py-1 rounded-xl text-[11px] font-black transition-all ${dateFilterMode === 'today' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white/80 text-slate-600'}`}
+            >
+              اليوم 📅
+            </button>
+            <button
+              onClick={() => setDateFilterMode('all')}
+              className={`px-2.5 py-1 rounded-xl text-[11px] font-black transition-all ${dateFilterMode === 'all' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white/80 text-slate-600'}`}
+            >
+              الكل ♾️
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1.5 bg-white/90 px-2 py-1 rounded-xl border border-slate-200">
+            <Calendar className="w-3.5 h-3.5 text-slate-500" />
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => { setSelectedDate(e.target.value); setDateFilterMode('custom'); }}
+              className="bg-transparent text-xs font-bold text-slate-800 outline-none"
+            />
           </div>
         </div>
       </div>
@@ -227,125 +256,127 @@ export default function HomePage() {
       {/* ══ زرا البيع والشراء ══ */}
       <div className="grid grid-cols-2 gap-3">
         <button onClick={() => setShowSaleModal(true)} className="action-btn sale">
-          <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center mb-1"
-            style={{ background: 'hsl(0 0% 100% / 0.18)', backdropFilter: 'blur(4px)' }}
-          >
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-1 bg-white/20 backdrop-blur-sm">
             <ShoppingCart size={24} className="text-white" strokeWidth={2.5} />
           </div>
           <span className="font-black text-base text-white">بيع جديد</span>
-          <span className="text-[11px] text-white/75 font-semibold">خصم من المخزون</span>
+          <span className="text-[11px] text-white/80 font-semibold">خصم من المخزون</span>
         </button>
 
         <button onClick={() => setShowBuyModal(true)} className="action-btn purchase">
-          <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center mb-1"
-            style={{ background: 'hsl(0 0% 100% / 0.18)', backdropFilter: 'blur(4px)' }}
-          >
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-1 bg-white/20 backdrop-blur-sm">
             <ShoppingBag size={24} className="text-white" strokeWidth={2.5} />
           </div>
           <span className="font-black text-base text-white">شراء جديد</span>
-          <span className="text-[11px] text-white/75 font-semibold">زيادة المخزون</span>
+          <span className="text-[11px] text-white/80 font-semibold">زيادة المخزون</span>
         </button>
       </div>
 
-      {/* ══ بطاقات الإجماليات المالية ══ */}
+      {/* ══ بطاقات الإجماليات المالية — مربوطة مباشرة بالصفحات ══ */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="stat-card emerald">
+        <Link href="/debts?tab=to_us" className="stat-card emerald block">
           <div className="flex items-center justify-between mb-2">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'hsl(158 64% 38% / 0.15)' }}>
-              <ArrowUpRight size={16} style={{ color: 'hsl(158 64% 35%)' }} strokeWidth={2.5} />
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-emerald-500/15">
+              <ArrowUpRight size={16} className="text-emerald-700" strokeWidth={2.5} />
             </div>
             <ChevronLeft size={14} className="text-emerald-400" />
           </div>
           <p className="text-[11px] font-bold text-emerald-700 mb-1">لي على الزبائن</p>
-          <p className="font-black text-xl text-emerald-800 tabnum leading-tight animate-number">
+          <p className="font-black text-xl text-emerald-800 tabnum leading-tight">
             {fmt(customersDebt)}
             <span className="text-xs font-semibold"> د.ج</span>
           </p>
-          <p className="text-[10px] text-emerald-600 font-semibold mt-1">{debtorCount} زبون مدين</p>
-        </div>
+          <p className="text-[10px] text-emerald-600 font-semibold mt-1 flex items-center justify-between">
+            <span>{debtorCount} زبون مدين</span>
+            <span className="underline">متابعة ←</span>
+          </p>
+        </Link>
 
-        <div className="stat-card rose">
+        <Link href="/debts?tab=we_owe" className="stat-card rose block">
           <div className="flex items-center justify-between mb-2">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'hsl(351 83% 58% / 0.12)' }}>
-              <ArrowDownLeft size={16} style={{ color: 'hsl(351 83% 52%)' }} strokeWidth={2.5} />
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-rose-500/12">
+              <ArrowDownLeft size={16} className="text-rose-700" strokeWidth={2.5} />
             </div>
             <ChevronLeft size={14} className="text-rose-400" />
           </div>
           <p className="text-[11px] font-bold text-rose-700 mb-1">عليّ للموردين</p>
-          <p className="font-black text-xl text-rose-800 tabnum leading-tight animate-number">
+          <p className="font-black text-xl text-rose-800 tabnum leading-tight">
             {fmt(suppliersDebt)}
             <span className="text-xs font-semibold"> د.ج</span>
           </p>
-          <p className="text-[10px] text-rose-600 font-semibold mt-1">{creditorCount} مورد دائن</p>
-        </div>
+          <p className="text-[10px] text-rose-600 font-semibold mt-1 flex items-center justify-between">
+            <span>{creditorCount} مورد دائن</span>
+            <span className="underline">سداد ←</span>
+          </p>
+        </Link>
       </div>
 
-      {/* ══ تنبيه نقص المخزون ══ */}
+      {/* ══ تنبيه نقص المخزون — مربوط بصفحة المخزن ══ */}
       {lowStockCount > 0 && (
-        <div
-          className="rounded-2xl p-3.5 flex items-center gap-3"
-          style={{
-            background: 'linear-gradient(135deg, hsl(38 92% 50% / 0.08), hsl(28 80% 48% / 0.06))',
-            border: '1px solid hsl(38 92% 50% / 0.25)',
-          }}
-        >
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-               style={{ background: 'hsl(38 92% 50% / 0.15)' }}>
-            <AlertTriangle size={18} style={{ color: 'hsl(28 80% 40%)' }} strokeWidth={2.5} />
+        <Link href="/inventory" className="block">
+          <div
+            className="rounded-2xl p-3.5 flex items-center justify-between gap-3 hover:scale-[0.99] transition-transform"
+            style={{
+              background: 'linear-gradient(135deg, hsl(38 92% 50% / 0.08), hsl(28 80% 48% / 0.06))',
+              border: '1px solid hsl(38 92% 50% / 0.25)',
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-amber-500/15">
+                <AlertTriangle size={18} className="text-amber-700" strokeWidth={2.5} />
+              </div>
+              <div>
+                <p className="text-sm font-black text-amber-800">⚠️ تنبيه نقص المخزون</p>
+                <p className="text-xs text-amber-700 font-semibold mt-0.5">
+                  {lowStockCount} منتج يحتاج تجديد المخزون الآن
+                </p>
+              </div>
+            </div>
+            <ChevronLeft className="w-5 h-5 text-amber-600" />
           </div>
-          <div>
-            <p className="text-sm font-black text-amber-800">⚠️ تنبيه المخزون</p>
-            <p className="text-xs text-amber-700 font-semibold mt-0.5">
-              {lowStockCount} منتج يحتاج تجديد المخزون
-            </p>
-          </div>
-        </div>
+        </Link>
       )}
 
       {/* ══ آخر العمليات ══ */}
       <div className="glass-card p-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-black text-slate-800 text-sm flex items-center gap-2">
-            <Clock3 size={16} style={{ color: 'hsl(158 64% 38%)' }} strokeWidth={2.5} />
-            آخر العمليات
+            <Clock3 size={16} className="text-emerald-600" strokeWidth={2.5} />
+            آخر العمليات ({filteredTx.length})
           </h2>
-          <span className="badge badge-muted">{transactions.length}</span>
+          <Link href="/stats" className="text-xs font-bold text-emerald-600 hover:underline">
+            عرض الإحصائيات الكاملة ←
+          </Link>
         </div>
 
-        {transactions.length === 0 ? (
-          <div className="empty-state py-10">
+        {filteredTx.length === 0 ? (
+          <div className="empty-state py-8">
             <TrendingUp size={36} className="opacity-25 mb-1" />
-            <p className="font-bold text-sm">لا توجد عمليات بعد</p>
+            <p className="font-bold text-sm">لا توجد عمليات في هذا التاريخ المختار</p>
             <p className="text-xs opacity-70">اضغط بيع أو شراء للبدء!</p>
           </div>
         ) : (
           <div className="space-y-2">
-            {transactions.slice(0, 6).map((tx) => {
+            {filteredTx.slice(0, 5).map((tx) => {
               const isSale  = tx.tx_type === 'SALE';
               const item    = tx.items[0];
               const contact = contacts.find(c => c.id === tx.contact_id);
-              const time    = new Date(tx.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+              const time    = new Date(tx.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
 
               return (
                 <div
                   key={tx.id}
-                  className="flex items-center gap-3 p-3 rounded-xl transition-colors"
-                  style={{ background: 'hsl(220 20% 97%)', border: '1px solid hsl(220 15% 92%)' }}
+                  className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200"
                 >
-                  {/* أيقونة نوع العملية */}
                   <div
                     className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
                     style={{
-                      background: isSale
-                        ? 'hsl(158 64% 38% / 0.12)'
-                        : 'hsl(239 84% 67% / 0.12)',
+                      background: isSale ? 'hsl(158 64% 38% / 0.12)' : 'hsl(239 84% 67% / 0.12)',
                     }}
                   >
                     {isSale
-                      ? <ArrowUpRight size={16} style={{ color: 'hsl(158 64% 35%)' }} strokeWidth={2.5} />
-                      : <ArrowDownLeft size={16} style={{ color: 'hsl(239 84% 60%)' }} strokeWidth={2.5} />
+                      ? <ArrowUpRight size={16} className="text-emerald-700" strokeWidth={2.5} />
+                      : <ArrowDownLeft size={16} className="text-indigo-700" strokeWidth={2.5} />
                     }
                   </div>
 
@@ -353,7 +384,7 @@ export default function HomePage() {
                     <p className="font-bold text-sm text-slate-800 truncate">{item?.product_name ?? 'عملية'}</p>
                     <p className="text-xs text-slate-500 truncate">
                       {isSale ? 'بيع لـ ' : 'شراء من '}
-                      <span className="font-semibold text-slate-600">{tx.contact_name}</span>
+                      <span className="font-semibold text-slate-700">{tx.contact_name}</span>
                       <span className="text-slate-400 mr-1">· {time}</span>
                     </p>
                   </div>
@@ -370,10 +401,9 @@ export default function HomePage() {
                     </div>
                     {contact?.phone && (
                       <a
-                        href={createWhatsAppLink(contact.phone, `مرحباً ${contact.name}، قيمة العملية ${fmt(tx.total_amount)} د.ج.`)}
+                        href={createWhatsAppLink(contact.phone, `مرحباً ${contact.name}، تذكير بعملية بقيمة ${fmt(tx.total_amount)} د.ج.`)}
                         target="_blank" rel="noreferrer"
-                        className="w-8 h-8 rounded-xl flex items-center justify-center touch-active shrink-0"
-                        style={{ background: 'hsl(142 71% 42% / 0.12)', color: 'hsl(142 65% 32%)' }}
+                        className="w-8 h-8 rounded-xl flex items-center justify-center touch-active shrink-0 bg-emerald-100 text-emerald-800"
                       >
                         <MessageCircle size={14} strokeWidth={2.5} />
                       </a>
@@ -386,24 +416,19 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* ════════════════════════════════════════
-          🟢 Modal البيع
-      ════════════════════════════════════════ */}
+      {/* ══ Modal البيع ══ */}
       {showSaleModal && (
         <div className="modal-overlay" onClick={closeOnBg(setShowSaleModal)}>
           <div className="modal-sheet">
-            {/* Drag Handle */}
             <div className="modal-handle" />
 
-            {/* Header */}
             <div className="modal-header">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                     style={{ background: 'hsl(158 64% 38% / 0.12)' }}>
-                  <ShoppingCart size={18} style={{ color: 'hsl(158 64% 35%)' }} strokeWidth={2.5} />
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-emerald-100 text-emerald-700">
+                  <ShoppingCart size={18} strokeWidth={2.5} />
                 </div>
                 <div>
-                  <h3 className="font-black text-slate-800 text-base leading-tight">تسجيل بيع جديد</h3>
+                  <h3 className="font-black text-slate-800 text-base">تسجيل بيع جديد</h3>
                   <p className="text-[11px] text-slate-400 font-semibold">خصم من المخزون + تسجيل الدين</p>
                 </div>
               </div>
@@ -414,16 +439,9 @@ export default function HomePage() {
 
             <form onSubmit={executeSale} className="modal-body space-y-4">
 
-              {/* الزبون */}
               <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">
-                  👤 اختر الزبون
-                </label>
-                <select
-                  value={selectedCustomerId}
-                  onChange={e => setSelectedCustomerId(e.target.value)}
-                  className="form-input"
-                >
+                <label className="block text-xs font-black text-slate-600 mb-1.5">👤 اختر الزبون</label>
+                <select value={selectedCustomerId} onChange={e => setSelectedCustomerId(e.target.value)} className="form-input">
                   <option value="">— زبون كاش (بدون اسم) —</option>
                   {contacts.filter(c => c.type !== 'supplier').map(c => (
                     <option key={c.id} value={c.id}>{c.name} ({c.phone || 'بدون هاتف'})</option>
@@ -431,17 +449,9 @@ export default function HomePage() {
                 </select>
               </div>
 
-              {/* المنتج */}
               <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">
-                  📦 اختر المنتج
-                </label>
-                <select
-                  value={selectedProductId}
-                  onChange={e => handleProductSaleChange(e.target.value)}
-                  required
-                  className="form-input"
-                >
+                <label className="block text-xs font-black text-slate-600 mb-1.5">📦 اختر المنتج</label>
+                <select value={selectedProductId} onChange={e => handleProductSaleChange(e.target.value)} required className="form-input">
                   <option value="">— اختر المنتج —</option>
                   {products.map(p => (
                     <option key={p.id} value={p.id}>
@@ -451,7 +461,6 @@ export default function HomePage() {
                 </select>
               </div>
 
-              {/* الكمية والسعر */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-black text-slate-600 mb-1.5">الكمية</label>
@@ -463,41 +472,31 @@ export default function HomePage() {
                   <label className="block text-xs font-black text-slate-600 mb-1.5">سعر التجزئة (د.ج)</label>
                   <input type="number" value={saleUnitPrice}
                     onChange={e => { const p = +e.target.value; setSaleUnitPrice(p); setSalePaid(p * saleQty); }}
-                    className="form-input font-black tabnum" style={{ color: 'hsl(158 64% 35%)' }} />
+                    className="form-input font-black tabnum text-emerald-700" />
                 </div>
               </div>
 
-              {/* ملخص */}
-              <div className="rounded-xl p-3.5" style={{
-                background: 'linear-gradient(135deg, hsl(158 64% 38% / 0.06), hsl(162 60% 28% / 0.04))',
-                border: '1px solid hsl(158 64% 38% / 0.15)',
-              }}>
+              <div className="rounded-2xl p-3.5 bg-emerald-50 border border-emerald-200">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-slate-500">الإجمالي</span>
+                  <span className="text-xs font-bold text-slate-600">الإجمالي</span>
                   <span className="font-black text-xl text-slate-900 tabnum">{fmt(saleTotal)} د.ج</span>
                 </div>
               </div>
 
-              {/* المدفوع */}
               <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">
-                  💵 المبلغ المدفوع الآن (د.ج)
-                </label>
-                <input type="number" value={salePaid}
-                  onChange={e => setSalePaid(+e.target.value)}
-                  className="form-input font-black text-lg tabnum" />
+                <label className="block text-xs font-black text-slate-600 mb-1.5">💵 المبلغ المدفوع الآن (د.ج)</label>
+                <input type="number" value={salePaid} onChange={e => setSalePaid(+e.target.value)} className="form-input font-black text-lg tabnum" />
                 {saleTotal - salePaid > 0 && (
-                  <div className="flex items-center gap-1.5 mt-2 p-2 rounded-lg"
-                       style={{ background: 'hsl(351 83% 58% / 0.08)', border: '1px solid hsl(351 83% 58% / 0.2)' }}>
-                    <Banknote size={14} style={{ color: 'hsl(351 83% 52%)', flexShrink: 0 }} />
-                    <p className="text-xs font-black" style={{ color: 'hsl(351 83% 45%)' }}>
+                  <div className="flex items-center gap-1.5 mt-2 p-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-800">
+                    <Banknote size={14} className="shrink-0" />
+                    <p className="text-xs font-black">
                       دين على الزبون: <span className="tabnum">{fmt(Math.max(0, saleTotal - salePaid))}</span> د.ج
                     </p>
                   </div>
                 )}
               </div>
 
-              <button type="submit" className="btn btn-primary w-full py-4 text-base">
+              <button type="submit" className="btn btn-primary w-full py-4 text-base shadow-md">
                 <ShoppingCart size={18} strokeWidth={2.5} />
                 تأكيد البيع وتسجيل الدين 🚀
               </button>
@@ -506,9 +505,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* ════════════════════════════════════════
-          🟣 Modal الشراء
-      ════════════════════════════════════════ */}
+      {/* ══ Modal الشراء ══ */}
       {showBuyModal && (
         <div className="modal-overlay" onClick={closeOnBg(setShowBuyModal)}>
           <div className="modal-sheet">
@@ -516,12 +513,11 @@ export default function HomePage() {
 
             <div className="modal-header">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                     style={{ background: 'hsl(239 84% 67% / 0.12)' }}>
-                  <ShoppingBag size={18} style={{ color: 'hsl(239 84% 60%)' }} strokeWidth={2.5} />
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-indigo-100 text-indigo-700">
+                  <ShoppingBag size={18} strokeWidth={2.5} />
                 </div>
                 <div>
-                  <h3 className="font-black text-slate-800 text-base leading-tight">تسجيل شراء</h3>
+                  <h3 className="font-black text-slate-800 text-base">تسجيل شراء</h3>
                   <p className="text-[11px] text-slate-400 font-semibold">من مورد + زيادة المخزون</p>
                 </div>
               </div>
@@ -565,7 +561,7 @@ export default function HomePage() {
                   <label className="block text-xs font-black text-slate-600 mb-1.5">سعر الجملة (د.ج)</label>
                   <input type="number" value={buyCostPrice}
                     onChange={e => { const p = +e.target.value; setBuyCostPrice(p); setBuyPaid(p * buyQty); }}
-                    className="form-input font-black tabnum" style={{ color: 'hsl(239 84% 60%)' }} />
+                    className="form-input font-black tabnum text-indigo-700" />
                 </div>
               </div>
 
@@ -574,12 +570,9 @@ export default function HomePage() {
                 <input type="date" value={buyExpiry} onChange={e => setBuyExpiry(e.target.value)} className="form-input" />
               </div>
 
-              <div className="rounded-xl p-3.5" style={{
-                background: 'linear-gradient(135deg, hsl(239 84% 67% / 0.06), hsl(262 83% 58% / 0.04))',
-                border: '1px solid hsl(239 84% 67% / 0.15)',
-              }}>
+              <div className="rounded-2xl p-3.5 bg-indigo-50 border border-indigo-200">
                 <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-slate-500">إجمالي الشراء</span>
+                  <span className="text-xs font-bold text-slate-600">إجمالي الشراء</span>
                   <span className="font-black text-xl text-slate-900 tabnum">{fmt(buyTotal)} د.ج</span>
                 </div>
               </div>
@@ -588,10 +581,9 @@ export default function HomePage() {
                 <label className="block text-xs font-black text-slate-600 mb-1.5">💵 المدفوع للمورد الآن</label>
                 <input type="number" value={buyPaid} onChange={e => setBuyPaid(+e.target.value)} className="form-input font-black text-lg tabnum" />
                 {buyTotal - buyPaid > 0 && (
-                  <div className="flex items-center gap-1.5 mt-2 p-2 rounded-lg"
-                       style={{ background: 'hsl(351 83% 58% / 0.08)', border: '1px solid hsl(351 83% 58% / 0.2)' }}>
-                    <Banknote size={14} style={{ color: 'hsl(351 83% 52%)', flexShrink: 0 }} />
-                    <p className="text-xs font-black" style={{ color: 'hsl(351 83% 45%)' }}>
+                  <div className="flex items-center gap-1.5 mt-2 p-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-800">
+                    <Banknote size={14} className="shrink-0" />
+                    <p className="text-xs font-black">
                       دين للمورد علينا: <span className="tabnum">{fmt(Math.max(0, buyTotal - buyPaid))}</span> د.ج
                     </p>
                   </div>
@@ -600,8 +592,8 @@ export default function HomePage() {
 
               <button
                 type="submit"
-                className="btn w-full py-4 text-base text-white"
-                style={{ background: 'var(--grad-indigo)', boxShadow: '0 4px 16px hsl(239 84% 67% / 0.35)' }}
+                className="btn w-full py-4 text-base text-white shadow-md"
+                style={{ background: 'var(--grad-indigo)' }}
               >
                 <Package size={18} strokeWidth={2.5} />
                 تأكيد الشراء وزيادة المخزون 📦
