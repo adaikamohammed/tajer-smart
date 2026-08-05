@@ -25,7 +25,7 @@ function getGreeting() {
   if (h < 5)  return { emoji: '🌙', msg: 'سهران يا تاجر؟' };
   if (h < 12) return { emoji: '🌅', msg: 'صباح الرزق والبركة!' };
   if (h < 17) return { emoji: '☀️', msg: 'نهار موفق يا تاجر!' };
-  if (h < 21) return { emoji: '<ctrl42>', msg: 'مساء الخير والرزق!' };
+  if (h < 21) return { emoji: '🌆', msg: 'مساء الخير والرزق!' };
   return              { emoji: '🌙', msg: 'مساء النجاح!' };
 }
 
