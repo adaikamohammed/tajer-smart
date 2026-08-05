@@ -8,7 +8,7 @@ import {
 import { toast } from '@/components/Toast';
 import {
   Users, UserPlus, Phone, MessageCircle,
-  Search, X,
+  Search, X, Camera, Upload, MapPin
 } from 'lucide-react';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
@@ -34,13 +34,37 @@ export default function ContactsPage() {
   const [name,           setName]           = useState('');
   const [phone,          setPhone]          = useState('');
   const [photoUrl,       setPhotoUrl]       = useState('');
+  const [location,       setLocation]       = useState('');
   const [type,           setType]           = useState<'customer' | 'supplier' | 'both'>('customer');
   const [notes,          setNotes]          = useState('');
-  const [initialBalance, setInitialBalance] = useState(0);
+  
+  // فصل الرصيد الابتدائي لـ زرين سهلين
+  const [balanceDirection, setBalanceDirection] = useState<'customer_owes' | 'we_owe_customer'>('customer_owes');
+  const [initialBalance, setInitialBalance]     = useState(0);
 
   useEffect(() => {
     setContacts(getLocalData('tajer_smart_contacts_v1', []));
   }, []);
+
+  /* 📷 رفع الصورة من معرض الهاتف أو الكاميرا (كما في فرسان القرآن) */
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast('حجم الصورة كبير جداً، اختر صورة أقل من 5 ميجابايت', 'warning');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        setPhotoUrl(event.target.result as string);
+        toast('تم رفع ومعاينة الصورة بنجاح! 📷', 'success');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const filtered = contacts
     .filter(c => {
@@ -50,7 +74,8 @@ export default function ContactsPage() {
         c.type === 'supplier' || c.type === 'both';
       const matchSearch =
         c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (c.phone && c.phone.includes(searchQuery));
+        (c.phone && c.phone.includes(searchQuery)) ||
+        (c.location && c.location.toLowerCase().includes(searchQuery.toLowerCase()));
       return matchType && matchSearch;
     })
     .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
@@ -62,26 +87,36 @@ export default function ContactsPage() {
     e.preventDefault();
     if (!name.trim()) { toast('يرجى إدخال الاسم', 'error'); return; }
 
+    const calculatedBalance = balanceDirection === 'customer_owes'
+      ? Math.abs(+initialBalance)
+      : -Math.abs(+initialBalance);
+
     const nc: Contact = {
       id: 'c_' + Date.now(),
-      name: name.trim(), phone: phone.trim(),
-      photo_url: photoUrl.trim() || undefined, type,
+      name: name.trim(),
+      phone: phone.trim(),
+      photo_url: photoUrl.trim() || undefined,
+      location: location.trim() || undefined,
+      type,
       notes: notes.trim() || undefined,
-      balance: +initialBalance,
+      balance: calculatedBalance,
       created_at: new Date().toISOString(),
     };
     const up = [nc, ...contacts];
     setContacts(up);
     setLocalData('tajer_smart_contacts_v1', up);
-    setName(''); setPhone(''); setPhotoUrl(''); setType('customer'); setNotes(''); setInitialBalance(0);
+
+    // إعادة تعيين النموذج
+    setName(''); setPhone(''); setPhotoUrl(''); setLocation(''); setType('customer');
+    setNotes(''); setInitialBalance(0); setBalanceDirection('customer_owes');
     setShowAddModal(false);
-    toast('✅ تمت إضافة جهة الاتصال', 'success');
+    toast('✅ تمت إضافة الشخص بنجاح', 'success');
   };
 
   const FILTER_TABS = [
-    { val: 'all'      as const, label: `الكل (${contacts.length})`,           activeColor: 'hsl(220 20% 20%)', activeBg: 'hsl(220 20% 20%)' },
-    { val: 'customer' as const, label: `الزبائن (${countCustomers}) 👥`,      activeColor: 'white',            activeBg: 'hsl(158 64% 38%)' },
-    { val: 'supplier' as const, label: `الموردين (${countSuppliers}) 🚚`,     activeColor: 'white',            activeBg: 'hsl(221 83% 52%)' },
+    { val: 'all'      as const, label: `الكل (${contacts.length})`,       activeBg: 'hsl(220 20% 20%)' },
+    { val: 'customer' as const, label: `الزبائن (${countCustomers}) 👥`,  activeBg: 'hsl(158 64% 38%)' },
+    { val: 'supplier' as const, label: `الموردين (${countSuppliers}) 🚚`, activeBg: 'hsl(221 83% 52%)' },
   ];
 
   return (
@@ -91,7 +126,7 @@ export default function ContactsPage() {
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
-          <input type="text" placeholder="ابحث بالاسم أو الهاتف..."
+          <input type="text" placeholder="ابحث بالاسم، الهاتف، أو مكان المحل..."
             value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="form-input pr-9" />
         </div>
         <button onClick={() => setShowAddModal(true)} className="btn btn-primary shrink-0 gap-1.5 py-2.5 px-4">
@@ -139,9 +174,8 @@ export default function ContactsPage() {
             return (
               <div key={c.id} className="glass-card p-4 space-y-3">
 
-                {/* ── الصف الرئيسي ── */}
+                {/* الصف الرئيسي */}
                 <div className="flex items-center gap-3">
-                  {/* أفاتار */}
                   <div
                     className={`avatar w-13 h-13 text-xl ${ringCls}`}
                     style={{ width: 52, height: 52, background: avatarGrad(c.name) }}
@@ -158,12 +192,20 @@ export default function ContactsPage() {
                     </span>
                   </div>
 
-                  {/* الاسم والهاتف */}
                   <div className="flex-1 min-w-0">
                     <h3 className="font-black text-slate-900 text-base leading-tight truncate">{c.name}</h3>
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <Phone size={11} className="text-slate-400 shrink-0" />
-                      <p className="text-xs text-slate-500 font-semibold truncate">{c.phone || 'بدون هاتف'}</p>
+                    
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <p className="text-xs text-slate-500 font-semibold flex items-center gap-1">
+                        <Phone size={11} className="text-slate-400 shrink-0" />
+                        {c.phone || 'بدون هاتف'}
+                      </p>
+                      {c.location && (
+                        <p className="text-xs text-emerald-700 font-bold flex items-center gap-0.5 truncate bg-emerald-50 px-1.5 py-0.5 rounded">
+                          <MapPin size={10} className="shrink-0" />
+                          {c.location}
+                        </p>
+                      )}
                     </div>
                     {c.notes && <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">{c.notes}</p>}
                   </div>
@@ -171,19 +213,17 @@ export default function ContactsPage() {
                   {/* الرصيد */}
                   <div className="shrink-0">
                     {hasDebt && (
-                      <div className="text-center px-3 py-1.5 rounded-xl"
-                           style={{ background: 'hsl(351 83% 58% / 0.08)', border: '1px solid hsl(351 83% 58% / 0.2)' }}>
-                        <p className="text-[10px] font-black" style={{ color: 'hsl(351 83% 45%)' }}>عليه</p>
-                        <p className="font-black text-sm tabnum" style={{ color: 'hsl(351 83% 40%)' }}>
+                      <div className="text-center px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200">
+                        <p className="text-[10px] font-black text-rose-700">عليه لنا</p>
+                        <p className="font-black text-sm tabnum text-rose-800">
                           {fmt(c.balance)} <span className="text-[10px]">د.ج</span>
                         </p>
                       </div>
                     )}
                     {hasCredit && (
-                      <div className="text-center px-3 py-1.5 rounded-xl"
-                           style={{ background: 'hsl(221 83% 58% / 0.08)', border: '1px solid hsl(221 83% 58% / 0.2)' }}>
-                        <p className="text-[10px] font-black" style={{ color: 'hsl(221 83% 45%)' }}>له علينا</p>
-                        <p className="font-black text-sm tabnum" style={{ color: 'hsl(221 83% 40%)' }}>
+                      <div className="text-center px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200">
+                        <p className="text-[10px] font-black text-blue-700">له علينا</p>
+                        <p className="font-black text-sm tabnum text-blue-800">
                           {fmt(Math.abs(c.balance))} <span className="text-[10px]">د.ج</span>
                         </p>
                       </div>
@@ -192,43 +232,26 @@ export default function ContactsPage() {
                   </div>
                 </div>
 
-                {/* ── شريط دين بصري (إن وجد) ── */}
-                {(hasDebt || hasCredit) && (
-                  <div className="progress-bar">
-                    <div
-                      className="progress-bar-fill"
-                      style={{
-                        width: `${Math.min(100, (Math.abs(c.balance) / 10000) * 100)}%`,
-                        background: hasDebt ? 'var(--grad-rose)' : 'var(--grad-sky)',
-                      }}
-                    />
-                  </div>
-                )}
-
-                {/* ── أزرار التواصل ── */}
+                {/* أزرار التواصل */}
                 <div className="divider" />
                 <div className="flex gap-2">
                   {c.phone ? (
                     <>
                       <a href={`tel:${c.phone}`}
-                        className="flex-1 py-2.5 rounded-xl flex items-center justify-center gap-1.5 font-black text-xs touch-active"
-                        style={{ background: 'hsl(220 20% 94%)', color: 'hsl(220 20% 35%)' }}>
+                        className="flex-1 py-2.5 rounded-xl flex items-center justify-center gap-1.5 font-black text-xs touch-active bg-slate-100 text-slate-700">
                         <Phone size={14} strokeWidth={2.5} /> اتصال
                       </a>
                       <a
                         href={createWhatsAppLink(c.phone, generateAccountStatementText(c.name, c.balance, []))}
                         target="_blank" rel="noreferrer"
-                        className="flex-1 py-2.5 rounded-xl flex items-center justify-center gap-1.5 font-black text-xs touch-active text-white"
-                        style={{
-                          background: 'var(--grad-emerald)',
-                          boxShadow: '0 3px 10px hsl(158 64% 38% / 0.3)',
-                        }}>
+                        className="flex-1 py-2.5 rounded-xl flex items-center justify-center gap-1.5 font-black text-xs touch-active text-white shadow-sm"
+                        style={{ background: 'var(--grad-emerald)' }}>
                         <MessageCircle size={14} strokeWidth={2.5} /> واتساب
                       </a>
                     </>
                   ) : (
                     <p className="text-xs text-slate-400 text-center w-full py-2 font-semibold">
-                      📱 أضف رقم الهاتف للتواصل السريع
+                      📱 أضف رقم الهاتف للتواصل المباشر
                     </p>
                   )}
                 </div>
@@ -245,9 +268,8 @@ export default function ContactsPage() {
             <div className="modal-handle" />
             <div className="modal-header">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                     style={{ background: 'hsl(158 64% 38% / 0.12)' }}>
-                  <UserPlus size={18} style={{ color: 'hsl(158 64% 35%)' }} strokeWidth={2.5} />
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-emerald-100 text-emerald-700">
+                  <UserPlus size={18} strokeWidth={2.5} />
                 </div>
                 <div>
                   <h3 className="font-black text-slate-800 text-base">إضافة زبون أو مورد</h3>
@@ -267,12 +289,40 @@ export default function ContactsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">📱 رقم الهاتف (للواتساب والاتصال)</label>
-                <input type="tel" placeholder="مثال: 0550123456"
+                <label className="block text-xs font-black text-slate-600 mb-1.5">📱 رقم الهاتف</label>
+                <input type="tel" placeholder="0550123456"
                   value={phone} onChange={e => setPhone(e.target.value)} className="form-input" />
               </div>
 
-              {/* نوع الجهة — أزرار كبيرة */}
+              {/* 📍 حقل مكان المحل / العنوان (اختياري) */}
+              <div>
+                <label className="block text-xs font-black text-slate-600 mb-1.5">📍 مكان المحل / العنوان (اختياري)</label>
+                <input type="text" placeholder="مثال: السوق المركزي، المحل 14..."
+                  value={location} onChange={e => setLocation(e.target.value)} className="form-input" />
+              </div>
+
+              {/* 📷 رفع صورة الشخص من الكاميرا أو المعرض */}
+              <div>
+                <label className="block text-xs font-black text-slate-600 mb-1.5">📷 صورة الشخص / المحل</label>
+                <div className="flex items-center gap-3">
+                  <label htmlFor="contact-photo-upload" className="flex-1 py-3 px-3 border-2 border-dashed border-emerald-300 rounded-2xl bg-emerald-50/50 hover:bg-emerald-50 text-emerald-800 text-xs font-black flex items-center justify-center gap-2 cursor-pointer touch-active">
+                    <Camera className="w-4 h-4 text-emerald-600" />
+                    <span>التقاط أو اختيار صورة من المعرض</span>
+                  </label>
+                  <input
+                    id="contact-photo-upload"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageFileChange}
+                    className="hidden"
+                  />
+                  {photoUrl && (
+                    <img src={photoUrl} alt="معاينة" className="w-12 h-12 rounded-xl object-cover border border-emerald-300 shrink-0" />
+                  )}
+                </div>
+              </div>
+
+              {/* نوع الجهة */}
               <div>
                 <label className="block text-xs font-black text-slate-600 mb-2">نوع الجهة</label>
                 <div className="grid grid-cols-3 gap-2">
@@ -285,45 +335,60 @@ export default function ContactsPage() {
                       key={t.val}
                       type="button"
                       onClick={() => setType(t.val)}
-                      className="py-3.5 rounded-xl font-black text-xs flex flex-col items-center gap-1 transition-all border-2 touch-active"
+                      className="py-3 rounded-xl font-black text-xs flex flex-col items-center gap-1 border-2 touch-active"
                       style={
                         type === t.val
-                          ? { background: t.grad, color: 'white', borderColor: 'transparent', boxShadow: '0 4px 14px rgba(0,0,0,0.2)' }
+                          ? { background: t.grad, color: 'white', borderColor: 'transparent' }
                           : { background: 'hsl(220 20% 96%)', color: 'hsl(220 20% 45%)', borderColor: 'hsl(220 15% 88%)' }
                       }
                     >
-                      <span className="text-xl">{t.emoji}</span>
+                      <span className="text-lg">{t.emoji}</span>
                       {t.label}
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">
-                  💰 الرصيد الابتدائي (اختياري)
-                </label>
-                <input type="number" placeholder="0"
-                  value={initialBalance} onChange={e => setInitialBalance(+e.target.value)}
-                  className="form-input tabnum" />
-                <p className="text-[11px] text-slate-400 mt-1">موجب = دين عليه | سالب = له علينا | 0 = لا يوجد</p>
-              </div>
+              {/* 🟢/🔴 فصل الرصيد الابتدائي دون إشارة ناقص */}
+              <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                <label className="block text-xs font-black text-slate-700">💰 الرصيد الابتدائي (إن وجد)</label>
+                
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setBalanceDirection('customer_owes')}
+                    className={`py-2 px-2 rounded-xl text-xs font-black border transition-all ${balanceDirection === 'customer_owes' ? 'bg-rose-600 text-white border-transparent' : 'bg-white text-slate-600 border-slate-200'}`}
+                  >
+                    🟢 عليه لنا (نطالبه)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBalanceDirection('we_owe_customer')}
+                    className={`py-2 px-2 rounded-xl text-xs font-black border transition-all ${balanceDirection === 'we_owe_customer' ? 'bg-blue-600 text-white border-transparent' : 'bg-white text-slate-600 border-slate-200'}`}
+                  >
+                    🔴 له علينا (يطالبنا)
+                  </button>
+                </div>
 
-              <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">🖼️ رابط الصورة الشخصية (اختياري)</label>
-                <input type="url" placeholder="https://..."
-                  value={photoUrl} onChange={e => setPhotoUrl(e.target.value)} className="form-input" />
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="المبلغ (د.ج)"
+                  value={initialBalance || ''}
+                  onChange={e => setInitialBalance(Math.abs(+e.target.value))}
+                  className="form-input tabnum text-center font-black text-lg mt-1"
+                />
               </div>
 
               <div>
                 <label className="block text-xs font-black text-slate-600 mb-1.5">📝 ملاحظات</label>
-                <textarea rows={2} placeholder="العنوان، نوع البضائع..."
+                <textarea rows={2} placeholder="تفاصيل إضافية..."
                   value={notes} onChange={e => setNotes(e.target.value)} className="form-input" />
               </div>
 
-              <button type="submit" className="btn btn-primary w-full py-4 text-base">
+              <button type="submit" className="btn btn-primary w-full py-4 text-base shadow-md">
                 <UserPlus size={18} strokeWidth={2.5} />
-                حفظ الجهة الجديدة 💾
+                حفظ الشخص الجديد 💾
               </button>
             </form>
           </div>

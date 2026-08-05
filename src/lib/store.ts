@@ -3,6 +3,7 @@ export interface Contact {
   name: string;
   phone: string;
   photo_url?: string;
+  location?: string; // مكان المحل / العنوان (اختياري)
   type: 'customer' | 'supplier' | 'both';
   notes?: string;
   balance: number; // موجب = دين لنا على الزبون | سالب = مستحق علينا للمورد

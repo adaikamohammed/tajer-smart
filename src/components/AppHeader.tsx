@@ -2,28 +2,25 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { getLocalData, setLocalData } from '@/lib/store';
-import { Download, User, LogOut } from 'lucide-react';
+import { toast } from '@/components/Toast';
+import { Download, LogOut, ShieldCheck } from 'lucide-react';
 
 export default function AppHeader() {
   const pathname = usePathname();
+  const router = useRouter();
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
-    // جلب بيانات التاجر
     const loggedUser = getLocalData('tajer_smart_user', null);
-    if (!loggedUser) {
-      // إيقاف التاجر الافتراضي شكيمة فوزي
-      const defaultMerchant = { name: 'شكيمة فوزي', email: 'chala.fowzi@tajer.dz', role: 'تاجر متنقل' };
-      setLocalData('tajer_smart_user', defaultMerchant);
-      setUser(defaultMerchant);
-    } else {
+    if (loggedUser) {
       setUser(loggedUser);
     }
+  }, [pathname]);
 
-    // التقاط حدث تثبيت PWA
+  useEffect(() => {
     const handleBeforeInstall = (e: any) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -42,8 +39,15 @@ export default function AppHeader() {
         }
       });
     } else {
-      alert('لتثبيت التطبيق على هاتف الخاص بك:\n1. اضغط خيارات المتصفح (⋮ أو 📤).\n2. اختر "إضافة إلى الشاشة الرئيسية" (Add to Home Screen).');
+      alert('لتثبيت التطبيق على الشاشة الرئيسية للهاتف:\n1. اضغط خيارات المتصفح (⋮ أو 📤).\n2. اختر "إضافة إلى الشاشة الرئيسية" (Add to Home Screen).');
     }
+  };
+
+  const handleLogout = () => {
+    setLocalData('tajer_smart_logged_in', false);
+    setLocalData('tajer_smart_user', null);
+    toast('تم تسجيل الخروج بنجاح 👋', 'info');
+    router.push('/login');
   };
 
   if (pathname === '/login') return null;
@@ -54,13 +58,16 @@ export default function AppHeader() {
 
         {/* الشعار واسم التاجر */}
         <div className="flex items-center gap-2.5">
-          <Link href="/login" className="relative group">
+          <div className="relative">
             <img
               src="/logo.jpg"
-              alt="التاجر الذكي"
-              className="w-10 h-10 rounded-2xl object-cover border border-white/30 shadow-md group-hover:scale-105 transition-transform"
+              alt="التاجر المتنقل"
+              className="w-10 h-10 rounded-2xl object-cover border border-white/30 shadow-md"
             />
-          </Link>
+            <span className="absolute -bottom-0.5 -right-0.5 bg-emerald-500 text-white p-0.5 rounded-full">
+              <ShieldCheck className="w-3 h-3" />
+            </span>
+          </div>
 
           <div>
             <h1 className="font-black text-base leading-tight tracking-tight text-white flex items-center gap-1.5">
@@ -72,15 +79,23 @@ export default function AppHeader() {
           </div>
         </div>
 
-        {/* أزرار التثبيت وتغيير التاجر */}
+        {/* أزرار التثبيت الخروج */}
         <div className="flex items-center gap-2">
           <button
             onClick={handleInstallPWA}
-            className="flex items-center gap-1.5 text-xs font-black px-2.5 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white border border-white/25 touch-active shadow-sm"
+            className="flex items-center gap-1 text-xs font-black px-2.5 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white border border-white/25 touch-active shadow-sm"
             title="تثبيت التطبيق على الشاشة الرئيسية للهاتف"
           >
             <Download className="w-3.5 h-3.5 animate-bounce" />
             <span>تثبيت التطبيق 📱</span>
+          </button>
+
+          <button
+            onClick={handleLogout}
+            className="p-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-white border border-rose-400/30 touch-active"
+            title="تسجيل الخروج"
+          >
+            <LogOut className="w-4 h-4" />
           </button>
         </div>
 

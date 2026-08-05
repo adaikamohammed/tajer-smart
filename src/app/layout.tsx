@@ -2,6 +2,7 @@ import './globals.css';
 import type { Metadata, Viewport } from 'next';
 import BottomNav from '@/components/BottomNav';
 import AppHeader from '@/components/AppHeader';
+import AuthGuard from '@/components/AuthGuard';
 import { ToastProvider } from '@/components/Toast';
 
 export const viewport: Viewport = {
@@ -13,13 +14,13 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: 'التاجر الذكي — التاجر المتنقل',
-  description: 'تطبيق هاتف ذكي بسيط ومترابط لإدارة المخزن والديون والموردين والزبائن للتاجر شكيمة فوزي',
+  title: 'التاجر المتنقل — فوزي شكيمة',
+  description: 'تطبيق هاتف ذكي بسيط ومترابط لإدارة المخزن والديون والموردين والزبائن للتاجر المتنقل فوزي شكيمة',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'التاجر الذكي',
+    title: 'التاجر المتنقل',
   },
 };
 
@@ -40,11 +41,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* ─── Premium Interactive Header ─── */}
         <AppHeader />
 
-        {/* ─── Page Content ─── */}
+        {/* ─── Page Content with Auth Guard ─── */}
         <main className="max-w-md mx-auto px-3.5 py-4">
-          <div className="page-container">
-            {children}
-          </div>
+          <AuthGuard>
+            <div className="page-container">
+              {children}
+            </div>
+          </AuthGuard>
         </main>
 
         {/* ─── Toast Notifications ─── */}

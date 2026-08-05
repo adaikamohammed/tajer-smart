@@ -5,13 +5,11 @@ import { getLocalData, setLocalData, Product } from '@/lib/store';
 import { toast } from '@/components/Toast';
 import {
   Package, Plus, Search, X,
-  Minus, AlertTriangle, Clock,
-  TrendingUp, BadgeCheck,
+  Minus, Camera, Clock, BadgeCheck
 } from 'lucide-react';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
 
-/* ──── حالة الصلاحية ──── */
 function getExpiryStatus(d?: string) {
   if (!d) return null;
   const days = Math.ceil((new Date(d).getTime() - Date.now()) / 86_400_000);
@@ -20,7 +18,6 @@ function getExpiryStatus(d?: string) {
   return              { label: `صالح حتى ${d}`,         cls: 'badge badge-success',  cardCls: 'ok',      barCls: '' };
 }
 
-/* ──── Emoji تلقائي للمنتج ──── */
 function autoEmoji(name: string) {
   const n = name.toLowerCase();
   if (n.includes('زيت'))      return '🫒';
@@ -58,6 +55,26 @@ export default function InventoryPage() {
   useEffect(() => {
     setProducts(getLocalData('tajer_smart_products_v1', []));
   }, []);
+
+  /* 📷 رفع صورة المنتج من الكاميرا أو المعرض */
+  const handleProductImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast('حجم الصورة كبير جداً، اختر صورة أقل من 5 ميجابايت', 'warning');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        setPhotoUrl(event.target.result as string);
+        toast('تم رفع صورة المنتج بنجاح! 📷', 'success');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const sorted = useMemo(() => {
     const q = searchQuery.toLowerCase();
@@ -114,20 +131,14 @@ export default function InventoryPage() {
   return (
     <div className="space-y-4">
 
-      {/* ── لوحة ملخص المخزن ── */}
+      {/* ── ملخص المخزن ── */}
       <div className="grid grid-cols-3 gap-2">
         {[
           { label: 'منتج',         val: products.length, color: 'hsl(158 64% 38%)', bg: 'hsl(158 64% 38% / 0.08)' },
-          { label: 'نقص المخزون',  val: lowCount,        color: 'hsl(28 80% 40%)',  bg: 'hsl(38 92% 50% / 0.08)', warn: lowCount > 0 },
-          { label: 'منتهي الصلاح', val: expiredCount,    color: 'hsl(351 83% 52%)', bg: 'hsl(351 83% 58% / 0.08)', warn: expiredCount > 0 },
+          { label: 'نقص المخزون',  val: lowCount,        color: 'hsl(28 80% 40%)',  bg: 'hsl(38 92% 50% / 0.08)' },
+          { label: 'منتهي الصلاح', val: expiredCount,    color: 'hsl(351 83% 52%)', bg: 'hsl(351 83% 58% / 0.08)' },
         ].map(s => (
-          <div key={s.label}
-            className="rounded-xl p-3 text-center"
-            style={{
-              background: s.bg,
-              border: `1px solid ${s.color}30`,
-            }}
-          >
+          <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: s.bg, border: `1px solid ${s.color}30` }}>
             <p className="font-black text-2xl tabnum leading-none" style={{ color: s.color }}>{s.val}</p>
             <p className="text-[10px] font-bold mt-1" style={{ color: s.color, opacity: 0.75 }}>{s.label}</p>
           </div>
@@ -164,23 +175,13 @@ export default function InventoryPage() {
 
             return (
               <div key={p.id} className={`product-card ${cardState}`}>
-                {/* الصف الأول */}
                 <div className="flex items-start gap-3">
-                  {/* صورة / Emoji */}
-                  <div
-                    className="w-14 h-14 rounded-xl flex items-center justify-center text-2xl shrink-0 overflow-hidden"
-                    style={{
-                      background: cardState === 'expired' ? 'hsl(351 83% 58% / 0.08)'
-                                : cardState === 'low'     ? 'hsl(38 92% 50% / 0.08)'
-                                : 'hsl(158 64% 38% / 0.06)',
-                    }}
-                  >
+                  <div className="w-14 h-14 rounded-xl flex items-center justify-center text-2xl shrink-0 overflow-hidden bg-slate-100">
                     {p.photo_url
                       ? <img src={p.photo_url} alt={p.name} className="w-full h-full object-cover" />
                       : autoEmoji(p.name)}
                   </div>
 
-                  {/* المعلومات */}
                   <div className="flex-1 min-w-0">
                     <h3 className="font-black text-slate-900 text-base leading-tight truncate">{p.name}</h3>
                     <div className="flex flex-wrap gap-1 mt-1.5">
@@ -194,72 +195,40 @@ export default function InventoryPage() {
                     </div>
                   </div>
 
-                  {/* الكمية */}
-                  <div
-                    className="rounded-xl px-3 py-2 text-center shrink-0"
-                    style={{
-                      background: cardState === 'expired' ? 'hsl(351 83% 58% / 0.1)'
-                                : isLow                  ? 'hsl(38 92% 50% / 0.1)'
-                                : 'hsl(158 64% 38% / 0.08)',
-                      border: `1px solid ${cardState === 'expired' ? 'hsl(351 83% 58% / 0.2)' : isLow ? 'hsl(38 92% 50% / 0.2)' : 'hsl(158 64% 38% / 0.15)'}`,
-                    }}
-                  >
+                  <div className="rounded-xl px-3 py-2 text-center shrink-0 bg-emerald-50 border border-emerald-200">
                     <p className="text-[10px] font-bold text-slate-500">المخزون</p>
-                    <p
-                      className="font-black text-xl tabnum leading-tight"
-                      style={{
-                        color: cardState === 'expired' ? 'hsl(351 83% 52%)' : isLow ? 'hsl(28 80% 38%)' : 'hsl(158 64% 32%)',
-                      }}
-                    >
+                    <p className="font-black text-xl tabnum text-emerald-800 leading-tight">
                       {p.stock_quantity}
                     </p>
                   </div>
                 </div>
 
-                {/* شريط تقدم المخزون */}
                 <div className="progress-bar my-2.5">
-                  <div
-                    className={`progress-bar-fill ${expiry?.barCls ?? (isLow ? 'warning' : '')}`}
-                    style={{ width: `${stockPct}%` }}
-                  />
+                  <div className={`progress-bar-fill ${expiry?.barCls ?? (isLow ? 'warning' : '')}`} style={{ width: `${stockPct}%` }} />
                 </div>
 
-                {/* الأسعار + أزرار الضبط */}
                 <div className="flex items-center gap-3">
-                  {/* الأسعار */}
                   <div className="flex-1 grid grid-cols-3 gap-1.5">
-                    <div className="rounded-lg p-1.5 text-center" style={{ background: 'hsl(220 20% 96%)' }}>
+                    <div className="rounded-lg p-1.5 text-center bg-slate-100">
                       <p className="text-[10px] text-slate-400 font-semibold">جملة</p>
                       <p className="text-xs font-black text-slate-700 tabnum">{fmt(p.cost_price)}</p>
                     </div>
-                    <div className="rounded-lg p-1.5 text-center" style={{ background: 'hsl(158 64% 38% / 0.06)' }}>
-                      <p className="text-[10px] font-semibold" style={{ color: 'hsl(158 64% 40%)' }}>تجزئة</p>
-                      <p className="text-xs font-black tabnum" style={{ color: 'hsl(158 64% 32%)' }}>{fmt(p.retail_price)}</p>
+                    <div className="rounded-lg p-1.5 text-center bg-emerald-50">
+                      <p className="text-[10px] font-semibold text-emerald-600">تجزئة</p>
+                      <p className="text-xs font-black tabnum text-emerald-800">{fmt(p.retail_price)}</p>
                     </div>
-                    <div className="rounded-lg p-1.5 text-center" style={{ background: 'hsl(239 84% 67% / 0.06)' }}>
-                      <p className="text-[10px] font-semibold" style={{ color: 'hsl(239 84% 60%)' }}>ربح</p>
-                      <p className="text-xs font-black tabnum" style={{ color: 'hsl(239 84% 52%)' }}>+{pct}%</p>
+                    <div className="rounded-lg p-1.5 text-center bg-indigo-50">
+                      <p className="text-[10px] font-semibold text-indigo-600">ربح</p>
+                      <p className="text-xs font-black tabnum text-indigo-800">+{pct}%</p>
                     </div>
                   </div>
 
-                  {/* أزرار ± */}
                   <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      onClick={() => adjust(p.id, -1)}
-                      className="w-9 h-9 rounded-xl flex items-center justify-center touch-active"
-                      style={{ background: 'hsl(220 20% 93%)', color: 'hsl(220 20% 35%)' }}
-                    >
+                    <button onClick={() => adjust(p.id, -1)} className="w-9 h-9 rounded-xl flex items-center justify-center touch-active bg-slate-200 text-slate-700 font-black">
                       <Minus size={16} strokeWidth={2.5} />
                     </button>
                     <span className="w-7 text-center font-black text-sm text-slate-800 tabnum">{p.stock_quantity}</span>
-                    <button
-                      onClick={() => adjust(p.id, 1)}
-                      className="w-9 h-9 rounded-xl flex items-center justify-center touch-active text-white"
-                      style={{
-                        background: 'var(--grad-emerald)',
-                        boxShadow: '0 3px 10px hsl(158 64% 38% / 0.3)',
-                      }}
-                    >
+                    <button onClick={() => adjust(p.id, 1)} className="w-9 h-9 rounded-xl flex items-center justify-center touch-active text-white font-black shadow-sm" style={{ background: 'var(--grad-emerald)' }}>
                       <Plus size={16} strokeWidth={2.5} />
                     </button>
                   </div>
@@ -277,12 +246,11 @@ export default function InventoryPage() {
             <div className="modal-handle" />
             <div className="modal-header">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                     style={{ background: 'hsl(239 84% 67% / 0.12)' }}>
-                  <Package size={18} style={{ color: 'hsl(239 84% 60%)' }} strokeWidth={2.5} />
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-indigo-100 text-indigo-700">
+                  <Package size={18} strokeWidth={2.5} />
                 </div>
                 <div>
-                  <h3 className="font-black text-slate-800 text-base leading-tight">إضافة منتج جديد</h3>
+                  <h3 className="font-black text-slate-800 text-base">إضافة منتج جديد</h3>
                   <p className="text-[11px] text-slate-400 font-semibold">أدخل تفاصيل المنتج</p>
                 </div>
               </div>
@@ -298,24 +266,43 @@ export default function InventoryPage() {
                   value={name} onChange={e => setName(e.target.value)} className="form-input" />
               </div>
 
+              {/* 📷 صورة المنتج من المعرض أو الكاميرا */}
+              <div>
+                <label className="block text-xs font-black text-slate-600 mb-1.5">📷 صورة المنتج</label>
+                <div className="flex items-center gap-3">
+                  <label htmlFor="product-photo-upload" className="flex-1 py-3 px-3 border-2 border-dashed border-indigo-300 rounded-2xl bg-indigo-50/50 hover:bg-indigo-50 text-indigo-800 text-xs font-black flex items-center justify-center gap-2 cursor-pointer touch-active">
+                    <Camera className="w-4 h-4 text-indigo-600" />
+                    <span>التقاط أو اختيار صورة من المعرض</span>
+                  </label>
+                  <input
+                    id="product-photo-upload"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleProductImageChange}
+                    className="hidden"
+                  />
+                  {photoUrl && (
+                    <img src={photoUrl} alt="معاينة" className="w-12 h-12 rounded-xl object-cover border border-indigo-300 shrink-0" />
+                  )}
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-black text-slate-600 mb-1.5">سعر الجملة (د.ج) *</label>
                   <input type="number" required min="0" placeholder="800"
-                    value={costPrice} onChange={e => setCostPrice(+e.target.value)} className="form-input tabnum" />
+                    value={costPrice || ''} onChange={e => setCostPrice(+e.target.value)} className="form-input tabnum" />
                 </div>
                 <div>
                   <label className="block text-xs font-black text-slate-600 mb-1.5">سعر التجزئة (د.ج) *</label>
                   <input type="number" required min="0" placeholder="1,100"
-                    value={retailPrice} onChange={e => setRetailPrice(+e.target.value)}
-                    className="form-input tabnum" style={{ color: 'hsl(158 64% 35%)' }} />
+                    value={retailPrice || ''} onChange={e => setRetailPrice(+e.target.value)}
+                    className="form-input tabnum text-emerald-700" />
                 </div>
               </div>
 
-              {/* معاينة الربح */}
               {retailPrice > costPrice && (
-                <div className="flex items-center justify-between p-3 rounded-xl"
-                     style={{ background: 'hsl(158 64% 38% / 0.06)', border: '1px solid hsl(158 64% 38% / 0.15)' }}>
+                <div className="flex items-center justify-between p-3 rounded-2xl bg-emerald-50 border border-emerald-200">
                   <span className="text-xs font-bold text-emerald-700">صافي الربح للحبة:</span>
                   <span className="font-black text-emerald-800 tabnum text-sm">
                     +{fmt(retailPrice - costPrice)} د.ج ({profitPct(costPrice, retailPrice)}%)
@@ -331,7 +318,7 @@ export default function InventoryPage() {
                     className="form-input text-center font-black text-lg tabnum" />
                 </div>
                 <div>
-                  <label className="block text-xs font-black text-slate-600 mb-1.5">حد التنبيه</label>
+                  <label className="block text-xs font-black text-slate-600 mb-1.5">حد التنبيه بالنقص</label>
                   <input type="number" min="1"
                     value={minStockAlert} onChange={e => setMinStockAlert(+e.target.value)}
                     className="form-input text-center tabnum" />
@@ -343,12 +330,7 @@ export default function InventoryPage() {
                 <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} className="form-input" />
               </div>
 
-              <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">🖼️ رابط صورة المنتج (اختياري)</label>
-                <input type="url" placeholder="https://..." value={photoUrl} onChange={e => setPhotoUrl(e.target.value)} className="form-input" />
-              </div>
-
-              <button type="submit" className="btn btn-primary w-full py-4 text-base">
+              <button type="submit" className="btn btn-primary w-full py-4 text-base shadow-md">
                 <BadgeCheck size={18} strokeWidth={2.5} />
                 حفظ المنتج في المخزن 📦
               </button>
