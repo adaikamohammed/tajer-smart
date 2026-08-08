@@ -42,7 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AppHeader />
 
         {/* ─── Page Content with Auth Guard ─── */}
-        <main className="max-w-md mx-auto px-3.5 py-4">
+        <main className="max-w-md md:max-w-3xl lg:max-w-5xl mx-auto px-3.5 sm:px-6 py-4 md:py-6">
           <AuthGuard>
             <div className="page-container">
               {children}

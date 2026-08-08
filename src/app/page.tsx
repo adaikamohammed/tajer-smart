@@ -287,8 +287,8 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* ══ بطاقات الإجماليات المالية — مربوطة مباشرة بالصفحات ══ */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* ══ بطاقات الإجماليات المالية — مربوطة مباشرة بالصفحات (متجاوبة مع التابلات) ══ */}
+      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3">
         <Link href="/debts?tab=to_us" className="stat-card emerald block">
           <div className="flex items-center justify-between mb-2">
             <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-emerald-500/15">

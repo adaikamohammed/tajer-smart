@@ -500,8 +500,8 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* ── قائمة المنتجات مرتبة ── */}
-      <div className="space-y-3">
+      {/* ── قائمة المنتجات مرتبة في شبكة متجاوبة مع التابلات والكمبيوتر ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {sorted.length === 0 ? (
           <div className="empty-state">
             <Package size={40} className="opacity-25" />

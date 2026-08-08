@@ -70,7 +70,7 @@ export default function AppHeader() {
 
   return (
     <header className="app-header" role="banner">
-      <div className="max-w-md mx-auto flex items-center justify-between">
+      <div className="max-w-md md:max-w-3xl lg:max-w-5xl mx-auto flex items-center justify-between">
 
         {/* الشعار واسم التاجر */}
         <div className="flex items-center gap-2.5">
