@@ -4,27 +4,29 @@ import { Contact, Product, Transaction, DebtPayment, getLocalData, setLocalData 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+// التحقق من صحة رابط Supabase لعدم إظهار أخطاء في المتصفح عند عدم وجود مشروع فعلي
+export const isSupabaseConfigured = Boolean(
+  supabaseUrl &&
+  supabaseAnonKey &&
+  supabaseUrl.startsWith('https://') &&
+  !supabaseUrl.includes('fcflbeyffvcepgmscdc') // استبعاد النطاق الوهمي التجريبي
+);
 
 export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
 
 // -------------------------------------------------------------
-// 🔄 خدمات مزامنة Supabase مع دعم النمط الهجين (Hybrid Mode)
+// 🔄 خدمات مزامنة Supabase مع التعامل الصامت مع الأخطاء
 // -------------------------------------------------------------
 
 export async function fetchContactsFromSupabase(): Promise<Contact[] | null> {
   if (!supabase) return null;
   try {
     const { data, error } = await supabase.from('contacts').select('*').order('created_at', { ascending: false });
-    if (error) {
-      console.error('Supabase fetch contacts error:', error);
-      return null;
-    }
+    if (error) return null;
     return data as Contact[];
   } catch (err) {
-    console.error('Supabase fetch contacts exception:', err);
     return null;
   }
 }
@@ -33,10 +35,8 @@ export async function saveContactToSupabase(contact: Contact): Promise<boolean> 
   if (!supabase) return false;
   try {
     const { error } = await supabase.from('contacts').upsert(contact);
-    if (error) console.error('Supabase upsert contact error:', error);
     return !error;
   } catch (err) {
-    console.error('Supabase upsert contact exception:', err);
     return false;
   }
 }
@@ -45,7 +45,6 @@ export async function saveAllContactsToSupabase(contacts: Contact[]): Promise<bo
   if (!supabase || contacts.length === 0) return false;
   try {
     const { error } = await supabase.from('contacts').upsert(contacts);
-    if (error) console.error('Supabase batch contacts upsert error:', error);
     return !error;
   } catch (err) {
     return false;
@@ -56,13 +55,9 @@ export async function fetchProductsFromSupabase(): Promise<Product[] | null> {
   if (!supabase) return null;
   try {
     const { data, error } = await supabase.from('products').select('*').order('created_at', { ascending: false });
-    if (error) {
-      console.error('Supabase fetch products error:', error);
-      return null;
-    }
+    if (error) return null;
     return data as Product[];
   } catch (err) {
-    console.error('Supabase fetch products exception:', err);
     return null;
   }
 }
@@ -71,10 +66,8 @@ export async function saveProductToSupabase(product: Product): Promise<boolean> 
   if (!supabase) return false;
   try {
     const { error } = await supabase.from('products').upsert(product);
-    if (error) console.error('Supabase upsert product error:', error);
     return !error;
   } catch (err) {
-    console.error('Supabase upsert product exception:', err);
     return false;
   }
 }
@@ -83,7 +76,6 @@ export async function saveAllProductsToSupabase(products: Product[]): Promise<bo
   if (!supabase || products.length === 0) return false;
   try {
     const { error } = await supabase.from('products').upsert(products);
-    if (error) console.error('Supabase batch products upsert error:', error);
     return !error;
   } catch (err) {
     return false;
@@ -105,7 +97,6 @@ export async function fetchTransactionsFromSupabase(): Promise<Transaction[] | n
 
     return transactionsWithItems;
   } catch (err) {
-    console.error('Supabase fetch transactions exception:', err);
     return null;
   }
 }
@@ -115,10 +106,7 @@ export async function saveTransactionToSupabase(tx: Transaction): Promise<boolea
   try {
     const { items, ...txData } = tx;
     const { error: txError } = await supabase.from('transactions').upsert(txData);
-    if (txError) {
-      console.error('Supabase transaction upsert error:', txError);
-      return false;
-    }
+    if (txError) return false;
 
     if (items && items.length > 0) {
       const dbItems = items.map(item => ({
@@ -133,7 +121,6 @@ export async function saveTransactionToSupabase(tx: Transaction): Promise<boolea
     }
     return true;
   } catch (err) {
-    console.error('Supabase save transaction exception:', err);
     return false;
   }
 }
@@ -150,7 +137,7 @@ export async function syncFullStoreWithCloud(): Promise<{
   }
 
   try {
-    // 1. أولاً رفع البيانات المحلية الموجودة للسحابة لعدم ضياع أي إضافة جديدة
+    // 1. رفـع البيانات المحلية السابقة
     const localContacts: Contact[]     = getLocalData('tajer_smart_contacts_v1', []);
     const localProducts: Product[]     = getLocalData('tajer_smart_products_v1', []);
     const localTx:       Transaction[] = getLocalData('tajer_smart_transactions_v1', []);
@@ -161,7 +148,7 @@ export async function syncFullStoreWithCloud(): Promise<{
       await saveTransactionToSupabase(tx);
     }
 
-    // 2. ثانياً جلب أحدث البيانات من السحابة وتحديث التخزين المحلي بها
+    // 2. جـلـب أحدث بيانات السحابة
     const cloudContacts = await fetchContactsFromSupabase();
     const cloudProducts = await fetchProductsFromSupabase();
     const cloudTx       = await fetchTransactionsFromSupabase();
@@ -183,7 +170,43 @@ export async function syncFullStoreWithCloud(): Promise<{
       transactionsCount: cloudTx?.length || localTx.length,
     };
   } catch (err) {
-    console.error('Sync error:', err);
     return { success: false, contactsCount: 0, productsCount: 0, transactionsCount: 0 };
+  }
+}
+
+// -------------------------------------------------------------
+// 📦 تصدير واستعادة الملفات الاحتياطية (JSON Backup & Restore)
+// -------------------------------------------------------------
+
+export function exportStoreBackupJSON(): string {
+  const data = {
+    contacts:     getLocalData('tajer_smart_contacts_v1', []),
+    products:     getLocalData('tajer_smart_products_v1', []),
+    transactions: getLocalData('tajer_smart_transactions_v1', []),
+    categories:   getLocalData('tajer_smart_product_categories_v1', []),
+    exported_at:  new Date().toISOString(),
+    app:          'التاجر المتنقل',
+  };
+  return JSON.stringify(data, null, 2);
+}
+
+export function importStoreBackupJSON(jsonStr: string): boolean {
+  try {
+    const data = JSON.parse(jsonStr);
+    if (data.contacts && Array.isArray(data.contacts)) {
+      setLocalData('tajer_smart_contacts_v1', data.contacts);
+    }
+    if (data.products && Array.isArray(data.products)) {
+      setLocalData('tajer_smart_products_v1', data.products);
+    }
+    if (data.transactions && Array.isArray(data.transactions)) {
+      setLocalData('tajer_smart_transactions_v1', data.transactions);
+    }
+    if (data.categories && Array.isArray(data.categories)) {
+      setLocalData('tajer_smart_product_categories_v1', data.categories);
+    }
+    return true;
+  } catch (e) {
+    return false;
   }
 }

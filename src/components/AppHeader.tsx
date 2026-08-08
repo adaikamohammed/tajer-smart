@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { getLocalData, setLocalData } from '@/lib/store';
 import { toast } from '@/components/Toast';
-import { Download, LogOut, ShieldCheck, X, RefreshCw } from 'lucide-react';
-import { syncFullStoreWithCloud } from '@/lib/supabase';
+import { Download, LogOut, ShieldCheck, X, RefreshCw, Upload, FileJson } from 'lucide-react';
+import { syncFullStoreWithCloud, exportStoreBackupJSON, importStoreBackupJSON } from '@/lib/supabase';
 
 export default function AppHeader() {
   const pathname = usePathname();
@@ -80,6 +80,37 @@ export default function AppHeader() {
       setIsSyncing(false);
     }
   };
+  const handleExportBackup = () => {
+    try {
+      const json = exportStoreBackupJSON();
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `نسخة_احتياطية_التاجر_المتنقل_${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      toast('📦 تم تصدير نسخة احتياطية كاملة لبياناتك بنجاح!', 'success');
+    } catch (e) {
+      toast('❌ تعذر تصدير النسخة الاحتياطية', 'error');
+    }
+  };
+
+  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      const ok = importStoreBackupJSON(content);
+      if (ok) {
+        toast('✅ تم استعادة بيانات المحل بنجاح! جارٍ تحديث الصفحة...', 'success');
+        setTimeout(() => window.location.reload(), 1000);
+      } else {
+        toast('❌ الملف المرفق غير صالح كنسخة احتياطية', 'error');
+      }
+    };
+    reader.readAsText(file);
+  };
 
   const handleLogout = () => {
     setLocalData('tajer_smart_logged_in', false);
@@ -117,8 +148,26 @@ export default function AppHeader() {
           </div>
         </div>
 
-        {/* أزرار التثبيت والمزامنة السحابية والخروج */}
-        <div className="flex items-center gap-2">
+        {/* أزرار التثبيت والمزامنة السحابية وتصدير/استعادة البيانات والخروج */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <button
+            onClick={handleExportBackup}
+            className="p-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/20 touch-active text-xs font-bold flex items-center gap-1"
+            title="تصدير نسخة احتياطية لبيانات الأشخاص والمنتجات والعمليات لحفظها أو نقلها لهاتف آخر"
+          >
+            <FileJson className="w-4 h-4 text-amber-300" />
+            <span className="hidden md:inline">تصدير بيانات 📦</span>
+          </button>
+
+          <label
+            className="p-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white border border-white/20 touch-active text-xs font-bold flex items-center gap-1 cursor-pointer"
+            title="استعادة بيانات المحل من ملف نسخة احتياطية سابق"
+          >
+            <Upload className="w-4 h-4 text-emerald-300" />
+            <span className="hidden md:inline">استعادة 📥</span>
+            <input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
+          </label>
+
           <button
             onClick={handleManualSync}
             disabled={isSyncing}
