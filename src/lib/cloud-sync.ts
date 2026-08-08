@@ -1,45 +1,38 @@
 import { Contact, Product, Transaction, getLocalData, setLocalData } from './store';
 
 const DELETED_KEYS = {
-  CONTACTS: 'tajer_deleted_contacts_v1',
-  PRODUCTS: 'tajer_deleted_products_v1',
+  CONTACTS:     'tajer_deleted_contacts_v1',
+  PRODUCTS:     'tajer_deleted_products_v1',
   TRANSACTIONS: 'tajer_deleted_transactions_v1',
 };
 
+// ─── طوابير الحذف المحلية ────────────────────────────────────────────────
 export function queueDeletedContact(id: string) {
-  const existing = getLocalData<string[]>(DELETED_KEYS.CONTACTS, []);
-  if (!existing.includes(id)) {
-    setLocalData(DELETED_KEYS.CONTACTS, [...existing, id]);
-  }
+  const q = getLocalData<string[]>(DELETED_KEYS.CONTACTS, []);
+  if (!q.includes(id)) setLocalData(DELETED_KEYS.CONTACTS, [...q, id]);
 }
-
 export function queueDeletedProduct(id: string) {
-  const existing = getLocalData<string[]>(DELETED_KEYS.PRODUCTS, []);
-  if (!existing.includes(id)) {
-    setLocalData(DELETED_KEYS.PRODUCTS, [...existing, id]);
-  }
+  const q = getLocalData<string[]>(DELETED_KEYS.PRODUCTS, []);
+  if (!q.includes(id)) setLocalData(DELETED_KEYS.PRODUCTS, [...q, id]);
 }
-
 export function queueDeletedTransaction(id: string) {
-  const existing = getLocalData<string[]>(DELETED_KEYS.TRANSACTIONS, []);
-  if (!existing.includes(id)) {
-    setLocalData(DELETED_KEYS.TRANSACTIONS, [...existing, id]);
-  }
+  const q = getLocalData<string[]>(DELETED_KEYS.TRANSACTIONS, []);
+  if (!q.includes(id)) setLocalData(DELETED_KEYS.TRANSACTIONS, [...q, id]);
 }
 
-type SyncChangeCallback = () => void;
-const changeSubscribers: Set<SyncChangeCallback> = new Set();
-
-export function subscribeToCloudChanges(callback: SyncChangeCallback): () => void {
-  changeSubscribers.add(callback);
-  return () => changeSubscribers.delete(callback);
+// ─── نظام الإشعارات للصفحات المفتوحة ────────────────────────────────────
+type SyncCb = () => void;
+const subs: Set<SyncCb> = new Set();
+export function subscribeToCloudChanges(cb: SyncCb): () => void {
+  subs.add(cb);
+  return () => subs.delete(cb);
+}
+function notifySubs() {
+  subs.forEach(cb => { try { cb(); } catch (_) {} });
 }
 
-function notifySubscribers() {
-  changeSubscribers.forEach(cb => {
-    try { cb(); } catch (e) {}
-  });
-}
+// ─── حلقة مزامنة واحدة في المرة (لا تعارض) ─────────────────────────────
+let syncInProgress = false;
 
 export async function syncStoreWithVercelCloud(): Promise<{
   success: boolean;
@@ -49,17 +42,23 @@ export async function syncStoreWithVercelCloud(): Promise<{
   transactionsCount: number;
   hasChanges?: boolean;
 }> {
-  try {
-    const localContacts: Contact[]     = getLocalData('tajer_smart_contacts_v1', []);
-    const localProducts: Product[]     = getLocalData('tajer_smart_products_v1', []);
-    const localTx:       Transaction[] = getLocalData('tajer_smart_transactions_v1', []);
+  // منع التنفيذ المتداخل — أهم ضمان لعدم التعارض
+  if (syncInProgress) {
+    return { success: true, contactsCount: 0, productsCount: 0, transactionsCount: 0 };
+  }
+  syncInProgress = true;
 
-    const deletedContacts: string[]     = getLocalData(DELETED_KEYS.CONTACTS, []);
-    const deletedProducts: string[]     = getLocalData(DELETED_KEYS.PRODUCTS, []);
-    const deletedTx:       string[]     = getLocalData(DELETED_KEYS.TRANSACTIONS, []);
+  try {
+    const localContacts:  Contact[]     = getLocalData('tajer_smart_contacts_v1', []);
+    const localProducts:  Product[]     = getLocalData('tajer_smart_products_v1', []);
+    const localTx:        Transaction[] = getLocalData('tajer_smart_transactions_v1', []);
+
+    const deletedContacts:     string[] = getLocalData(DELETED_KEYS.CONTACTS, []);
+    const deletedProducts:     string[] = getLocalData(DELETED_KEYS.PRODUCTS, []);
+    const deletedTransactions: string[] = getLocalData(DELETED_KEYS.TRANSACTIONS, []);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     let res: Response;
     try {
@@ -68,12 +67,12 @@ export async function syncStoreWithVercelCloud(): Promise<{
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         body: JSON.stringify({
-          contacts: localContacts,
-          products: localProducts,
-          transactions: localTx,
-          deleted_contacts: deletedContacts,
-          deleted_products: deletedProducts,
-          deleted_transactions: deletedTx,
+          contacts:             localContacts,
+          products:             localProducts,
+          transactions:         localTx,
+          deleted_contacts:     deletedContacts,
+          deleted_products:     deletedProducts,
+          deleted_transactions: deletedTransactions,
         }),
       });
     } finally {
@@ -85,70 +84,59 @@ export async function syncStoreWithVercelCloud(): Promise<{
     if (!res.ok || !data.success) {
       return {
         success: false,
-        errorDetails: data.error || 'تعذر الاتصال بقاعدة Vercel Postgres',
-        contactsCount: 0,
-        productsCount: 0,
-        transactionsCount: 0,
+        errorDetails: data.error || 'تعذر الاتصال بـ Vercel Postgres',
+        contactsCount: 0, productsCount: 0, transactionsCount: 0,
       };
     }
 
-    // تفريغ طابور الحذف عند النجاح
-    if (deletedContacts.length > 0) setLocalData(DELETED_KEYS.CONTACTS, []);
-    if (deletedProducts.length > 0) setLocalData(DELETED_KEYS.PRODUCTS, []);
-    if (deletedTx.length > 0)       setLocalData(DELETED_KEYS.TRANSACTIONS, []);
+    // ─── تفريغ طوابير الحذف بعد تأكيد وصولها للسحابة ───
+    if (deletedContacts.length     > 0) setLocalData(DELETED_KEYS.CONTACTS, []);
+    if (deletedProducts.length     > 0) setLocalData(DELETED_KEYS.PRODUCTS, []);
+    if (deletedTransactions.length > 0) setLocalData(DELETED_KEYS.TRANSACTIONS, []);
 
-    let stateChanged = false;
+    // ─── تحديث البيانات المحلية فقط إذا تغيرت ───
+    let changed = false;
 
-    if (data.contacts && Array.isArray(data.contacts)) {
-      const prevStr = JSON.stringify(localContacts);
-      const newStr  = JSON.stringify(data.contacts);
-      if (prevStr !== newStr) {
+    if (Array.isArray(data.contacts)) {
+      if (JSON.stringify(data.contacts) !== JSON.stringify(localContacts)) {
         setLocalData('tajer_smart_contacts_v1', data.contacts);
-        stateChanged = true;
+        changed = true;
       }
     }
-
-    if (data.products && Array.isArray(data.products)) {
-      const prevStr = JSON.stringify(localProducts);
-      const newStr  = JSON.stringify(data.products);
-      if (prevStr !== newStr) {
+    if (Array.isArray(data.products)) {
+      if (JSON.stringify(data.products) !== JSON.stringify(localProducts)) {
         setLocalData('tajer_smart_products_v1', data.products);
-        stateChanged = true;
+        changed = true;
       }
     }
-
-    if (data.transactions && Array.isArray(data.transactions)) {
-      const prevStr = JSON.stringify(localTx);
-      const newStr  = JSON.stringify(data.transactions);
-      if (prevStr !== newStr) {
+    if (Array.isArray(data.transactions)) {
+      if (JSON.stringify(data.transactions) !== JSON.stringify(localTx)) {
         setLocalData('tajer_smart_transactions_v1', data.transactions);
-        stateChanged = true;
+        changed = true;
       }
     }
 
-    if (stateChanged) {
-      notifySubscribers();
-    }
+    if (changed) notifySubs();
 
     return {
       success: true,
-      hasChanges: stateChanged,
-      contactsCount: data.contacts?.length || localContacts.length,
-      productsCount: data.products?.length || localProducts.length,
-      transactionsCount: data.transactions?.length || localTx.length,
+      hasChanges: changed,
+      contactsCount:     data.contacts?.length     ?? localContacts.length,
+      productsCount:     data.products?.length     ?? localProducts.length,
+      transactionsCount: data.transactions?.length ?? localTx.length,
     };
   } catch (err: any) {
     return {
       success: false,
-      errorDetails: err?.message || 'خطأ اتصال بالشبكة أو لم تكتمل المزامنة بعد',
-      contactsCount: 0,
-      productsCount: 0,
-      transactionsCount: 0,
+      errorDetails: err?.name === 'AbortError' ? 'انتهت مهلة الاتصال (10 ثوانٍ)' : err?.message,
+      contactsCount: 0, productsCount: 0, transactionsCount: 0,
     };
+  } finally {
+    syncInProgress = false;
   }
 }
 
-/** تصفير وتفريغ جميع المنتجات والأشخاص والطلبيات محلياً وسحابياً للبدء ببيانات حقيقية صافية */
+// ─── تفريغ المخزن محلياً وسحابياً ────────────────────────────────────────
 export async function clearAllStoreDataAndCloud(): Promise<boolean> {
   try {
     setLocalData('tajer_smart_contacts_v1', []);
@@ -159,39 +147,43 @@ export async function clearAllStoreDataAndCloud(): Promise<boolean> {
     setLocalData(DELETED_KEYS.CONTACTS, []);
     setLocalData(DELETED_KEYS.PRODUCTS, []);
     setLocalData(DELETED_KEYS.TRANSACTIONS, []);
-
     await fetch('/api/reset-db', { method: 'POST' });
-    notifySubscribers();
+    notifySubs();
     return true;
-  } catch (e) {
+  } catch {
     return false;
   }
 }
 
-// ─── محرك المزامنة المستمر في الخلفية (Polling & Focus Sync) ───
+// ─── محرك المزامنة (مرة واحدة عند الفتح + عند العودة للتبويب فقط) ────────
+// ❌ لا setInterval — يسبب تعارضات وثقل على الهاتف
+// ✅ مزامنة ذكية: عند الفتح + عند العودة للتبويب + عند الفوكس
 let isEngineStarted = false;
 
 export function initAutoSyncEngine() {
   if (typeof window === 'undefined' || isEngineStarted) return;
   isEngineStarted = true;
 
-  // 1. المزامنة الأولى الفورية عند الفتح
+  // مزامنة فورية عند فتح التطبيق
   syncStoreWithVercelCloud();
 
-  // 2. المزامنة التلقائية كل 8 ثوانٍ في الخلفية
-  setInterval(() => {
-    if (navigator.onLine) {
-      syncStoreWithVercelCloud();
-    }
-  }, 8000);
-
-  // 3. المزامنة الفورية عند عودة المستخدم للتبويب أو التركيز على الشاشة
-  window.addEventListener('focus', () => {
-    if (navigator.onLine) syncStoreWithVercelCloud();
-  });
-  window.addEventListener('visibilitychange', () => {
+  // مزامنة عند العودة للتبويب بعد الغياب
+  document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && navigator.onLine) {
       syncStoreWithVercelCloud();
     }
   });
+
+  // مزامنة عند الفوكس (alt-tab من تطبيق آخر)
+  window.addEventListener('focus', () => {
+    if (navigator.onLine) syncStoreWithVercelCloud();
+  });
+
+  // مزامنة خفيفة كل 30 ثانية فقط (للتحقق من تغييرات أجهزة أخرى)
+  // 30 ثانية بدل 8 ثوانٍ = تخفيف الثقل بنسبة 75%
+  setInterval(() => {
+    if (navigator.onLine && document.visibilityState === 'visible') {
+      syncStoreWithVercelCloud();
+    }
+  }, 30000);
 }

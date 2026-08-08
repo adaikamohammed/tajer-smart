@@ -12,8 +12,8 @@ export async function POST() {
       return NextResponse.json({ success: false, error: 'غير قادر على الاتصال بقاعدة Vercel' }, { status: 500 });
     }
 
-    // تفريغ كافة الجداول سحابياً للبدء ببيانات جديدة وصافية
-    await query`TRUNCATE TABLE transaction_items, transactions, products, contacts CASCADE;`;
+    // تفريغ كافة الجداول سحابياً بما فيها Tombstone للبدء ببيانات نظيفة
+    await query`TRUNCATE TABLE transaction_items, transactions, products, contacts, deleted_items CASCADE;`;
 
     return NextResponse.json({
       success: true,

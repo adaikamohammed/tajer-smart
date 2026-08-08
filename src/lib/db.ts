@@ -8,7 +8,6 @@ export function getDbConnectionString(): string | null {
   if (process.env.STORAGE_URL) return process.env.STORAGE_URL;
   if (process.env.STORAGE_POSTGRES_URL) return process.env.STORAGE_POSTGRES_URL;
 
-  // البحث الديناميكي عن أي مسمى قام Vercel بحقنه لقاعدة البيانات
   if (typeof process !== 'undefined' && process.env) {
     for (const key of Object.keys(process.env)) {
       if ((key.includes('POSTGRES') || key.includes('DATABASE') || key.includes('NEON') || key.includes('STORAGE')) && key.endsWith('_URL')) {
@@ -19,7 +18,6 @@ export function getDbConnectionString(): string | null {
       }
     }
   }
-
   return null;
 }
 
@@ -43,7 +41,6 @@ export function getNeonSql() {
   return neon(dbUrl);
 }
 
-/** إنشاء الجداول الأساسية تلقائياً إذا لم تكن موجودة في قاعدة بيانات Vercel Postgres */
 export async function initTablesIfMissing() {
   const query = getNeonSql();
   if (!query) return false;
@@ -63,7 +60,6 @@ export async function initTablesIfMissing() {
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
     `;
-
     await query`
       CREATE TABLE IF NOT EXISTS products (
         id TEXT PRIMARY KEY,
@@ -83,7 +79,6 @@ export async function initTablesIfMissing() {
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
     `;
-
     await query`
       CREATE TABLE IF NOT EXISTS transactions (
         id TEXT PRIMARY KEY,
@@ -98,7 +93,6 @@ export async function initTablesIfMissing() {
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
     `;
-
     await query`
       CREATE TABLE IF NOT EXISTS transaction_items (
         id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -111,7 +105,15 @@ export async function initTablesIfMissing() {
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
     `;
-
+    // ─── جدول الـ Tombstone: يحفظ كل محذوف بشكل دائم لا يُعاد أبداً ───
+    await query`
+      CREATE TABLE IF NOT EXISTS deleted_items (
+        id TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        deleted_at TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (id, entity_type)
+      );
+    `;
     return true;
   } catch (err) {
     console.error('Error initializing tables:', err);
