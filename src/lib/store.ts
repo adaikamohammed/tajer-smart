@@ -359,28 +359,39 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
 <title>${typeLabel}</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@700;900&display=swap');
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
-  /* ── عرض الورقة 80mm بدقة، هوامش 1mm فقط ── */
-  @page { size: 80mm auto; margin: 0mm; }
-  html  { width: 80mm; }
-  body  {
+  /* ── عرض الورقة 80mm ── */
+  @page { size: 80mm auto; margin: 0mm !important; }
+  html { width: 100%; background: #eee; }
+  body {
     font-family: 'Cairo', 'Tahoma', sans-serif;
     direction: rtl;
     background: #fff;
     color: #000;
-    width: 80mm;
-    padding: 2mm 1mm;
+    width: 100%;
+    max-width: 80mm;
+    margin: 0 auto;
+    padding: 3mm 2mm;
     font-size: 13px;
     font-weight: 700;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
   }
   @media print {
-    html, body { width: 80mm !important; padding: 1mm !important; }
-    .no-print  { display: none !important; }
+    html { background: #fff; width: 80mm !important; }
+    body {
+      width: 80mm !important;
+      max-width: 80mm !important;
+      padding: 0mm 1mm !important;
+      margin: 0 !important;
+      box-shadow: none !important;
+      -webkit-print-color-adjust: exact;
+    }
+    .no-print { display: none !important; }
   }
 
   /* ── ترويسة المتجر ── */
@@ -509,7 +520,13 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
     margin-bottom: 3px;
   }
 
-  /* ── زر الطباعة (يختفي عند الطباعة) ── */
+  /* ── أزرار التحكم في الطباعة ── */
+  .actions-container {
+    margin-top: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
   .print-btn {
     display: block;
     width: 100%;
@@ -519,12 +536,30 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
     border: none;
     border-radius: 6px;
     font-family: 'Cairo', sans-serif;
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 900;
     cursor: pointer;
-    margin-top: 14px;
+    text-align: center;
+    text-decoration: none;
+  }
+  .rawbt-btn {
+    background: #15803d;
   }
 </style>
+<script>
+  function printRawBT() {
+    try {
+      const clonedDoc = document.cloneNode(true);
+      const noPrints = clonedDoc.querySelectorAll('.no-print');
+      noPrints.forEach(el => el.remove());
+      const htmlStr = clonedDoc.documentElement.outerHTML;
+      const b64 = btoa(unescape(encodeURIComponent(htmlStr)));
+      window.location.href = 'intent:base64,' + b64 + '#Intent;scheme=rawbt;package=ru.a41500.rawbtprinter;end;';
+    } catch(e) {
+      alert('خطأ في إرسال الوصل إلى RawBT: ' + e.message);
+    }
+  }
+</script>
 </head>
 <body>
 
@@ -558,7 +593,10 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
     <div>شكراً لتعاملكم معنا 🌹</div>
   </div>
 
-  <button class="print-btn no-print" onclick="window.print(); window.close();">🖨️ اضغط هنا للطباعة</button>
+  <div class="actions-container no-print">
+    <button class="print-btn rawbt-btn" onclick="printRawBT();">📱 طباعة مباشرة 80mm عبر RawBT (أندرويد)</button>
+    <button class="print-btn" onclick="window.print();">🖨️ طباعة متصفح (PC / هاتف)</button>
+  </div>
 </body>
 </html>`;
 }
