@@ -268,6 +268,11 @@ export function setLocalData<T>(key: string, value: T): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(key, JSON.stringify(value));
+
+    // المزامنة التلقائية السحابية في الخلفية
+    if (key === STORAGE_KEYS.CONTACTS || key === STORAGE_KEYS.PRODUCTS || key === STORAGE_KEYS.TRANSACTIONS) {
+      import('./supabase').then(sb => sb.syncFullStoreWithCloud()).catch(() => {});
+    }
   } catch (e) {
     console.error('Error writing localStorage:', e);
   }
@@ -593,6 +598,9 @@ export function initStorageIfEmpty(): void {
   if (!localStorage.getItem(STORAGE_KEYS.RECEIPTS)) {
     setLocalData(STORAGE_KEYS.RECEIPTS, []);
   }
+
+  // مزامنة فورية في الخلفية مع السحابة لتوحيد الأشخاص والمنتجات والعمليات على كل الأجهزة
+  import('./supabase').then(sb => sb.syncFullStoreWithCloud()).catch(() => {});
 }
 
 export function createWhatsAppLink(phone: string, text: string): string {

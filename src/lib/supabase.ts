@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { Contact, Product, Transaction, DebtPayment } from './store';
+import { Contact, Product, Transaction, DebtPayment, getLocalData, setLocalData } from './store';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -41,6 +41,17 @@ export async function saveContactToSupabase(contact: Contact): Promise<boolean> 
   }
 }
 
+export async function saveAllContactsToSupabase(contacts: Contact[]): Promise<boolean> {
+  if (!supabase || contacts.length === 0) return false;
+  try {
+    const { error } = await supabase.from('contacts').upsert(contacts);
+    if (error) console.error('Supabase batch contacts upsert error:', error);
+    return !error;
+  } catch (err) {
+    return false;
+  }
+}
+
 export async function fetchProductsFromSupabase(): Promise<Product[] | null> {
   if (!supabase) return null;
   try {
@@ -64,6 +75,17 @@ export async function saveProductToSupabase(product: Product): Promise<boolean> 
     return !error;
   } catch (err) {
     console.error('Supabase upsert product exception:', err);
+    return false;
+  }
+}
+
+export async function saveAllProductsToSupabase(products: Product[]): Promise<boolean> {
+  if (!supabase || products.length === 0) return false;
+  try {
+    const { error } = await supabase.from('products').upsert(products);
+    if (error) console.error('Supabase batch products upsert error:', error);
+    return !error;
+  } catch (err) {
     return false;
   }
 }
@@ -102,6 +124,7 @@ export async function saveTransactionToSupabase(tx: Transaction): Promise<boolea
       const dbItems = items.map(item => ({
         transaction_id: tx.id,
         product_id: item.product_id,
+        product_name: item.product_name,
         quantity: item.quantity,
         unit_price: item.unit_price,
         cost_price: item.cost_price,
@@ -115,14 +138,52 @@ export async function saveTransactionToSupabase(tx: Transaction): Promise<boolea
   }
 }
 
-export async function saveDebtPaymentToSupabase(payment: DebtPayment): Promise<boolean> {
-  if (!supabase) return false;
+/** المزامنة الشاملة بين السحابة والتخزين المحلي لتوحيد البيانات على جميع الأجهزة */
+export async function syncFullStoreWithCloud(): Promise<{
+  success: boolean;
+  contactsCount: number;
+  productsCount: number;
+  transactionsCount: number;
+}> {
+  if (!supabase) {
+    return { success: false, contactsCount: 0, productsCount: 0, transactionsCount: 0 };
+  }
+
   try {
-    const { error } = await supabase.from('debt_payments').upsert(payment);
-    if (error) console.error('Supabase debt payment error:', error);
-    return !error;
+    // 1. أولاً رفع البيانات المحلية الموجودة للسحابة لعدم ضياع أي إضافة جديدة
+    const localContacts: Contact[]     = getLocalData('tajer_smart_contacts_v1', []);
+    const localProducts: Product[]     = getLocalData('tajer_smart_products_v1', []);
+    const localTx:       Transaction[] = getLocalData('tajer_smart_transactions_v1', []);
+
+    if (localContacts.length > 0) await saveAllContactsToSupabase(localContacts);
+    if (localProducts.length > 0) await saveAllProductsToSupabase(localProducts);
+    for (const tx of localTx) {
+      await saveTransactionToSupabase(tx);
+    }
+
+    // 2. ثانياً جلب أحدث البيانات من السحابة وتحديث التخزين المحلي بها
+    const cloudContacts = await fetchContactsFromSupabase();
+    const cloudProducts = await fetchProductsFromSupabase();
+    const cloudTx       = await fetchTransactionsFromSupabase();
+
+    if (cloudContacts && cloudContacts.length > 0) {
+      setLocalData('tajer_smart_contacts_v1', cloudContacts);
+    }
+    if (cloudProducts && cloudProducts.length > 0) {
+      setLocalData('tajer_smart_products_v1', cloudProducts);
+    }
+    if (cloudTx && cloudTx.length > 0) {
+      setLocalData('tajer_smart_transactions_v1', cloudTx);
+    }
+
+    return {
+      success: true,
+      contactsCount: cloudContacts?.length || localContacts.length,
+      productsCount: cloudProducts?.length || localProducts.length,
+      transactionsCount: cloudTx?.length || localTx.length,
+    };
   } catch (err) {
-    console.error('Supabase debt payment exception:', err);
-    return false;
+    console.error('Sync error:', err);
+    return { success: false, contactsCount: 0, productsCount: 0, transactionsCount: 0 };
   }
 }

@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { getLocalData, setLocalData } from '@/lib/store';
 import { toast } from '@/components/Toast';
-import { Download, LogOut, ShieldCheck, X } from 'lucide-react';
+import { Download, LogOut, ShieldCheck, X, RefreshCw } from 'lucide-react';
+import { syncFullStoreWithCloud } from '@/lib/supabase';
 
 export default function AppHeader() {
   const pathname = usePathname();
@@ -12,6 +13,7 @@ export default function AppHeader() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
   const [isInstalledOrDismissed, setIsInstalledOrDismissed] = useState<boolean>(false);
+  const [isSyncing,               setIsSyncing]               = useState<boolean>(false);
 
   useEffect(() => {
     const loggedUser = getLocalData('tajer_smart_user', null);
@@ -59,6 +61,26 @@ export default function AppHeader() {
     setLocalData('pwa_installed_dismissed', true);
   };
 
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    toast('🔄 جارٍ مزامنة الأشخاص والمنتجات والطلبيات مع السحابة...', 'info');
+    try {
+      const res = await syncFullStoreWithCloud();
+      if (res.success) {
+        toast(`✅ تم المزامنة بنجاح! تم تحديث (${res.contactsCount}) شخص، (${res.productsCount}) منتج، و (${res.transactionsCount}) عملية!`, 'success');
+        setTimeout(() => {
+          window.location.reload();
+        }, 800);
+      } else {
+        toast('⚠️ تعذر المزامنة السحابية حالياً، يرجى الاتصال بالإنترنت', 'warning');
+      }
+    } catch (e) {
+      toast('⚠️ حدث خطأ أثناء المزامنة', 'error');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const handleLogout = () => {
     setLocalData('tajer_smart_logged_in', false);
     setLocalData('tajer_smart_user', null);
@@ -95,8 +117,18 @@ export default function AppHeader() {
           </div>
         </div>
 
-        {/* أزرار التثبيت والخروج */}
+        {/* أزرار التثبيت والمزامنة السحابية والخروج */}
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleManualSync}
+            disabled={isSyncing}
+            className="flex items-center gap-1.5 text-xs font-black px-2.5 py-1.5 bg-emerald-700/60 hover:bg-emerald-600/80 text-white rounded-xl border border-emerald-400/40 shadow-sm touch-active transition-all"
+            title="مزامنة فورية لجميع الأشخاص والمنتجات والعمليات مع السحابة لتوحيد الأجهزة"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-amber-300' : 'text-emerald-200'}`} />
+            <span className="hidden sm:inline">مزامنة السحابة</span> ☁️
+          </button>
+
           {!isInstalledOrDismissed && (
             <div className="flex items-center bg-white/20 rounded-xl border border-white/25">
               <button
