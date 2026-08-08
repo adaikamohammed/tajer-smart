@@ -3,13 +3,14 @@
 import { useState, useEffect } from 'react';
 import {
   getLocalData, setLocalData, Contact, DebtPayment, Transaction,
-  createWhatsAppLink, generateAccountStatementText
+  createWhatsAppLink, generateAccountStatementText,
+  printThermalReceipt, generateReceiptNumber,
 } from '@/lib/store';
 import { toast } from '@/components/Toast';
 import {
   Receipt, ArrowUpRight, ArrowDownLeft,
   MessageCircle, CheckCircle2, DollarSign,
-  Search, X, Megaphone, TrendingDown, Clock, Eye
+  Search, X, Megaphone, TrendingDown, Clock, Eye, Printer,
 } from 'lucide-react';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
@@ -26,6 +27,8 @@ export default function DebtsPage() {
   const [selectedContact,  setSelectedContact]  = useState<Contact | null>(null);
   const [settleAmount,     setSettleAmount]     = useState(0);
   const [settleNote,       setSettleNote]       = useState('');
+  // حالة آخر عملية تسديد للطباعة الفورية
+  const [lastPayment,      setLastPayment]      = useState<{ contact: Contact; amount: number; type: 'COLLECTED' | 'PAID_OUT'; note?: string; balanceAfter: number } | null>(null);
 
   useEffect(() => {
     setContacts(getLocalData('tajer_smart_contacts_v1', []));
@@ -51,6 +54,7 @@ export default function DebtsPage() {
     setSelectedContact(c);
     setSettleAmount(Math.abs(c.balance));
     setSettleNote('تسديد دين');
+    setLastPayment(null);
     setShowSettleModal(true);
   };
 
@@ -84,14 +88,59 @@ export default function DebtsPage() {
       return c;
     });
 
+    const balanceAfter = isCollecting
+      ? Math.max(0, selectedContact.balance - settleAmount)
+      : Math.min(0, selectedContact.balance + settleAmount);
+
     const up = [np, ...payments];
     setContacts(uc); setPayments(up);
     setLocalData('tajer_smart_contacts_v1', uc);
     setLocalData('tajer_smart_payments_v1', up);
+
+    // حفظ معلومات آخر تسديد لعرض زر الطباعة
+    setLastPayment({
+      contact: selectedContact,
+      amount: settleAmount,
+      type: isCollecting ? 'COLLECTED' : 'PAID_OUT',
+      note: settleNote.trim() || undefined,
+      balanceAfter,
+    });
+
     setShowSettleModal(false);
     toast(isCollecting
       ? `✅ تم تحصيل ${fmt(settleAmount)} د.ج من ${selectedContact.name}`
       : `✅ تم سداد ${fmt(settleAmount)} د.ج للمورد`, 'success');
+  };
+
+  const printPaymentReceipt = () => {
+    if (!lastPayment) return;
+    printThermalReceipt({
+      id:             generateReceiptNumber(),
+      receipt_type:   'DEBT_PAYMENT',
+      contact_id:     lastPayment.contact.id,
+      contact_name:   lastPayment.contact.name,
+      contact_phone:  lastPayment.contact.phone,
+      payment_amount: lastPayment.amount,
+      payment_type:   lastPayment.type,
+      balance_after:  lastPayment.balanceAfter,
+      note:           lastPayment.note,
+      created_at:     new Date().toISOString(),
+    });
+    toast('🖨️ جارٍ فتح نافذة الطباعة...', 'success');
+  };
+
+  const printStatementReceipt = (c: Contact, e: React.MouseEvent) => {
+    e.stopPropagation();
+    printThermalReceipt({
+      id:            generateReceiptNumber(),
+      receipt_type:  'ACCOUNT_STATEMENT',
+      contact_id:    c.id,
+      contact_name:  c.name,
+      contact_phone: c.phone,
+      balance_after: c.balance,
+      created_at:    new Date().toISOString(),
+    });
+    toast('🖨️ جارٍ فتح كشف الحساب الحراري...', 'success');
   };
 
   const sendBulkReminder = () => {
@@ -104,6 +153,36 @@ export default function DebtsPage() {
 
   return (
     <div className="space-y-4">
+
+      {/* ─── بانر الطباعة الفورية بعد التسديد ─── */}
+      {lastPayment && (
+        <div className="glass-card p-4 border-2 border-emerald-400 bg-emerald-50 space-y-3 animate-slide-up">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">✅</span>
+            <div>
+              <p className="font-black text-emerald-900 text-sm">
+                {lastPayment.type === 'COLLECTED' ? 'تم التحصيل بنجاح' : 'تم السداد بنجاح'}
+              </p>
+              <p className="text-xs text-emerald-700 font-bold">
+                {lastPayment.contact.name} — {fmt(lastPayment.amount)} د.ج
+              </p>
+            </div>
+            <button
+              onClick={() => setLastPayment(null)}
+              className="mr-auto p-1 rounded-lg text-emerald-700 hover:bg-emerald-100"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          <button
+            onClick={printPaymentReceipt}
+            className="w-full py-3 bg-slate-900 text-white rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-md"
+          >
+            <Printer size={18} />
+            🖨️ طباعة وصل التسديد الحراري الآن
+          </button>
+        </div>
+      )}
 
       {/* ── بطاقتا الإجمالي بمصطلحات صريحة ومفهومة للجميع ── */}
       <div className="grid grid-cols-2 gap-3">
@@ -215,8 +294,12 @@ export default function DebtsPage() {
                     {isCustomer ? 'تسديد / تحصيل 💵' : 'سداد للمورد 💳'}
                   </button>
 
+                  <button onClick={(e) => printStatementReceipt(c, e)} className="px-3 py-2.5 rounded-xl bg-slate-800 text-white font-bold text-xs flex items-center gap-1">
+                    <Printer size={14} />
+                  </button>
+
                   <button onClick={(e) => { e.stopPropagation(); openHistory(c); }} className="px-3 py-2.5 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs flex items-center gap-1">
-                    <Eye size={14} /> تفاصيل السجل
+                    <Eye size={14} />
                   </button>
 
                   {c.phone && (
@@ -281,7 +364,7 @@ export default function DebtsPage() {
               </div>
 
               <button type="submit" className="btn btn-primary w-full py-4 text-base shadow-md">
-                تأكيد التسديد وتحديث الحساب ✅
+                تأكيد التسديد ✅ (سيُعرض زر طباعة الوصل)
               </button>
             </form>
           </div>

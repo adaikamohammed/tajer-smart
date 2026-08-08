@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import {
   getLocalData, setLocalData, Contact, Transaction, DebtPayment,
-  createWhatsAppLink, generateAccountStatementText
+  createWhatsAppLink, generateAccountStatementText,
+  printThermalReceipt, generateReceiptNumber,
 } from '@/lib/store';
 import { toast } from '@/components/Toast';
 import {
@@ -170,6 +171,20 @@ export default function ContactsPage() {
     setShowStatementModal(true);
   };
 
+  const printStatementThermal = () => {
+    if (!statementContact) return;
+    printThermalReceipt({
+      id:            generateReceiptNumber(),
+      receipt_type:  'ACCOUNT_STATEMENT',
+      contact_id:    statementContact.id,
+      contact_name:  statementContact.name,
+      contact_phone: statementContact.phone,
+      balance_after: statementContact.balance,
+      created_at:    new Date().toISOString(),
+    });
+    toast('🖨️ جارٍ فتح نافذة الطباعة الحرارية...', 'success');
+  };
+
   const copyStatementText = () => {
     if (!statementContact) return;
     const text = generateAccountStatementText(statementContact.name, statementContact.balance, []);
@@ -272,6 +287,15 @@ export default function ContactsPage() {
               )}
               <button onClick={() => openStatement(viewingContact)} className="py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs flex items-center justify-center gap-1 shadow-sm">
                 <MessageCircle size={14} /> كشف حساب 📜
+              </button>
+              <button
+                onClick={() => {
+                  setStatementContact(viewingContact);
+                  setTimeout(() => printStatementThermal(), 50);
+                }}
+                className="py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black text-xs flex items-center justify-center gap-1"
+              >
+                🖨️ طباعة حرارية
               </button>
               <button onClick={(e) => openEditModal(viewingContact, e)} className="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-black text-xs flex items-center justify-center gap-1 border">
                 <Edit2 size={14} /> تعديل ✏️
@@ -605,6 +629,12 @@ export default function ContactsPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={printStatementThermal}
+                  className="col-span-2 py-3 bg-slate-900 text-white rounded-xl font-black text-xs flex items-center justify-center gap-2"
+                >
+                  🖨️ طباعة كشف الحساب حرارياً (بلوتوث / POS)
+                </button>
                 {statementContact.phone ? (
                   <a
                     href={createWhatsAppLink(statementContact.phone, generateAccountStatementText(statementContact.name, statementContact.balance, []))}

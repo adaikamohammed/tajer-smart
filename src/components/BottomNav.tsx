@@ -8,6 +8,7 @@ import {
   Users,
   CreditCard,
   PieChart,
+  Receipt,
   Code2
 } from 'lucide-react';
 
@@ -42,6 +43,12 @@ const TABS = [
     hasBadge: true,
   },
   {
+    href:     '/receipts',
+    tab:      'receipts',
+    label:    'أوصال',
+    icon:     Receipt,
+  },
+  {
     href:     '/stats',
     tab:      'stats',
     label:    'إحصائيات',
@@ -58,7 +65,6 @@ const TABS = [
 export default function BottomNav({ debtCount = 0 }: BottomNavProps) {
   const pathname = usePathname();
 
-  // عدم إظهار البار السفلي في صفحة تسجيل الدخول
   if (pathname === '/login') return null;
 
   return (
@@ -80,7 +86,7 @@ export default function BottomNav({ debtCount = 0 }: BottomNavProps) {
               <div className="nav-item-icon">
                 <Icon
                   className="transition-all duration-200"
-                  size={isActive ? 20 : 18}
+                  size={isActive ? 19 : 17}
                   strokeWidth={isActive ? 2.5 : 1.8}
                 />
                 {item.hasBadge && debtCount > 0 && (
@@ -90,12 +96,13 @@ export default function BottomNav({ debtCount = 0 }: BottomNavProps) {
                 )}
               </div>
               <span style={{
-                fontSize: '0.6rem',
+                fontSize: '0.55rem',
                 color: isActive
                   ? item.tab === 'home'      ? 'hsl(158 64% 38%)'
                   : item.tab === 'inventory' ? 'hsl(262 83% 52%)'
                   : item.tab === 'contacts'  ? 'hsl(221 83% 52%)'
                   : item.tab === 'debts'     ? 'hsl(351 83% 52%)'
+                  : item.tab === 'receipts'  ? 'hsl(38 92% 45%)'
                   : item.tab === 'stats'     ? 'hsl(38 92% 50%)'
                   :                            'hsl(239 84% 67%)'
                   : undefined
