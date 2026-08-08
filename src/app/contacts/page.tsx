@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
   getLocalData, setLocalData, Contact, Transaction, DebtPayment,
   createWhatsAppLink, generateAccountStatementText,
@@ -284,16 +285,13 @@ export default function ContactsPage() {
               </p>
             </div>
 
-            <button
-              onClick={() => {
-                setQuickSaleCustomerId(viewingContact.id);
-                setShowQuickSale(true);
-              }}
-              className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-md touch-active"
+            <Link
+              href={`/quick-sale?customerId=${viewingContact.id}`}
+              className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-md touch-active block text-center"
             >
-              <Zap size={16} className="fill-amber-300 text-amber-300" />
-              ⚡ بيع سريع فوري لهذا الزبون
-            </button>
+              <Zap size={16} className="fill-amber-300 text-amber-300 inline-block" />
+              <span>⚡ بيع سريع فوري لهذا الزبون (صفحة واسعة)</span>
+            </Link>
 
             <div className="grid grid-cols-3 gap-2">
               {viewingContact.phone && (

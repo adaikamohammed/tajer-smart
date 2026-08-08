@@ -10,6 +10,8 @@ import {
   Product,
   Transaction,
   createWhatsAppLink,
+  printThermalReceipt,
+  generateReceiptNumber,
 } from '@/lib/store';
 import { toast } from '@/components/Toast';
 import {
@@ -17,7 +19,7 @@ import {
   ArrowUpRight, ArrowDownLeft, X,
   ShoppingCart, ShoppingBag, Sparkles,
   ChevronLeft, Clock3, CheckCircle,
-  Banknote, Package, Calendar, Filter, Zap
+  Banknote, Package, Calendar, Filter, Zap, Printer
 } from 'lucide-react';
 import QuickSaleModal from '@/components/QuickSaleModal';
 
@@ -257,13 +259,13 @@ export default function HomePage() {
 
       {/* ══ زرا البيع والشراء والبيع السريع ══ */}
       <div className="space-y-2">
-        <button
-          onClick={() => setShowQuickSaleModal(true)}
-          className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 border border-emerald-400/30 touch-active hover:brightness-105 transition-all"
+        <Link
+          href="/quick-sale"
+          className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 border border-emerald-400/30 touch-active hover:brightness-105 transition-all block text-center"
         >
-          <Zap size={20} className="fill-amber-300 text-amber-300 animate-pulse" />
-          <span>⚡ بيع سريع لزبون محدد (فحص المخزون والطباعة فوراً)</span>
-        </button>
+          <Zap size={20} className="fill-amber-300 text-amber-300 animate-pulse inline-block" />
+          <span>⚡ بيع سريع لزبون محدد (صفحة واسعة + فحص المخزون والطباعة)</span>
+        </Link>
 
         <div className="grid grid-cols-2 gap-3">
           <button onClick={() => setShowSaleModal(true)} className="action-btn sale">
@@ -349,12 +351,12 @@ export default function HomePage() {
         </Link>
       )}
 
-      {/* ══ آخر العمليات ══ */}
-      <div className="glass-card p-4">
-        <div className="flex items-center justify-between mb-3">
+      {/* ══ آخر العمليات منظم كطلبيات وفواتير موحدة ══ */}
+      <div className="glass-card p-4 space-y-3">
+        <div className="flex items-center justify-between">
           <h2 className="font-black text-slate-800 text-sm flex items-center gap-2">
             <Clock3 size={16} className="text-emerald-600" strokeWidth={2.5} />
-            آخر العمليات ({filteredTx.length})
+            آخر العمليات والطلبيات ({filteredTx.length})
           </h2>
           <Link href="/stats" className="text-xs font-bold text-emerald-600 hover:underline">
             عرض الإحصائيات الكاملة ←
@@ -362,62 +364,94 @@ export default function HomePage() {
         </div>
 
         {filteredTx.length === 0 ? (
-          <div className="empty-state py-8">
-            <TrendingUp size={36} className="opacity-25 mb-1" />
-            <p className="font-bold text-sm">لا توجد عمليات في هذا التاريخ المختار</p>
-            <p className="text-xs opacity-70">اضغط بيع أو شراء للبدء!</p>
+          <div className="empty-state py-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+            <TrendingUp size={36} className="mx-auto text-slate-300 mb-1" />
+            <p className="font-bold text-sm text-slate-600">لا توجد عمليات في هذا التاريخ المختار</p>
+            <p className="text-xs text-slate-400 mt-0.5">اضغط بيع سريع أو شراء للبدء!</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {filteredTx.slice(0, 5).map((tx) => {
               const isSale  = tx.tx_type === 'SALE';
-              const item    = tx.items[0];
               const contact = contacts.find(c => c.id === tx.contact_id);
-              const time    = new Date(tx.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+              const txDate  = new Date(tx.created_at);
+              const dateStr = txDate.toLocaleDateString('en-GB') + ' ' + txDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
               return (
                 <div
                   key={tx.id}
-                  className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200"
+                  className="rounded-2xl p-3.5 border bg-white space-y-2.5 shadow-sm border-slate-200"
                 >
-                  <div
-                    className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-                    style={{
-                      background: isSale ? 'hsl(158 64% 38% / 0.12)' : 'hsl(239 84% 67% / 0.12)',
-                    }}
-                  >
-                    {isSale
-                      ? <ArrowUpRight size={16} className="text-emerald-700" strokeWidth={2.5} />
-                      : <ArrowDownLeft size={16} className="text-indigo-700" strokeWidth={2.5} />
-                    }
-                  </div>
+                  {/* ترويسة الطلبية/العملية */}
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                        isSale ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'
+                      }`}>
+                        {isSale ? <ArrowUpRight size={16} strokeWidth={2.5} /> : <ArrowDownLeft size={16} strokeWidth={2.5} />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-black text-xs text-slate-900 truncate">
+                          {isSale ? 'طلب/بيع لـ ' : 'شراء من '}: <span className="text-emerald-700">{tx.contact_name}</span>
+                        </p>
+                        <p className="text-[10px] font-bold text-slate-400 tabnum">{dateStr}</p>
+                      </div>
+                    </div>
 
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-sm text-slate-800 truncate">{item?.product_name ?? 'عملية'}</p>
-                    <p className="text-xs text-slate-500 truncate">
-                      {isSale ? 'بيع لـ ' : 'شراء من '}
-                      <span className="font-semibold text-slate-700">{tx.contact_name}</span>
-                      <span className="text-slate-400 mr-1">· {time}</span>
-                    </p>
-                  </div>
-
-                  <div className="text-left shrink-0 flex items-center gap-1.5">
-                    <div>
+                    <div className="text-left shrink-0">
                       <p className={`font-black text-sm tabnum ${isSale ? 'text-emerald-700' : 'text-slate-700'}`}>
-                        {fmt(tx.total_amount)} <span className="text-[10px] font-semibold">د.ج</span>
+                        {fmt(tx.total_amount)} <span className="text-[10px]">د.ج</span>
                       </p>
                       {tx.debt_amount > 0
-                        ? <span className="badge badge-danger">{fmt(tx.debt_amount)} دين</span>
-                        : <span className="badge badge-success"><CheckCircle size={9} /> مدفوع</span>
+                        ? <span className="text-[10px] font-extrabold text-rose-700 bg-rose-100 px-1.5 py-0.2 rounded-md">دين: {fmt(tx.debt_amount)}</span>
+                        : <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-md">مدفوع كاش</span>
                       }
                     </div>
+                  </div>
+
+                  {/* جدول المنتجات داخل الطلبية الوحيدة */}
+                  <div className="bg-slate-50 p-2 rounded-xl text-xs space-y-1">
+                    {tx.items.map((item, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-slate-700 font-bold text-[11px]">
+                        <span className="truncate flex-1">• {item.product_name}</span>
+                        <span className="text-slate-500 tabnum px-2">{item.quantity} × {fmt(item.unit_price)}</span>
+                        <span className="font-black text-slate-900 tabnum">{fmt(item.quantity * item.unit_price)} د.ج</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* أزرار الإجراءات للطلبية */}
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-100">
+                    <button
+                      onClick={() => {
+                        printThermalReceipt({
+                          id: generateReceiptNumber(),
+                          receipt_type: tx.tx_type,
+                          contact_id: tx.contact_id,
+                          contact_name: tx.contact_name,
+                          contact_phone: contact?.phone,
+                          items: tx.items,
+                          total_amount: tx.total_amount,
+                          paid_amount: tx.paid_amount,
+                          debt_amount: tx.debt_amount,
+                          note: tx.notes,
+                          created_at: tx.created_at,
+                        });
+                        toast('🖨️ جارٍ فتح وصل الفاتورة الحراري...', 'success');
+                      }}
+                      className="py-1.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[11px] font-black flex items-center gap-1.5 touch-active"
+                    >
+                      <Printer size={13} />
+                      طباعة وصل الطلبية 🖨️
+                    </button>
+
                     {contact?.phone && (
                       <a
-                        href={createWhatsAppLink(contact.phone, `مرحباً ${contact.name}، تذكير بعملية بقيمة ${fmt(tx.total_amount)} د.ج.`)}
+                        href={createWhatsAppLink(contact.phone, `مرحباً ${contact.name}، تفاصيل الطلبية بقيمة ${fmt(tx.total_amount)} د.ج.`)}
                         target="_blank" rel="noreferrer"
-                        className="w-8 h-8 rounded-xl flex items-center justify-center touch-active shrink-0 bg-emerald-100 text-emerald-800"
+                        className="py-1.5 px-2.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-xl text-[11px] font-black flex items-center gap-1"
                       >
-                        <MessageCircle size={14} strokeWidth={2.5} />
+                        <MessageCircle size={13} /> واتساب 💬
                       </a>
                     )}
                   </div>
