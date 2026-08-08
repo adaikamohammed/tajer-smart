@@ -31,24 +31,24 @@ export default function StatsPage() {
   }, []);
 
   // 1️⃣ إجمالي قيمة شراء البضاعة الموجودة في المخزن حالياً
-  const totalStockCostValue = products.reduce((sum, p) => sum + (p.cost_price * p.stock_quantity), 0);
+  const totalStockCostValue = products.reduce((sum, p) => sum + ((Number(p.cost_price) || 0) * (Number(p.stock_quantity) || 0)), 0);
 
   // 2️⃣ إجمالي الربح الكلي المتوقع عند بيع كل البضاعة الموجودة في المخزن
-  const totalExpectedStockProfit = products.reduce((sum, p) => sum + ((p.retail_price - p.cost_price) * p.stock_quantity), 0);
+  const totalExpectedStockProfit = products.reduce((sum, p) => sum + (((Number(p.retail_price) || 0) - (Number(p.cost_price) || 0)) * (Number(p.stock_quantity) || 0)), 0);
 
   // 3️⃣ الديون البسيطة المباشرة
-  const totalOwedToUs = contacts.filter(c => c.balance > 0).reduce((sum, c) => sum + c.balance, 0);
-  const totalWeOwe    = contacts.filter(c => c.balance < 0).reduce((sum, c) => sum + Math.abs(c.balance), 0);
+  const totalOwedToUs = contacts.filter(c => (Number(c.balance) || 0) > 0).reduce((sum, c) => sum + (Number(c.balance) || 0), 0);
+  const totalWeOwe    = contacts.filter(c => (Number(c.balance) || 0) < 0).reduce((sum, c) => sum + Math.abs(Number(c.balance) || 0), 0);
 
   // 4️⃣ المبيعات والأرباح النقدية الفعلية (تستبعد الطلبيات الملغاة)
   const salesTx = transactions.filter(t => t.tx_type === 'SALE' && t.status !== 'CANCELLED');
-  const totalSales = salesTx.reduce((sum, t) => sum + t.total_amount, 0);
-  const totalPaidCash = salesTx.reduce((sum, t) => sum + t.paid_amount, 0);
+  const totalSales = salesTx.reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0);
+  const totalPaidCash = salesTx.reduce((sum, t) => sum + (Number(t.paid_amount) || 0), 0);
 
   const totalGrossProfit = salesTx.reduce((sum, t) => {
-    const itemProfit = t.items.reduce((pSum, item) => {
-      const margin = item.unit_price - (item.cost_price || 0);
-      return pSum + (margin * item.quantity);
+    const itemProfit = (t.items || []).reduce((pSum, item) => {
+      const margin = (Number(item.unit_price) || 0) - (Number(item.cost_price) || 0);
+      return pSum + (margin * (Number(item.quantity) || 0));
     }, 0);
     return sum + itemProfit;
   }, 0);

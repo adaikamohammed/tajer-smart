@@ -39,15 +39,16 @@ export default function DebtsPage() {
   const filtered = contacts
     .filter(c => {
       const match = c.name.toLowerCase().includes(searchQuery.toLowerCase()) || (c.phone && c.phone.includes(searchQuery));
-      return activeTab === 'to_us' ? c.balance > 0 && match : c.balance < 0 && match;
+      const bal = Number(c.balance) || 0;
+      return activeTab === 'to_us' ? bal > 0 && match : bal < 0 && match;
     })
-    .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+    .sort((a, b) => Math.abs(Number(b.balance) || 0) - Math.abs(Number(a.balance) || 0));
 
-  const totalOwedToUs = contacts.filter(c => c.balance > 0).reduce((a, c) => a + c.balance, 0);
-  const totalWeOwe    = contacts.filter(c => c.balance < 0).reduce((a, c) => a + Math.abs(c.balance), 0);
-  const debtorCount   = contacts.filter(c => c.balance > 0).length;
-  const creditorCount = contacts.filter(c => c.balance < 0).length;
-  const maxBalance    = filtered.reduce((m, c) => Math.max(m, Math.abs(c.balance)), 1);
+  const totalOwedToUs = contacts.filter(c => (Number(c.balance) || 0) > 0).reduce((a, c) => a + (Number(c.balance) || 0), 0);
+  const totalWeOwe    = contacts.filter(c => (Number(c.balance) || 0) < 0).reduce((a, c) => a + Math.abs(Number(c.balance) || 0), 0);
+  const debtorCount   = contacts.filter(c => (Number(c.balance) || 0) > 0).length;
+  const creditorCount = contacts.filter(c => (Number(c.balance) || 0) < 0).length;
+  const maxBalance    = filtered.reduce((m, c) => Math.max(m, Math.abs(Number(c.balance) || 0)), 1);
 
   const openSettle = (c: Contact, e: React.MouseEvent) => {
     e.stopPropagation();

@@ -162,12 +162,66 @@ const STORAGE_KEYS = {
   RECEIPTS:           'tajer_smart_receipts_v1',
 };
 
+export function sanitizeContact(c: any): Contact {
+  return {
+    ...c,
+    balance: Number(c.balance) || 0,
+    credit_limit: c.credit_limit !== undefined ? (Number(c.credit_limit) || 0) : undefined,
+  };
+}
+
+export function sanitizeProduct(p: any): Product {
+  let cleanExpiry = p.expiry_date;
+  if (cleanExpiry && typeof cleanExpiry === 'string' && cleanExpiry.includes('T')) {
+    cleanExpiry = cleanExpiry.split('T')[0];
+  }
+  return {
+    ...p,
+    cost_price: Number(p.cost_price) || 0,
+    retail_price: Number(p.retail_price) || 0,
+    stock_quantity: Number(p.stock_quantity) || 0,
+    pack_quantity: p.pack_quantity ? (Number(p.pack_quantity) || 1) : undefined,
+    min_stock_alert: Number(p.min_stock_alert) || 5,
+    expiry_alert_days: Number(p.expiry_alert_days) || 30,
+    expiry_date: cleanExpiry,
+  };
+}
+
+export function sanitizeTransaction(t: any): Transaction {
+  return {
+    ...t,
+    total_amount: Number(t.total_amount) || 0,
+    paid_amount: Number(t.paid_amount) || 0,
+    debt_amount: Number(t.debt_amount) || 0,
+    items: Array.isArray(t.items) ? t.items.map((i: any) => ({
+      ...i,
+      quantity: Number(i.quantity) || 0,
+      unit_price: Number(i.unit_price) || 0,
+      cost_price: Number(i.cost_price) || 0,
+    })) : [],
+  };
+}
+
 // ─── دوال التخزين العامة ──────────────────────────────────────────────────
 export function getLocalData<T>(key: string, defaultValue: T): T {
   if (typeof window === 'undefined') return defaultValue;
   try {
     const item = localStorage.getItem(key);
-    return item ? JSON.parse(item) : defaultValue;
+    if (!item) return defaultValue;
+    const parsed = JSON.parse(item);
+
+    if (Array.isArray(parsed)) {
+      if (key === STORAGE_KEYS.CONTACTS) {
+        return parsed.map(sanitizeContact) as unknown as T;
+      }
+      if (key === STORAGE_KEYS.PRODUCTS) {
+        return parsed.map(sanitizeProduct) as unknown as T;
+      }
+      if (key === STORAGE_KEYS.TRANSACTIONS) {
+        return parsed.map(sanitizeTransaction) as unknown as T;
+      }
+    }
+    return parsed;
   } catch (e) {
     console.error('Error reading localStorage:', e);
     return defaultValue;

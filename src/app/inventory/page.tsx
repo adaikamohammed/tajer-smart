@@ -20,10 +20,11 @@ const fmt = (n: number) => n.toLocaleString('en-US');
 
 function getExpiryStatus(d?: string, alertDays: number = 30) {
   if (!d) return null;
-  const days = Math.ceil((new Date(d).getTime() - Date.now()) / 86_400_000);
+  const cleanDate = d.includes('T') ? d.split('T')[0] : d;
+  const days = Math.ceil((new Date(cleanDate).getTime() - Date.now()) / 86_400_000);
   if (days < 0)          return { label: 'منتهي الصلاحية',     cls: 'badge badge-danger',   cardCls: 'expired', barCls: 'danger' };
   if (days <= alertDays) return { label: `ينتهي خلال ${days} يوم`, cls: 'badge badge-warning', cardCls: 'low',     barCls: 'warning' };
-  return                     { label: `صالح حتى ${d}`,         cls: 'badge badge-success',  cardCls: 'ok',      barCls: '' };
+  return                     { label: `صالح حتى ${cleanDate}`, cls: 'badge badge-success',  cardCls: 'ok',      barCls: '' };
 }
 
 function autoEmoji(name: string) {
@@ -210,25 +211,28 @@ export default function InventoryPage() {
 
   const executeAdjustStock = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adjustingProduct || adjustQty <= 0) return;
+    const numQty = Number(adjustQty) || 0;
+    if (!adjustingProduct || numQty <= 0) return;
 
-    // حساب عدد الحبات الفعلي حسب اختيار الكرتونة أو النصف أو الحبة
-    let actualPieces = adjustQty;
-    if (adjustingProduct.unit_type === 'pack' && adjustingProduct.pack_quantity) {
+    let actualPieces = numQty;
+    const packQty = Number(adjustingProduct.pack_quantity) || 1;
+    if (adjustingProduct.unit_type === 'pack' && packQty > 1) {
       if (adjustUnitChoice === 'pack') {
-        actualPieces = adjustQty * adjustingProduct.pack_quantity;
+        actualPieces = numQty * packQty;
       } else if (adjustUnitChoice === 'half_pack') {
-        actualPieces = adjustQty * Math.round(adjustingProduct.pack_quantity / 2);
+        actualPieces = numQty * Math.round(packQty / 2);
       }
     }
 
+    const currentStock = Number(adjustingProduct.stock_quantity) || 0;
     const delta = adjustType === 'add' ? actualPieces : -actualPieces;
+    const newStock = Math.max(0, currentStock + delta);
     const person = contacts.find(c => c.id === selectedPersonId);
 
     // إنشاء معاملة رسمية تربط الحركة بالمورد أو الزبون
     if (person) {
       const isSale = adjustType === 'reduce';
-      const itemPrice = isSale ? adjustingProduct.retail_price : adjustingProduct.cost_price;
+      const itemPrice = Number(isSale ? adjustingProduct.retail_price : adjustingProduct.cost_price) || 0;
       const totalAmt = itemPrice * actualPieces;
 
       const newTx: Transaction = {
@@ -245,7 +249,7 @@ export default function InventoryPage() {
           product_name: adjustingProduct.name,
           quantity: actualPieces,
           unit_price: itemPrice,
-          cost_price: adjustingProduct.cost_price,
+          cost_price: Number(adjustingProduct.cost_price) || 0,
         }],
         created_at: new Date().toISOString(),
       };
@@ -257,7 +261,7 @@ export default function InventoryPage() {
 
     const up = products.map(p => p.id === adjustingProduct.id ? {
       ...p,
-      stock_quantity: p.stock_quantity + delta,
+      stock_quantity: newStock,
       last_purchased_at: adjustType === 'add' ? new Date().toISOString() : p.last_purchased_at,
       last_sold_at: adjustType === 'reduce' ? new Date().toISOString() : p.last_sold_at,
     } : p);

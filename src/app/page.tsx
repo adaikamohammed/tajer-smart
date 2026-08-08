@@ -87,14 +87,14 @@ export default function HomePage() {
 
   /* ── حسابات الديون والملخص ── */
   const customersDebt = contacts
-    .filter(c => c.type !== 'supplier' && c.balance > 0)
-    .reduce((a, c) => a + c.balance, 0);
+    .filter(c => (Number(c.balance) || 0) > 0)
+    .reduce((a, c) => a + (Number(c.balance) || 0), 0);
   const suppliersDebt = contacts
-    .filter(c => c.balance < 0)
-    .reduce((a, c) => a + Math.abs(c.balance), 0);
-  const debtorCount   = contacts.filter(c => c.balance > 0).length;
-  const creditorCount = contacts.filter(c => c.balance < 0).length;
-  const lowStockCount = products.filter(p => p.stock_quantity <= p.min_stock_alert).length;
+    .filter(c => (Number(c.balance) || 0) < 0)
+    .reduce((a, c) => a + Math.abs(Number(c.balance) || 0), 0);
+  const debtorCount   = contacts.filter(c => (Number(c.balance) || 0) > 0).length;
+  const creditorCount = contacts.filter(c => (Number(c.balance) || 0) < 0).length;
+  const lowStockCount = products.filter(p => (Number(p.stock_quantity) || 0) <= (Number(p.min_stock_alert) || 5)).length;
 
   /* ── فلترة حسب التقويم المختار ── */
   const filteredTx = transactions.filter(tx => {
@@ -107,7 +107,7 @@ export default function HomePage() {
   const periodSales  = activeSales.length;
   const periodProfit = activeSales
     .reduce((acc, tx) =>
-      acc + tx.items.reduce((s, item) => s + (item.unit_price - item.cost_price) * item.quantity, 0), 0
+      acc + (tx.items || []).reduce((s, item) => s + ((Number(item.unit_price) || 0) - (Number(item.cost_price) || 0)) * (Number(item.quantity) || 0), 0), 0
     );
 
   const greeting = getGreeting();
