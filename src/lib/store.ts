@@ -3,12 +3,12 @@ export interface Contact {
   name: string;
   phone: string;
   photo_url?: string;
-  location?: string;      // مكان المحل / العنوان
-  category?: string;      // نوع التجارة / النشاط
-  credit_limit?: number;  // سقف الدين المسموح به
+  location?: string;
+  category?: string;
+  credit_limit?: number;
   type: 'customer' | 'supplier' | 'both';
   notes?: string;
-  balance: number;        // موجب = دين لنا على الزبون | سالب = مستحق علينا للمورد
+  balance: number;
   created_at: string;
 }
 
@@ -86,20 +86,20 @@ export interface DebtPayment {
 export type ReceiptType = 'SALE' | 'PURCHASE' | 'DEBT_PAYMENT' | 'ACCOUNT_STATEMENT';
 
 export interface Receipt {
-  id: string;                  // رقم الوصل الفريد مثل INV-20260808-1042
-  receipt_type: ReceiptType;   // نوع الوصل
+  id: string;
+  receipt_type: ReceiptType;
   contact_id?: string;
-  contact_name?: string;       // اسم الزبون أو المورد
+  contact_name?: string;
   contact_phone?: string;
-  items?: TransactionItem[];   // المنتجات (في وصل البيع/الشراء)
-  total_amount?: number;       // المبلغ الإجمالي
-  paid_amount?: number;        // المدفوع نقداً
-  debt_amount?: number;        // الدين المتبقي
-  payment_amount?: number;     // مبلغ التسديد (في وصل تسديد الدين)
+  items?: TransactionItem[];
+  total_amount?: number;
+  paid_amount?: number;
+  debt_amount?: number;
+  payment_amount?: number;
   payment_type?: 'COLLECTED' | 'PAID_OUT';
-  balance_after?: number;      // الرصيد بعد العملية
+  balance_after?: number;
   note?: string;
-  html_snapshot?: string;      // نسخة HTML الجاهزة للطباعة
+  html_snapshot?: string;
   created_at: string;
 }
 
@@ -264,7 +264,6 @@ export function getReceipts(): Receipt[] {
 
 export function saveReceipt(receipt: Receipt): void {
   const existing = getReceipts();
-  // منع إضافة نفس الوصل مرتين بنفس الـ ID
   const filtered = existing.filter(r => r.id !== receipt.id);
   setLocalData(STORAGE_KEYS.RECEIPTS, [receipt, ...filtered]);
 }
@@ -274,7 +273,7 @@ export function deleteReceipt(id: string): void {
   setLocalData(STORAGE_KEYS.RECEIPTS, existing.filter(r => r.id !== id));
 }
 
-/** توليد رقم وصل فريد بالتاريخ والوقت والميلي ثانية لمنع التكرار */
+/** توليد رقم وصل فريد بالتاريخ والوقت والميلي ثانية */
 export function generateReceiptNumber(): string {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -284,57 +283,48 @@ export function generateReceiptNumber(): string {
   return `INV-${datePart}-${timePart}${msPart}`;
 }
 
-// ─── محرك الطباعة الحرارية (80mm / 58mm) ─────────────────────────────────
+// ─── محرك الطباعة الحرارية 80mm (XP-P323B) ────────────────────────────────
 export function buildThermalReceiptHTML(receipt: Receipt): string {
-  const fmt = (n: number) => n.toLocaleString('en-US');
-  const dateStr = new Date(receipt.created_at).toLocaleDateString('en-GB').replace(/\//g, '/') + ' ' + new Date(receipt.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const fmt = (n: number) => (Number(n) || 0).toLocaleString('en-US');
+  const now = new Date(receipt.created_at);
+  const dateStr = now.toLocaleDateString('ar-DZ') + '  ' +
+                  now.toLocaleTimeString('ar-DZ', { hour: '2-digit', minute: '2-digit' });
   const m = MERCHANT_INFO;
 
   const typeLabels: Record<ReceiptType, string> = {
-    SALE:              '🛒 وصل بيع',
-    PURCHASE:          '📦 وصل شراء',
-    DEBT_PAYMENT:      '💵 وصل تسديد دين',
-    ACCOUNT_STATEMENT: '📜 كشف حساب',
+    SALE:              'وصل بيع',
+    PURCHASE:          'وصل شراء',
+    DEBT_PAYMENT:      'وصل تسديد دين',
+    ACCOUNT_STATEMENT: 'كشف حساب',
   };
   const typeLabel = typeLabels[receipt.receipt_type];
 
   // ─ جدول المنتجات ─
   let itemsHTML = '';
   if (receipt.items && receipt.items.length > 0) {
+    const rows = receipt.items.map(i => `
+    <tr>
+      <td class="name-cell">${i.product_name}</td>
+      <td>${Number(i.quantity) || 0}</td>
+      <td>${fmt(i.unit_price)}</td>
+      <td>${fmt((Number(i.quantity) || 0) * (Number(i.unit_price) || 0))}</td>
+    </tr>`).join('');
+
     itemsHTML = `
-    <div class="section-title">تفاصيل البضاعة</div>
+    <div class="section-title">── تفاصيل البضاعة ──</div>
     <table class="items-table">
       <thead>
-        <tr><th>المنتج</th><th>الكمية</th><th>السعر</th><th>المجموع</th></tr>
+        <tr><th>المنتج</th><th>ك</th><th>السعر</th><th>المجموع</th></tr>
       </thead>
-      <tbody>
-        ${receipt.items.map(item => `
-        <tr>
-          <td>${item.product_name}</td>
-          <td>${item.quantity}</td>
-          <td>${fmt(item.unit_price)}</td>
-          <td>${fmt(item.quantity * item.unit_price)}</td>
-        </tr>`).join('')}
-      </tbody>
+      <tbody>${rows}</tbody>
     </table>
     <div class="divider"></div>
-    <div class="row">
-      <span class="label">المبلغ الإجمالي:</span>
-      <span class="value bold">${fmt(receipt.total_amount ?? 0)} د.ج</span>
-    </div>
-    <div class="row">
-      <span class="label">المدفوع نقداً:</span>
-      <span class="value">${fmt(receipt.paid_amount ?? 0)} د.ج</span>
-    </div>
-    ${(receipt.debt_amount ?? 0) > 0 ? `
-    <div class="row debt-row">
-      <span class="label">⚠️ الدين المتبقي:</span>
-      <span class="value bold">${fmt(receipt.debt_amount ?? 0)} د.ج</span>
-    </div>` : `
-    <div class="row paid-row">
-      <span class="label">✅ تم الدفع بالكامل</span>
-    </div>`}
-    `;
+    <div class="total-box">الإجمالي: ${fmt(receipt.total_amount ?? 0)} د.ج</div>
+    <div class="row"><span class="label">المدفوع نقداً:</span><span class="value">${fmt(receipt.paid_amount ?? 0)} د.ج</span></div>
+    ${(receipt.debt_amount ?? 0) > 0
+      ? `<div class="row debt-row"><span class="label">⚠️ الدين المتبقي:</span><span class="value">${fmt(receipt.debt_amount ?? 0)} د.ج</span></div>`
+      : `<div class="paid-row">✅ تم الدفع بالكامل</div>`
+    }`;
   }
 
   // ─ وصل تسديد دين ─
@@ -342,14 +332,13 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
   if (receipt.receipt_type === 'DEBT_PAYMENT' && receipt.payment_amount) {
     const action = receipt.payment_type === 'COLLECTED' ? 'تحصيل من الزبون' : 'سداد للمورد';
     paymentHTML = `
-    <div class="section-title">تفاصيل التسديد</div>
+    <div class="section-title">── تفاصيل التسديد ──</div>
     <div class="row"><span class="label">نوع العملية:</span><span class="value">${action}</span></div>
-    <div class="row"><span class="label">المبلغ المُسدَّد:</span><span class="value bold">${fmt(receipt.payment_amount)} د.ج</span></div>
-    ${receipt.balance_after !== undefined ? `
-    <div class="row"><span class="label">الرصيد المتبقي:</span><span class="value bold">${fmt(Math.abs(receipt.balance_after))} د.ج</span></div>
-    ` : ''}
-    ${receipt.note ? `<div class="row"><span class="label">ملاحظة:</span><span class="value">${receipt.note}</span></div>` : ''}
-    `;
+    <div class="total-box">${fmt(receipt.payment_amount)} د.ج</div>
+    ${receipt.balance_after !== undefined
+      ? `<div class="row"><span class="label">الرصيد المتبقي:</span><span class="value">${fmt(Math.abs(receipt.balance_after))} د.ج</span></div>`
+      : ''}
+    ${receipt.note ? `<div class="row"><span class="label">ملاحظة:</span><span class="value">${receipt.note}</span></div>` : ''}`;
   }
 
   // ─ كشف حساب ─
@@ -362,136 +351,183 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
       ? `🔴 يطالبنا بمبلغ: ${fmt(Math.abs(bal))} د.ج`
       : `✅ الحساب مصفى بالكامل`;
     statementHTML = `
-    <div class="section-title">ملخص الحساب</div>
-    <div class="status-box">${status}</div>
-    `;
+    <div class="section-title">── ملخص الحساب ──</div>
+    <div class="status-box">${status}</div>`;
   }
 
-  return `
-<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>${typeLabel} — ${receipt.id}</title>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>${typeLabel}</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@700;900&display=swap');
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: 'Cairo', sans-serif;
+
+  /* ── عرض الورقة 80mm بدقة، هوامش 1mm فقط ── */
+  @page { size: 80mm auto; margin: 0mm; }
+  html  { width: 80mm; }
+  body  {
+    font-family: 'Cairo', 'Tahoma', sans-serif;
     direction: rtl;
-    background: white;
+    background: #fff;
     color: #000;
-    padding: 4mm 5mm;
-    font-size: 12px;
+    width: 80mm;
+    padding: 2mm 1mm;
+    font-size: 13px;
+    font-weight: 700;
   }
-  @page { size: 79mm auto; margin: 0 !important; }
   @media print {
-    html, body { width: 79mm !important; padding: 2mm 4mm !important; }
-    .no-print { display: none !important; }
+    html, body { width: 80mm !important; padding: 1mm !important; }
+    .no-print  { display: none !important; }
   }
+
+  /* ── ترويسة المتجر ── */
   .header {
     text-align: center;
-    border-bottom: 2px dashed #000;
-    padding-bottom: 6px;
-    margin-bottom: 8px;
+    border-bottom: 3px dashed #000;
+    padding-bottom: 5px;
+    margin-bottom: 6px;
   }
-  .merchant-name { font-size: 16px; font-weight: 900; }
-  .merchant-owner { font-size: 13px; font-weight: 700; }
-  .merchant-sub { font-size: 10px; color: #333; }
+  .merchant-name  { font-size: 20px; font-weight: 900; line-height: 1.2; }
+  .merchant-owner { font-size: 15px; font-weight: 900; margin-top: 2px; }
+  .merchant-sub   { font-size: 11px; font-weight: 700; margin-top: 2px; color: #111; }
+
+  /* ── نوع الوصل ── */
   .receipt-type {
     text-align: center;
-    font-size: 13px;
+    font-size: 17px;
     font-weight: 900;
     background: #000;
     color: #fff;
-    padding: 3px 0;
-    margin: 6px 0;
-    border-radius: 2px;
-    letter-spacing: 0.5px;
+    padding: 5px 0;
+    margin: 5px 0;
+    letter-spacing: 1px;
   }
-  .receipt-id { text-align: center; font-size: 10px; color: #555; margin-bottom: 4px; }
-  .divider { border-top: 1px dashed #000; margin: 6px 0; }
+  .receipt-id {
+    text-align: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 3px;
+    word-break: break-all;
+  }
+
+  /* ── عناصر مشتركة ── */
+  .divider { border-top: 2px dashed #000; margin: 5px 0; }
   .row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 4px;
-    font-size: 11px;
+    margin-bottom: 5px;
+    font-size: 13px;
   }
-  .label { color: #444; }
-  .value { font-weight: 700; }
-  .bold { font-weight: 900; font-size: 12px; }
-  .section-title {
-    font-size: 10px;
-    font-weight: 900;
-    text-decoration: underline;
-    margin: 6px 0 4px;
+  .label { font-weight: 700; color: #111; }
+  .value { font-weight: 900; font-size: 14px; }
+
+  /* ── صندوق الإجمالي ── */
+  .total-box {
     text-align: center;
+    border: 3px double #000;
+    padding: 5px;
+    margin: 5px 0;
+    font-size: 18px;
+    font-weight: 900;
+    letter-spacing: 1px;
+  }
+
+  /* ── جدول المنتجات ── */
+  .section-title {
+    text-align: center;
+    font-size: 13px;
+    font-weight: 900;
+    margin: 6px 0 4px;
   }
   .items-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 10px;
-    margin: 4px 0;
+    font-size: 12px;
+    margin: 3px 0;
   }
   .items-table th {
     background: #000;
     color: #fff;
-    padding: 2px 3px;
+    padding: 3px 2px;
     text-align: right;
-    font-weight: 700;
+    font-weight: 900;
+    font-size: 12px;
   }
   .items-table td {
-    padding: 2px 3px;
-    border-bottom: 1px dotted #aaa;
+    padding: 4px 2px;
+    border-bottom: 1px dashed #555;
     text-align: right;
+    font-weight: 700;
+    font-size: 12px;
   }
-  .debt-row .value { color: #c00; }
-  .paid-row { color: #060; font-weight: 900; }
+  .items-table .name-cell {
+    font-weight: 900;
+    max-width: 38mm;
+    word-break: break-word;
+  }
+  .items-table tr:nth-child(even) td { background: #f0f0f0; }
+
+  /* ── الديون والتسديد ── */
+  .debt-row .value { color: #c00; font-size: 16px; }
+  .paid-row {
+    text-align: center;
+    color: #050;
+    font-weight: 900;
+    font-size: 15px;
+    margin: 5px 0;
+  }
   .status-box {
     text-align: center;
-    border: 2px solid #000;
-    border-radius: 4px;
-    padding: 5px;
-    font-size: 12px;
+    border: 3px solid #000;
+    padding: 6px;
+    font-size: 15px;
     font-weight: 900;
-    margin: 4px 0;
+    margin: 5px 0;
   }
+
+  /* ── الذيل ── */
   .footer {
-    margin-top: 10px;
-    border-top: 2px dashed #000;
-    padding-top: 6px;
+    margin-top: 8px;
+    border-top: 3px dashed #000;
+    padding-top: 5px;
     text-align: center;
-    font-size: 10px;
+    font-size: 13px;
+    font-weight: 700;
   }
   .seal {
     display: inline-block;
     border: 2px solid #000;
-    padding: 2px 8px;
+    padding: 2px 12px;
     border-radius: 3px;
-    font-size: 9px;
+    font-size: 12px;
     font-weight: 900;
-    transform: rotate(-2deg);
-    margin-bottom: 4px;
+    margin-bottom: 3px;
   }
+
+  /* ── زر الطباعة (يختفي عند الطباعة) ── */
   .print-btn {
     display: block;
     width: 100%;
-    padding: 10px;
+    padding: 12px;
     background: #000;
-    color: white;
+    color: #fff;
     border: none;
     border-radius: 6px;
     font-family: 'Cairo', sans-serif;
-    font-size: 14px;
+    font-size: 16px;
     font-weight: 900;
     cursor: pointer;
-    margin-top: 12px;
+    margin-top: 14px;
   }
 </style>
 </head>
 <body>
+
   <div class="header">
     <div class="merchant-name">🚛 ${m.name}</div>
     <div class="merchant-owner">${m.owner}</div>
@@ -499,7 +535,8 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
   </div>
 
   <div class="receipt-type">${typeLabel}</div>
-  <div class="receipt-id">رقم الوصل: ${receipt.id} | ${dateStr}</div>
+  <div class="receipt-id">${receipt.id}</div>
+  <div class="receipt-id">${dateStr}</div>
 
   <div class="divider"></div>
 
@@ -563,7 +600,7 @@ export function initStorageIfEmpty(): void {
     setLocalData(STORAGE_KEYS.RECEIPTS, []);
   }
 
-  // مزامنة فورية في الخلفية مع Vercel Postgres لتوحيد الأشخاص والمنتجات والعمليات على كل الأجهزة
+  // مزامنة فورية في الخلفية مع Vercel Postgres
   import('./cloud-sync').then(cs => cs.syncStoreWithVercelCloud()).catch(() => {});
 }
 
@@ -609,29 +646,25 @@ export function cancelTransaction(txId: string): boolean {
   const products: Product[] = getLocalData('tajer_smart_products_v1', []);
   const contacts: Contact[] = getLocalData('tajer_smart_contacts_v1', []);
 
-  // 1. استعادة كميات المخزون (تسمح حتى بالقيم السالبة)
+  // 1. استعادة كميات المخزون
   const updatedProducts = products.map(p => {
     const itemMatch = tx.items.find(i => i.product_id === p.id);
     if (itemMatch) {
       if (tx.tx_type === 'SALE') {
-        // البيع كان خصم، الإلغاء يضيف الكمية للمخزون
         return { ...p, stock_quantity: p.stock_quantity + itemMatch.quantity };
       } else if (tx.tx_type === 'PURCHASE') {
-        // الشراء كان إضافة، الإلغاء يخصم الكمية من المخزون
         return { ...p, stock_quantity: p.stock_quantity - itemMatch.quantity };
       }
     }
     return p;
   });
 
-  // 2. تسوية ديون الزبون أو المورد إن وجد دين
+  // 2. تسوية ديون الزبون أو المورد
   const updatedContacts = contacts.map(c => {
     if (tx.contact_id && c.id === tx.contact_id && tx.debt_amount > 0) {
       if (tx.tx_type === 'SALE') {
-        // الخصم من الدين المستحق على الزبون
         return { ...c, balance: Math.max(0, c.balance - tx.debt_amount) };
       } else if (tx.tx_type === 'PURCHASE') {
-        // الخصم من الدين المستحق للمورد
         return { ...c, balance: Math.min(0, c.balance + tx.debt_amount) };
       }
     }
