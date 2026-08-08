@@ -7,6 +7,7 @@ import {
   printThermalReceipt, generateReceiptNumber,
 } from '@/lib/store';
 import { queueDeletedProduct, subscribeToCloudChanges, syncStoreWithVercelCloud, clearAllStoreDataAndCloud } from '@/lib/cloud-sync';
+import { seedRealisticDataToCloud } from '@/lib/demo-seed';
 import { toast } from '@/components/Toast';
 import {
   Package, Plus, Search, X,
@@ -196,6 +197,13 @@ export default function InventoryPage() {
       toast('✅ تم تصفير المحل بنجاح! أضف بضاعتك الجديدة الآن وسوف تُحفظ سحابياً مباشرة', 'success');
       setTimeout(() => window.location.reload(), 600);
     }
+  };
+
+  const handleSeedData = async () => {
+    toast('🌱 جارٍ شحن 10 زبائن وموردين، 10 منتجات حقيقية، و10 عمليات إلى Vercel Postgres...', 'info');
+    await seedRealisticDataToCloud();
+    toast('✅ تم إضافة المزيج التجريبي (10 زبائن + 10 منتجات + 10 عمليات) وتزامنهم سحابياً بنجاح!', 'success');
+    setTimeout(() => window.location.reload(), 600);
   };
 
   const openAdjustModal = (p: Product, type: 'add' | 'reduce', e?: React.MouseEvent) => {
@@ -497,6 +505,13 @@ export default function InventoryPage() {
         <button onClick={openAddModal} className="btn btn-primary shrink-0 gap-1.5 py-2.5 px-4">
           <Plus size={18} strokeWidth={2.5} />
           <span className="hidden sm:inline">منتج جديد</span>
+        </button>
+        <button
+          onClick={handleSeedData}
+          className="px-3 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-black shrink-0 touch-active flex items-center gap-1"
+          title="شحن 10 زبائن وموردين، 10 منتجات حقيقية، و10 عمليات بيع وشراء للاستعراض أمام التاجر"
+        >
+          🌱 <span className="hidden md:inline">شحن بيانات تجريبية (10×10×10)</span>
         </button>
         <button
           onClick={handleResetStore}
