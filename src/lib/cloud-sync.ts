@@ -58,18 +58,27 @@ export async function syncStoreWithVercelCloud(): Promise<{
     const deletedProducts: string[]     = getLocalData(DELETED_KEYS.PRODUCTS, []);
     const deletedTx:       string[]     = getLocalData(DELETED_KEYS.TRANSACTIONS, []);
 
-    const res = await fetch('/api/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contacts: localContacts,
-        products: localProducts,
-        transactions: localTx,
-        deleted_contacts: deletedContacts,
-        deleted_products: deletedProducts,
-        deleted_transactions: deletedTx,
-      }),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    let res: Response;
+    try {
+      res = await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contacts: localContacts,
+          products: localProducts,
+          transactions: localTx,
+          deleted_contacts: deletedContacts,
+          deleted_products: deletedProducts,
+          deleted_transactions: deletedTx,
+        }),
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     const data = await res.json();
 

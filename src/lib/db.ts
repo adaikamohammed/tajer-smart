@@ -1,25 +1,53 @@
-import { sql } from '@vercel/postgres';
 import { neon } from '@neondatabase/serverless';
 
-export const isVercelDbConfigured = Boolean(
-  process.env.POSTGRES_URL ||
-  process.env.DATABASE_URL ||
-  process.env.POSTGRES_PRISMA_URL
-);
+export function getDbConnectionString(): string | null {
+  if (process.env.POSTGRES_URL) return process.env.POSTGRES_URL;
+  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
+  if (process.env.POSTGRES_PRISMA_URL) return process.env.POSTGRES_PRISMA_URL;
+  if (process.env.POSTGRES_URL_NON_POOLING) return process.env.POSTGRES_URL_NON_POOLING;
+  if (process.env.STORAGE_URL) return process.env.STORAGE_URL;
+  if (process.env.STORAGE_POSTGRES_URL) return process.env.STORAGE_POSTGRES_URL;
+
+  // البحث الديناميكي عن أي مسمى قام Vercel بحقنه لقاعدة البيانات
+  if (typeof process !== 'undefined' && process.env) {
+    for (const key of Object.keys(process.env)) {
+      if ((key.includes('POSTGRES') || key.includes('DATABASE') || key.includes('NEON') || key.includes('STORAGE')) && key.endsWith('_URL')) {
+        const val = process.env[key];
+        if (val && (val.startsWith('postgres://') || val.startsWith('postgresql://'))) {
+          return val;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+export function getAvailableDbKeys(): string[] {
+  const keys: string[] = [];
+  if (typeof process !== 'undefined' && process.env) {
+    for (const key of Object.keys(process.env)) {
+      if (key.includes('POSTGRES') || key.includes('DATABASE') || key.includes('NEON') || key.includes('STORAGE')) {
+        keys.push(key);
+      }
+    }
+  }
+  return keys;
+}
+
+export const isVercelDbConfigured = Boolean(getDbConnectionString());
 
 export function getNeonSql() {
-  const dbUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL || process.env.POSTGRES_PRISMA_URL;
+  const dbUrl = getDbConnectionString();
   if (!dbUrl) return null;
   return neon(dbUrl);
 }
 
 /** إنشاء الجداول الأساسية تلقائياً إذا لم تكن موجودة في قاعدة بيانات Vercel Postgres */
 export async function initTablesIfMissing() {
-  if (!isVercelDbConfigured) return false;
+  const query = getNeonSql();
+  if (!query) return false;
   try {
-    const query = getNeonSql();
-    if (!query) return false;
-
     await query`
       CREATE TABLE IF NOT EXISTS contacts (
         id TEXT PRIMARY KEY,

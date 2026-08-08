@@ -1,18 +1,30 @@
 import { NextResponse } from 'next/server';
-import { getNeonSql, initTablesIfMissing, isVercelDbConfigured } from '@/lib/db';
+import { getNeonSql, getDbConnectionString, getAvailableDbKeys, initTablesIfMissing } from '@/lib/db';
+
+export async function GET() {
+  const dbUrl = getDbConnectionString();
+  const availableKeys = getAvailableDbKeys();
+  return NextResponse.json({
+    configured: Boolean(dbUrl),
+    foundEnvKeys: availableKeys,
+    connectionStatus: dbUrl ? 'قاعدة البيانات مسجلة وجاهزة' : 'لم يتم العثور على متغيرات الاتصال في Vercel',
+  });
+}
 
 export async function POST(req: Request) {
-  if (!isVercelDbConfigured) {
+  const dbUrl = getDbConnectionString();
+  if (!dbUrl) {
+    const availableKeys = getAvailableDbKeys();
     return NextResponse.json({
       success: false,
-      error: 'لم يتم ربط Vercel Postgres بنجاح في مشروعك بعد. يرجى الضغط على Connect في لوحة Vercel Storage و Redeploy مشروعك.'
+      error: `لم يتم العثور على رابط Vercel Postgres في متغيرات البيئة. المفاتيح المتوفرة: [${availableKeys.join(', ') || 'لا توجد'}]. يرجى الضغط على Connect في Vercel ثم Redeploy.`
     }, { status: 400 });
   }
 
   try {
     const query = getNeonSql();
     if (!query) {
-      return NextResponse.json({ success: false, error: 'غير قادر على الاتصال بقاعدة Vercel' }, { status: 500 });
+      return NextResponse.json({ success: false, error: 'غير قادر على فتح الاتصال بقاعدة Vercel Postgres' }, { status: 500 });
     }
 
     // التأكد من وجود الجداول
