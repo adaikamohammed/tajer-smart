@@ -66,7 +66,7 @@ export interface Transaction {
   total_amount: number;
   paid_amount: number;
   debt_amount: number;
-  status: 'PAID' | 'PARTIAL' | 'DEBT';
+  status: 'PAID' | 'PARTIAL' | 'DEBT' | 'CANCELLED';
   notes?: string;
   items: TransactionItem[];
   created_at: string;
@@ -577,4 +577,60 @@ export function generateAccountStatementText(contactName: string, balance: numbe
   msg += `——————————————————\n`;
   msg += `شكراً لتعاملكم معنا! 🌹`;
   return msg;
+}
+
+/** إلغاء معاملة/طلبية بالكامل وإرجاع كميات المخزون وتسوية الديون */
+export function cancelTransaction(txId: string): boolean {
+  const transactions: Transaction[] = getLocalData('tajer_smart_transactions_v1', []);
+  const txIndex = transactions.findIndex(t => t.id === txId);
+  if (txIndex === -1) return false;
+
+  const tx = transactions[txIndex];
+  if (tx.status === 'CANCELLED') return false;
+
+  const products: Product[] = getLocalData('tajer_smart_products_v1', []);
+  const contacts: Contact[] = getLocalData('tajer_smart_contacts_v1', []);
+
+  // 1. استعادة كميات المخزون (تسمح حتى بالقيم السالبة)
+  const updatedProducts = products.map(p => {
+    const itemMatch = tx.items.find(i => i.product_id === p.id);
+    if (itemMatch) {
+      if (tx.tx_type === 'SALE') {
+        // البيع كان خصم، الإلغاء يضيف الكمية للمخزون
+        return { ...p, stock_quantity: p.stock_quantity + itemMatch.quantity };
+      } else if (tx.tx_type === 'PURCHASE') {
+        // الشراء كان إضافة، الإلغاء يخصم الكمية من المخزون
+        return { ...p, stock_quantity: p.stock_quantity - itemMatch.quantity };
+      }
+    }
+    return p;
+  });
+
+  // 2. تسوية ديون الزبون أو المورد إن وجد دين
+  const updatedContacts = contacts.map(c => {
+    if (tx.contact_id && c.id === tx.contact_id && tx.debt_amount > 0) {
+      if (tx.tx_type === 'SALE') {
+        // الخصم من الدين المستحق على الزبون
+        return { ...c, balance: Math.max(0, c.balance - tx.debt_amount) };
+      } else if (tx.tx_type === 'PURCHASE') {
+        // الخصم من الدين المستحق للمورد
+        return { ...c, balance: Math.min(0, c.balance + tx.debt_amount) };
+      }
+    }
+    return c;
+  });
+
+  // 3. تحديث حالة المعاملة إلى CANCELLED
+  const updatedTx = [...transactions];
+  updatedTx[txIndex] = {
+    ...tx,
+    status: 'CANCELLED',
+    notes: (tx.notes ? tx.notes + ' ' : '') + '[تم إلغاء الطلبية وتصفية المخزون والدين]',
+  };
+
+  setLocalData('tajer_smart_products_v1', updatedProducts);
+  setLocalData('tajer_smart_contacts_v1', updatedContacts);
+  setLocalData('tajer_smart_transactions_v1', updatedTx);
+
+  return true;
 }

@@ -240,7 +240,7 @@ export default function InventoryPage() {
 
     const up = products.map(p => p.id === adjustingProduct.id ? {
       ...p,
-      stock_quantity: Math.max(0, p.stock_quantity + delta),
+      stock_quantity: p.stock_quantity + delta,
       last_purchased_at: adjustType === 'add' ? new Date().toISOString() : p.last_purchased_at,
       last_sold_at: adjustType === 'reduce' ? new Date().toISOString() : p.last_sold_at,
     } : p);

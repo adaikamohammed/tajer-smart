@@ -1,11 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { getLocalData, Transaction, Contact, Product } from '@/lib/store';
+import { useState, useEffect, useMemo } from 'react';
+import {
+  getLocalData, setLocalData, Transaction, Contact, Product,
+  cancelTransaction, printThermalReceipt, generateReceiptNumber, createWhatsAppLink,
+} from '@/lib/store';
+import { toast } from '@/components/Toast';
 import {
   TrendingUp, DollarSign, Wallet, Users,
   BarChart3, Info, Package, ArrowUpRight, ArrowDownLeft, ShieldCheck,
-  PieChart, LayoutGrid
+  PieChart, LayoutGrid, Search, Filter, Printer, X, Clock3, MessageCircle
 } from 'lucide-react';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
@@ -15,6 +19,10 @@ export default function StatsPage() {
   const [contacts,     setContacts]     = useState<Contact[]>([]);
   const [products,     setProducts]     = useState<Product[]>([]);
   const [viewMode,     setViewMode]     = useState<'numbers' | 'visual'>('visual');
+
+  // فلاتر سجل العمليات
+  const [txSearchQuery, setTxSearchQuery] = useState('');
+  const [txTypeFilter,  setTxTypeFilter]  = useState<'all' | 'SALE' | 'PURCHASE' | 'CANCELLED'>('all');
 
   useEffect(() => {
     setTransactions(getLocalData('tajer_smart_transactions_v1', []));
@@ -32,8 +40,8 @@ export default function StatsPage() {
   const totalOwedToUs = contacts.filter(c => c.balance > 0).reduce((sum, c) => sum + c.balance, 0);
   const totalWeOwe    = contacts.filter(c => c.balance < 0).reduce((sum, c) => sum + Math.abs(c.balance), 0);
 
-  // 4️⃣ المبيعات والأرباح النقدية الفعلية
-  const salesTx = transactions.filter(t => t.tx_type === 'SALE');
+  // 4️⃣ المبيعات والأرباح النقدية الفعلية (تستبعد الطلبيات الملغاة)
+  const salesTx = transactions.filter(t => t.tx_type === 'SALE' && t.status !== 'CANCELLED');
   const totalSales = salesTx.reduce((sum, t) => sum + t.total_amount, 0);
   const totalPaidCash = salesTx.reduce((sum, t) => sum + t.paid_amount, 0);
 
@@ -52,6 +60,21 @@ export default function StatsPage() {
   // أقصى قيمة للرسم البياني
   const maxBarValue = Math.max(1, totalStockCostValue, totalExpectedStockProfit, totalOwedToUs, totalWeOwe);
 
+  // قائمة المعاملات التاريخية المفلترة
+  const filteredLog = useMemo(() => {
+    return transactions.filter(t => {
+      if (txTypeFilter === 'SALE' && (t.tx_type !== 'SALE' || t.status === 'CANCELLED')) return false;
+      if (txTypeFilter === 'PURCHASE' && (t.tx_type !== 'PURCHASE' || t.status === 'CANCELLED')) return false;
+      if (txTypeFilter === 'CANCELLED' && t.status !== 'CANCELLED') return false;
+
+      if (!txSearchQuery.trim()) return true;
+      const q = txSearchQuery.toLowerCase().trim();
+      const matchContact = t.contact_name?.toLowerCase().includes(q);
+      const matchItems = t.items.some(i => i.product_name.toLowerCase().includes(q));
+      return matchContact || matchItems;
+    });
+  }, [transactions, txTypeFilter, txSearchQuery]);
+
   return (
     <div className="space-y-4">
 
@@ -69,7 +92,7 @@ export default function StatsPage() {
           </div>
         </div>
 
-        {/* 🔘 أزرار التحويل بين العرض البصري والأرقام */}
+        {/* 🔘 أزرار التحويل بين العرض البياني والأرقام */}
         <div className="grid grid-cols-2 gap-2 bg-black/20 p-1.5 rounded-xl">
           <button
             onClick={() => setViewMode('visual')}
@@ -91,7 +114,6 @@ export default function StatsPage() {
       {/* ══ 1️⃣ العرض البياني البصري ══ */}
       {viewMode === 'visual' ? (
         <div className="space-y-4">
-          
           {/* 📊 1. رسم بياني للأعمدة الملونة المقارنة */}
           <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
             <h3 className="font-black text-sm text-slate-800 flex items-center gap-2">
@@ -184,7 +206,6 @@ export default function StatsPage() {
               </p>
             </div>
           </div>
-
         </div>
       ) : (
         /* ══ 2️⃣ عرض الأرقام والمربعات الصريحة ══ */
@@ -249,11 +270,204 @@ export default function StatsPage() {
         </div>
       )}
 
+      {/* ══ 3️⃣ سجل جميع العمليات والطلبيات التاريخية بالكامل ══ */}
+      <div className="glass-card p-4 space-y-4 bg-white">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div>
+            <h3 className="font-black text-sm text-slate-800 flex items-center gap-2">
+              <Clock3 className="w-4 h-4 text-emerald-600" />
+              سجل جميع العمليات التاريخية بالكامل ({transactions.length})
+            </h3>
+            <p className="text-xs text-slate-400 font-bold mt-0.5">تصفح، فلترة، طباعة وإلغاء أي معاملة تابعة للمحل</p>
+          </div>
+        </div>
+
+        {/* 🔍 شريط البحث وفلاتر النوع */}
+        <div className="space-y-2">
+          <div className="relative">
+            <Search size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
+            <input
+              type="text"
+              placeholder="ابحث باسم الزبون أو اسم المنتج..."
+              value={txSearchQuery}
+              onChange={e => setTxSearchQuery(e.target.value)}
+              className="form-input pr-10 text-xs font-bold bg-slate-50 border-slate-300"
+            />
+            {txSearchQuery && (
+              <button onClick={() => setTxSearchQuery('')} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <X size={15} />
+              </button>
+            )}
+          </div>
+
+          {/* 🏷️ أزرار فلاتر النوع */}
+          <div className="flex flex-wrap gap-1.5 items-center">
+            <button
+              onClick={() => setTxTypeFilter('all')}
+              className={`px-3 py-1 rounded-xl text-xs font-black transition-all ${
+                txTypeFilter === 'all' ? 'bg-slate-900 text-white shadow-sm' : 'bg-slate-100 text-slate-600'
+              }`}
+            >
+              كل العمليات ({transactions.length})
+            </button>
+            <button
+              onClick={() => setTxTypeFilter('SALE')}
+              className={`px-3 py-1 rounded-xl text-xs font-black transition-all ${
+                txTypeFilter === 'SALE' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-emerald-50 text-emerald-700'
+              }`}
+            >
+              🟢 المبيعات ({transactions.filter(t => t.tx_type === 'SALE' && t.status !== 'CANCELLED').length})
+            </button>
+            <button
+              onClick={() => setTxTypeFilter('PURCHASE')}
+              className={`px-3 py-1 rounded-xl text-xs font-black transition-all ${
+                txTypeFilter === 'PURCHASE' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-indigo-50 text-indigo-700'
+              }`}
+            >
+              🔵 المشتريات ({transactions.filter(t => t.tx_type === 'PURCHASE' && t.status !== 'CANCELLED').length})
+            </button>
+            <button
+              onClick={() => setTxTypeFilter('CANCELLED')}
+              className={`px-3 py-1 rounded-xl text-xs font-black transition-all ${
+                txTypeFilter === 'CANCELLED' ? 'bg-rose-600 text-white shadow-sm' : 'bg-rose-50 text-rose-700'
+              }`}
+            >
+              ❌ الملغاة ({transactions.filter(t => t.status === 'CANCELLED').length})
+            </button>
+          </div>
+        </div>
+
+        {/* 📜 قائمة المعاملات المفلترة */}
+        {filteredLog.length === 0 ? (
+          <div className="py-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+            <Clock3 size={32} className="mx-auto text-slate-300 mb-2" />
+            <p className="text-xs font-bold text-slate-500">لا توجد عمليات تطابق فلتر البحث الحاضر</p>
+          </div>
+        ) : (
+          <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
+            {filteredLog.map(tx => {
+              const isSale  = tx.tx_type === 'SALE';
+              const contact = contacts.find(c => c.id === tx.contact_id);
+              const txDate  = new Date(tx.created_at);
+              const dateStr = txDate.toLocaleDateString('en-GB') + ' ' + txDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+              return (
+                <div key={tx.id} className={`p-3.5 rounded-2xl border space-y-2.5 transition-all ${
+                  tx.status === 'CANCELLED' ? 'bg-slate-100/70 border-slate-300 opacity-80' : 'bg-white border-slate-200 shadow-sm'
+                }`}>
+                  {/* ترويسة الفاتورة */}
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                        tx.status === 'CANCELLED' ? 'bg-slate-200 text-slate-600' : isSale ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'
+                      }`}>
+                        {isSale ? <ArrowUpRight size={16} strokeWidth={2.5} /> : <ArrowDownLeft size={16} strokeWidth={2.5} />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-black text-xs text-slate-900 truncate">
+                          {isSale ? 'طلب/بيع لـ ' : 'شراء من '}: <span className="text-emerald-700">{tx.contact_name}</span>
+                        </p>
+                        <p className="text-[10px] font-bold text-slate-400 tabnum">{dateStr}</p>
+                      </div>
+                    </div>
+
+                    <div className="text-left shrink-0">
+                      <p className={`font-black text-sm tabnum ${tx.status === 'CANCELLED' ? 'line-through text-slate-400' : isSale ? 'text-emerald-700' : 'text-slate-700'}`}>
+                        {fmt(tx.total_amount)} <span className="text-[10px]">د.ج</span>
+                      </p>
+                      {tx.status === 'CANCELLED' ? (
+                        <span className="text-[10px] font-extrabold text-rose-700 bg-rose-100 px-1.5 py-0.2 rounded-md">ملغاة ❌</span>
+                      ) : tx.debt_amount > 0 ? (
+                        <span className="text-[10px] font-extrabold text-rose-700 bg-rose-100 px-1.5 py-0.2 rounded-md">دين: {fmt(tx.debt_amount)}</span>
+                      ) : (
+                        <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-md">مدفوع كاش</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* جدول منتجات الفاتورة الموحد */}
+                  <div className="bg-slate-50 p-2 rounded-xl text-xs space-y-1">
+                    {tx.items.map((item, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-slate-700 font-bold text-[11px]">
+                        <span className="truncate flex-1">• {item.product_name}</span>
+                        <span className="text-slate-500 tabnum px-2">{item.quantity} × {fmt(item.unit_price)}</span>
+                        <span className="font-black text-slate-900 tabnum">{fmt(item.quantity * item.unit_price)} د.ج</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* الإجراءات: الطباعة وإلغاء الطلبية */}
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-100 flex-wrap gap-1.5">
+                    {tx.status === 'CANCELLED' ? (
+                      <span className="text-[11px] font-black text-slate-500">
+                        طـلـبـيـة مـلـغـاة (تم إعادة المخزون والتصفية)
+                      </span>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => {
+                            printThermalReceipt({
+                              id: generateReceiptNumber(),
+                              receipt_type: tx.tx_type,
+                              contact_id: tx.contact_id,
+                              contact_name: tx.contact_name,
+                              contact_phone: contact?.phone,
+                              items: tx.items,
+                              total_amount: tx.total_amount,
+                              paid_amount: tx.paid_amount,
+                              debt_amount: tx.debt_amount,
+                              note: tx.notes,
+                              created_at: tx.created_at,
+                            });
+                            toast('🖨️ جارٍ فتح وصل الفاتورة الحراري...', 'success');
+                          }}
+                          className="py-1.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[11px] font-black flex items-center gap-1.5 touch-active"
+                        >
+                          <Printer size={13} />
+                          طباعة الوصل 🖨️
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            if (confirm('هل أنت تأكد من إلغاء هذه الطلبية؟ سيتم إرجاع كميات المخزون وتصفية الدين فوراً.')) {
+                              const ok = cancelTransaction(tx.id);
+                              if (ok) {
+                                setProducts(getLocalData('tajer_smart_products_v1', []));
+                                setContacts(getLocalData('tajer_smart_contacts_v1', []));
+                                setTransactions(getLocalData('tajer_smart_transactions_v1', []));
+                                toast('🔄 تم إلغاء الطلبية وإعادة الكميات للمخزون بنجاح!', 'warning');
+                              }
+                            }
+                          }}
+                          className="py-1.5 px-2.5 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-xl text-[11px] font-black flex items-center gap-1 touch-active"
+                        >
+                          <X size={13} /> إلغاء ❌
+                        </button>
+                      </div>
+                    )}
+
+                    {contact?.phone && (
+                      <a
+                        href={createWhatsAppLink(contact.phone, `مرحباً ${contact.name}، تفاصيل الطلبية بقيمة ${fmt(tx.total_amount)} د.ج.`)}
+                        target="_blank" rel="noreferrer"
+                        className="py-1.5 px-2.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-xl text-[11px] font-black flex items-center gap-1"
+                      >
+                        <MessageCircle size={13} /> واتساب 💬
+                      </a>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* توضيح مبسط ختامي */}
       <div className="p-3.5 rounded-2xl bg-white border border-slate-200 flex items-start gap-2.5 text-xs font-semibold text-slate-700">
         <Info className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
         <span>
-          يمكنك التحويل بين <strong>العرض البياني البصري</strong> و <strong>عرض الأرقام</strong> في أي وقت من الأزرار العلوية!
+          يمكنك التحويل بين <strong>العرض البياني البصري</strong> و <strong>عرض الأرقام</strong> ومراجعة <strong>سجل جميع العمليات التاريخية</strong> وإلغاء أو طباعة أي طلبية في أي وقت!
         </span>
       </div>
 

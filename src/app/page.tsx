@@ -12,6 +12,7 @@ import {
   createWhatsAppLink,
   printThermalReceipt,
   generateReceiptNumber,
+  cancelTransaction,
 } from '@/lib/store';
 import { toast } from '@/components/Toast';
 import {
@@ -102,9 +103,9 @@ export default function HomePage() {
     return txDate === selectedDate;
   });
 
-  const periodSales  = filteredTx.filter(tx => tx.tx_type === 'SALE').length;
-  const periodProfit = filteredTx
-    .filter(tx => tx.tx_type === 'SALE')
+  const activeSales = filteredTx.filter(tx => tx.tx_type === 'SALE' && tx.status !== 'CANCELLED');
+  const periodSales  = activeSales.length;
+  const periodProfit = activeSales
     .reduce((acc, tx) =>
       acc + tx.items.reduce((s, item) => s + (item.unit_price - item.cost_price) * item.quantity, 0), 0
     );
@@ -421,29 +422,54 @@ export default function HomePage() {
                   </div>
 
                   {/* أزرار الإجراءات للطلبية */}
-                  <div className="flex items-center justify-between pt-1 border-t border-slate-100">
-                    <button
-                      onClick={() => {
-                        printThermalReceipt({
-                          id: generateReceiptNumber(),
-                          receipt_type: tx.tx_type,
-                          contact_id: tx.contact_id,
-                          contact_name: tx.contact_name,
-                          contact_phone: contact?.phone,
-                          items: tx.items,
-                          total_amount: tx.total_amount,
-                          paid_amount: tx.paid_amount,
-                          debt_amount: tx.debt_amount,
-                          note: tx.notes,
-                          created_at: tx.created_at,
-                        });
-                        toast('🖨️ جارٍ فتح وصل الفاتورة الحراري...', 'success');
-                      }}
-                      className="py-1.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[11px] font-black flex items-center gap-1.5 touch-active"
-                    >
-                      <Printer size={13} />
-                      طباعة وصل الطلبية 🖨️
-                    </button>
+                  <div className="flex items-center justify-between pt-1 border-t border-slate-100 flex-wrap gap-1.5">
+                    {tx.status === 'CANCELLED' ? (
+                      <span className="text-[11px] font-black text-rose-700 bg-rose-100 px-2.5 py-1 rounded-xl">
+                        طـلـبـيـة مـلـغـاة ❌ (تم إرجاع المخزون)
+                      </span>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => {
+                            printThermalReceipt({
+                              id: generateReceiptNumber(),
+                              receipt_type: tx.tx_type,
+                              contact_id: tx.contact_id,
+                              contact_name: tx.contact_name,
+                              contact_phone: contact?.phone,
+                              items: tx.items,
+                              total_amount: tx.total_amount,
+                              paid_amount: tx.paid_amount,
+                              debt_amount: tx.debt_amount,
+                              note: tx.notes,
+                              created_at: tx.created_at,
+                            });
+                            toast('🖨️ جارٍ فتح وصل الفاتورة الحراري...', 'success');
+                          }}
+                          className="py-1.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[11px] font-black flex items-center gap-1.5 touch-active"
+                        >
+                          <Printer size={13} />
+                          طباعة وصل 🖨️
+                        </button>
+
+                        <button
+                          onClick={() => {
+                            if (confirm('هل أنت تأكد من إلغاء هذه الطلبية؟ سيتم إرجاع كميات المخزون وتصفية الدين فوراً.')) {
+                              const ok = cancelTransaction(tx.id);
+                              if (ok) {
+                                setProducts(getLocalData('tajer_smart_products_v1', []));
+                                setContacts(getLocalData('tajer_smart_contacts_v1', []));
+                                setTransactions(getLocalData('tajer_smart_transactions_v1', []));
+                                toast('🔄 تم إلغاء الطلبية وإعادة الكميات للمخزون بنجاح!', 'warning');
+                              }
+                            }
+                          }}
+                          className="py-1.5 px-2.5 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-xl text-[11px] font-black flex items-center gap-1 touch-active"
+                        >
+                          <X size={13} /> إلغاء ❌
+                        </button>
+                      </div>
+                    )}
 
                     {contact?.phone && (
                       <a

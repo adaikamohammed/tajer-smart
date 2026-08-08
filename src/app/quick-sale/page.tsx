@@ -200,13 +200,13 @@ function QuickSaleContent() {
         created_at: new Date().toISOString(),
       };
 
-      // تحديث المخزون
+      // تحديث المخزون (يسمح بالسالب في حالة البيع الزائد لحين الشراء)
       const updatedProducts = products.map(p => {
         const cartMatch = cart.find(ci => ci.product.id === p.id);
         if (cartMatch) {
           return {
             ...p,
-            stock_quantity: Math.max(0, p.stock_quantity - cartMatch.quantity),
+            stock_quantity: p.stock_quantity - cartMatch.quantity,
             last_sold_at: new Date().toISOString(),
           };
         }
