@@ -31,7 +31,19 @@ export default function ReceiptsPage() {
   const [showDeleteAll, setShowDeleteAll] = useState(false);
 
   useEffect(() => {
-    setReceipts(getReceipts());
+    const raw = getReceipts();
+    // إزالة التكرارات بناءً على ID (تحتفظ بأحدث نسخة)
+    const seen = new Set<string>();
+    const deduped = raw.filter(r => {
+      if (seen.has(r.id)) return false;
+      seen.add(r.id);
+      return true;
+    });
+    if (deduped.length !== raw.length) {
+      // تحديث الأرشيف المحفوظ لتجنب التكرار مستقبلاً
+      setLocalData('tajer_smart_receipts_v1', deduped);
+    }
+    setReceipts(deduped);
   }, []);
 
   const reloadReceipts = () => {
@@ -166,13 +178,13 @@ export default function ReceiptsPage() {
         </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map(receipt => {
+          {filtered.map((receipt, index) => {
             const meta      = RECEIPT_TYPE_LABELS[receipt.receipt_type];
             const isExpanded = expandedId === receipt.id;
 
             return (
               <div
-                key={receipt.id}
+                key={`${receipt.id}-${index}`}
                 onClick={() => setExpandedId(isExpanded ? null : receipt.id)}
                 className={`glass-card p-4 cursor-pointer transition-all border ${meta.bg}`}
               >

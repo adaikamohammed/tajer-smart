@@ -249,8 +249,9 @@ export function getReceipts(): Receipt[] {
 
 export function saveReceipt(receipt: Receipt): void {
   const existing = getReceipts();
-  const updated = [receipt, ...existing];
-  setLocalData(STORAGE_KEYS.RECEIPTS, updated);
+  // منع إضافة نفس الوصل مرتين بنفس الـ ID
+  const filtered = existing.filter(r => r.id !== receipt.id);
+  setLocalData(STORAGE_KEYS.RECEIPTS, [receipt, ...filtered]);
 }
 
 export function deleteReceipt(id: string): void {
