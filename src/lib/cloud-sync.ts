@@ -148,6 +148,26 @@ export async function syncStoreWithVercelCloud(): Promise<{
   }
 }
 
+/** تصفير وتفريغ جميع المنتجات والأشخاص والطلبيات محلياً وسحابياً للبدء ببيانات حقيقية صافية */
+export async function clearAllStoreDataAndCloud(): Promise<boolean> {
+  try {
+    setLocalData('tajer_smart_contacts_v1', []);
+    setLocalData('tajer_smart_products_v1', []);
+    setLocalData('tajer_smart_transactions_v1', []);
+    setLocalData('tajer_smart_payments_v1', []);
+    setLocalData('tajer_smart_receipts_v1', []);
+    setLocalData(DELETED_KEYS.CONTACTS, []);
+    setLocalData(DELETED_KEYS.PRODUCTS, []);
+    setLocalData(DELETED_KEYS.TRANSACTIONS, []);
+
+    await fetch('/api/reset-db', { method: 'POST' });
+    notifySubscribers();
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 // ─── محرك المزامنة المستمر في الخلفية (Polling & Focus Sync) ───
 let isEngineStarted = false;
 

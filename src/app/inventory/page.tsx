@@ -6,7 +6,7 @@ import {
   getProductCategories, saveProductCategory,
   printThermalReceipt, generateReceiptNumber,
 } from '@/lib/store';
-import { queueDeletedProduct, subscribeToCloudChanges, syncStoreWithVercelCloud } from '@/lib/cloud-sync';
+import { queueDeletedProduct, subscribeToCloudChanges, syncStoreWithVercelCloud, clearAllStoreDataAndCloud } from '@/lib/cloud-sync';
 import { toast } from '@/components/Toast';
 import {
   Package, Plus, Search, X,
@@ -186,6 +186,15 @@ export default function InventoryPage() {
       syncStoreWithVercelCloud();
       toast('تم حذف المنتج من المخزن ومن السحابة بنجاح', 'info');
       if (viewingProduct?.id === id) setViewingProduct(null);
+    }
+  };
+
+  const handleResetStore = async () => {
+    if (confirm('هل أنت تأكد من تصفير جميع المنتجات والبيانات التجريبية القديمة للبدء بإضافة بضاعتك الحقيقية؟')) {
+      toast('🧹 جارٍ تفريغ وتصفير المحل وقاعدة البيانات السحابية...', 'info');
+      await clearAllStoreDataAndCloud();
+      toast('✅ تم تصفير المحل بنجاح! أضف بضاعتك الجديدة الآن وسوف تُحفظ سحابياً مباشرة', 'success');
+      setTimeout(() => window.location.reload(), 600);
     }
   };
 
@@ -488,6 +497,13 @@ export default function InventoryPage() {
         <button onClick={openAddModal} className="btn btn-primary shrink-0 gap-1.5 py-2.5 px-4">
           <Plus size={18} strokeWidth={2.5} />
           <span className="hidden sm:inline">منتج جديد</span>
+        </button>
+        <button
+          onClick={handleResetStore}
+          className="px-3 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-black shrink-0 touch-active flex items-center gap-1"
+          title="تصفير وتفريغ كافة البضائع والعمليات القديمة للبدء بإدخال بضاعة جديدة حقيقية"
+        >
+          🧹 <span className="hidden md:inline">تصفير المحل</span>
         </button>
       </div>
 
