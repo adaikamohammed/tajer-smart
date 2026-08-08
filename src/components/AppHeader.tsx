@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { getLocalData, setLocalData } from '@/lib/store';
 import { toast } from '@/components/Toast';
-import { Download, LogOut, ShieldCheck, X, RefreshCw, AlertCircle } from 'lucide-react';
-import { syncStoreWithVercelCloud, initAutoSyncEngine } from '@/lib/cloud-sync';
+import { Download, LogOut, ShieldCheck, X, RefreshCw, CheckCircle2, WifiOff } from 'lucide-react';
+import { initAutoSyncEngine, subscribeToSyncStatus, SyncStatus } from '@/lib/cloud-sync';
 
 export default function AppHeader() {
   const pathname = usePathname();
@@ -13,14 +13,14 @@ export default function AppHeader() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [user, setUser] = useState<any>(null);
   const [isInstalledOrDismissed, setIsInstalledOrDismissed] = useState<boolean>(false);
-  const [isSyncing,               setIsSyncing]               = useState<boolean>(false);
-  const [syncErrorModal,          setSyncErrorModal]          = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('synced');
 
   useEffect(() => {
     const loggedUser = getLocalData('tajer_smart_user', null);
     if (loggedUser) setUser(loggedUser);
 
     initAutoSyncEngine();
+    const unsub = subscribeToSyncStatus(setSyncStatus);
 
     if (typeof window !== 'undefined') {
       const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
@@ -29,6 +29,8 @@ export default function AppHeader() {
         setIsInstalledOrDismissed(true);
       }
     }
+
+    return () => unsub();
   }, [pathname]);
 
   useEffect(() => {
@@ -61,26 +63,6 @@ export default function AppHeader() {
   const dismissInstallBtn = () => {
     setIsInstalledOrDismissed(true);
     setLocalData('pwa_installed_dismissed', true);
-  };
-
-  const handleManualSync = async () => {
-    setIsSyncing(true);
-    toast('🔄 جارٍ اختبار ومزامنة الأشخاص والمنتجات والطلبيات مع السحابة...', 'info');
-    try {
-      const res = await syncStoreWithVercelCloud();
-      if (res.success) {
-        toast(`✅ تم المزامنة بنجاح! تم تحديث (${res.contactsCount}) شخص، (${res.productsCount}) منتج، و (${res.transactionsCount}) عملية!`, 'success');
-        setTimeout(() => {
-          window.location.reload();
-        }, 800);
-      } else {
-        setSyncErrorModal(res.errorDetails || 'تعذر الاتصال بقاعدة البيانات السحابية');
-      }
-    } catch (e: any) {
-      setSyncErrorModal(e?.message || 'خطأ أثناء الاتصال بقاعدة البيانات');
-    } finally {
-      setIsSyncing(false);
-    }
   };
 
   const handleLogout = () => {
@@ -119,17 +101,30 @@ export default function AppHeader() {
           </div>
         </div>
 
-        {/* أزرار التثبيت والمزامنة السحابية والخروج */}
+        {/* مؤشر المزامنة الصامت والأزرار */}
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleManualSync}
-            disabled={isSyncing}
-            className="flex items-center gap-1.5 text-xs font-black px-3 py-1.5 bg-emerald-700/60 hover:bg-emerald-600/80 text-white rounded-xl border border-emerald-400/40 shadow-sm touch-active transition-all"
-            title="مزامنة فورية لجميع الأشخاص والمنتجات والعمليات مع السحابة لتوحيد الأجهزة"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-amber-300' : 'text-emerald-200'}`} />
-            <span>مزامنة السحابة ☁️</span>
-          </button>
+
+          {/* 🟢 مؤشر المزامنة الصامت المحترف بدون أزرار تشتيت */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 border border-white/20 rounded-xl text-xs font-black text-white backdrop-blur-sm">
+            {syncStatus === 'syncing' && (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-300" />
+                <span className="text-amber-200">جارٍ الحفظ...</span>
+              </>
+            )}
+            {syncStatus === 'synced' && (
+              <>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="text-emerald-200">محفوظ سحابياً</span>
+              </>
+            )}
+            {(syncStatus === 'offline' || syncStatus === 'error') && (
+              <>
+                <WifiOff className="w-3.5 h-3.5 text-rose-300" />
+                <span className="text-rose-200">أوفلاين (محفوظ محلياً)</span>
+              </>
+            )}
+          </div>
 
           {!isInstalledOrDismissed && (
             <div className="flex items-center bg-white/20 rounded-xl border border-white/25">
@@ -157,42 +152,6 @@ export default function AppHeader() {
         </div>
 
       </div>
-
-      {/* ── 🔍 نافذة منبثقة لطباعة وتشخيص سبب مشكلة المزامنة ── */}
-      {syncErrorModal && (
-        <div className="modal-overlay" onClick={() => setSyncErrorModal(null)}>
-          <div className="modal-sheet" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="flex items-center gap-2 text-rose-600 font-black text-sm">
-                <AlertCircle className="w-5 h-5" />
-                تشخيص مشكلة المزامنة السحابية 🔍
-              </div>
-              <button onClick={() => setSyncErrorModal(null)} className="p-1 text-slate-400 hover:text-slate-600">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="modal-body space-y-3">
-              <div className="p-3 bg-rose-50 rounded-xl border border-rose-200 text-xs font-mono text-rose-900 break-words dir-ltr text-left">
-                {syncErrorModal}
-              </div>
-
-              <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 space-y-1.5 text-xs text-amber-900 font-bold">
-                <p>💡 <strong>خطوة تفعيل المزامنة السحابية عبر Vercel:</strong></p>
-                <p>1️⃣ بما أن قاعدة بيانات Vercel متصلة الآن، اذهب لتبويب <strong>Deployments</strong> في Vercel ثم اضغط <strong>Redeploy</strong> (إعادة النشر) ليتم قراءة متغيرات قاعدة البيانات الجديدة.</p>
-                <p>2️⃣ جرب النقر على زر المزامنة السحابية ☁️ مجدداً، وسوف تكتمل المزامنة بنجاح 100%.</p>
-              </div>
-
-              <button
-                onClick={() => setSyncErrorModal(null)}
-                className="w-full py-2.5 bg-slate-900 text-white font-black text-xs rounded-xl"
-              >
-                إغلاق النافذة
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </header>
   );
 }

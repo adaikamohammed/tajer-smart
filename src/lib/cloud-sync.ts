@@ -6,6 +6,23 @@ const DELETED_KEYS = {
   TRANSACTIONS: 'tajer_deleted_transactions_v1',
 };
 
+export type SyncStatus = 'synced' | 'syncing' | 'offline' | 'error';
+let currentStatus: SyncStatus = 'synced';
+const statusSubscribers: Set<(status: SyncStatus) => void> = new Set();
+
+export function subscribeToSyncStatus(cb: (status: SyncStatus) => void): () => void {
+  statusSubscribers.add(cb);
+  cb(currentStatus);
+  return () => statusSubscribers.delete(cb);
+}
+
+function updateStatus(status: SyncStatus) {
+  currentStatus = status;
+  statusSubscribers.forEach(cb => {
+    try { cb(status); } catch (_) {}
+  });
+}
+
 // ─── طوابير الحذف المحلية ────────────────────────────────────────────────
 export function queueDeletedContact(id: string) {
   const q = getLocalData<string[]>(DELETED_KEYS.CONTACTS, []);
@@ -42,11 +59,16 @@ export async function syncStoreWithVercelCloud(): Promise<{
   transactionsCount: number;
   hasChanges?: boolean;
 }> {
-  // منع التنفيذ المتداخل — أهم ضمان لعدم التعارض
+  if (typeof window !== 'undefined' && !navigator.onLine) {
+    updateStatus('offline');
+    return { success: false, errorDetails: 'لا يوجد اتصال بالإنترنت', contactsCount: 0, productsCount: 0, transactionsCount: 0 };
+  }
+
   if (syncInProgress) {
     return { success: true, contactsCount: 0, productsCount: 0, transactionsCount: 0 };
   }
   syncInProgress = true;
+  updateStatus('syncing');
 
   try {
     const localContacts:  Contact[]     = getLocalData('tajer_smart_contacts_v1', []);
@@ -58,7 +80,7 @@ export async function syncStoreWithVercelCloud(): Promise<{
     const deletedTransactions: string[] = getLocalData(DELETED_KEYS.TRANSACTIONS, []);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
     let res: Response;
     try {
@@ -82,6 +104,7 @@ export async function syncStoreWithVercelCloud(): Promise<{
     const data = await res.json();
 
     if (!res.ok || !data.success) {
+      updateStatus('error');
       return {
         success: false,
         errorDetails: data.error || 'تعذر الاتصال بـ Vercel Postgres',
@@ -89,12 +112,11 @@ export async function syncStoreWithVercelCloud(): Promise<{
       };
     }
 
-    // ─── تفريغ طوابير الحذف بعد تأكيد وصولها للسحابة ───
+    // تفريغ طوابير الحذف عند النجاح
     if (deletedContacts.length     > 0) setLocalData(DELETED_KEYS.CONTACTS, []);
     if (deletedProducts.length     > 0) setLocalData(DELETED_KEYS.PRODUCTS, []);
     if (deletedTransactions.length > 0) setLocalData(DELETED_KEYS.TRANSACTIONS, []);
 
-    // ─── تحديث البيانات المحلية فقط إذا تغيرت ───
     let changed = false;
 
     if (Array.isArray(data.contacts)) {
@@ -117,6 +139,7 @@ export async function syncStoreWithVercelCloud(): Promise<{
     }
 
     if (changed) notifySubs();
+    updateStatus('synced');
 
     return {
       success: true,
@@ -126,9 +149,10 @@ export async function syncStoreWithVercelCloud(): Promise<{
       transactionsCount: data.transactions?.length ?? localTx.length,
     };
   } catch (err: any) {
+    updateStatus('error');
     return {
       success: false,
-      errorDetails: err?.name === 'AbortError' ? 'انتهت مهلة الاتصال (10 ثوانٍ)' : err?.message,
+      errorDetails: err?.name === 'AbortError' ? 'انتهت مهلة الاتصال' : err?.message,
       contactsCount: 0, productsCount: 0, transactionsCount: 0,
     };
   } finally {
@@ -149,41 +173,43 @@ export async function clearAllStoreDataAndCloud(): Promise<boolean> {
     setLocalData(DELETED_KEYS.TRANSACTIONS, []);
     await fetch('/api/reset-db', { method: 'POST' });
     notifySubs();
+    updateStatus('synced');
     return true;
   } catch {
     return false;
   }
 }
 
-// ─── محرك المزامنة (مرة واحدة عند الفتح + عند العودة للتبويب فقط) ────────
-// ❌ لا setInterval — يسبب تعارضات وثقل على الهاتف
-// ✅ مزامنة ذكية: عند الفتح + عند العودة للتبويب + عند الفوكس
+// ─── محرك المزامنة المستمرة التلقائي (Auto Sync Engine) ─────────────────
 let isEngineStarted = false;
 
 export function initAutoSyncEngine() {
   if (typeof window === 'undefined' || isEngineStarted) return;
   isEngineStarted = true;
 
-  // مزامنة فورية عند فتح التطبيق
+  // 1. مزامنة فورية عند فتح التطبيق
   syncStoreWithVercelCloud();
 
-  // مزامنة عند العودة للتبويب بعد الغياب
+  // 2. مزامنة فورية عند العودة للتبويب
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && navigator.onLine) {
       syncStoreWithVercelCloud();
     }
   });
 
-  // مزامنة عند الفوكس (alt-tab من تطبيق آخر)
+  // 3. مزامنة فورية عند الفوكس
   window.addEventListener('focus', () => {
     if (navigator.onLine) syncStoreWithVercelCloud();
   });
 
-  // مزامنة خفيفة كل 30 ثانية فقط (للتحقق من تغييرات أجهزة أخرى)
-  // 30 ثانية بدل 8 ثوانٍ = تخفيف الثقل بنسبة 75%
+  // 4. استماع لحالة اتصال النت بالهاتف/الكمبيوتر
+  window.addEventListener('online', () => syncStoreWithVercelCloud());
+  window.addEventListener('offline', () => updateStatus('offline'));
+
+  // 5. فحص خفيف وسريع كل 10 ثوانٍ فقط عندما يكون التبويب مفتوحاً وم نشطاً
   setInterval(() => {
     if (navigator.onLine && document.visibilityState === 'visible') {
       syncStoreWithVercelCloud();
     }
-  }, 30000);
+  }, 10000);
 }
