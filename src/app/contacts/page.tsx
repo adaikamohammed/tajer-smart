@@ -7,6 +7,7 @@ import {
   createWhatsAppLink, generateAccountStatementText,
   printThermalReceipt, generateReceiptNumber,
 } from '@/lib/store';
+import { queueDeletedContact, subscribeToCloudChanges, syncStoreWithVercelCloud } from '@/lib/cloud-sync';
 import { toast } from '@/components/Toast';
 import {
   Users, UserPlus, Phone, MessageCircle,
@@ -64,9 +65,14 @@ export default function ContactsPage() {
   const [initialBalance,   setInitialBalance]   = useState(0);
 
   useEffect(() => {
-    setContacts(getLocalData('tajer_smart_contacts_v1', []));
-    setTransactions(getLocalData('tajer_smart_transactions_v1', []));
-    setPayments(getLocalData('tajer_smart_payments_v1', []));
+    const refreshData = () => {
+      setContacts(getLocalData('tajer_smart_contacts_v1', []));
+      setTransactions(getLocalData('tajer_smart_transactions_v1', []));
+      setPayments(getLocalData('tajer_smart_payments_v1', []));
+    };
+    refreshData();
+    const unsubscribe = subscribeToCloudChanges(refreshData);
+    return () => unsubscribe();
   }, []);
 
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -162,10 +168,12 @@ export default function ContactsPage() {
   const handleDeleteContact = (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (confirm('هل أنت تأكد من حذف هذا الشخص من القائمة؟')) {
+      queueDeletedContact(id);
       const updated = contacts.filter(c => c.id !== id);
       setContacts(updated);
       setLocalData('tajer_smart_contacts_v1', updated);
-      toast('تم حذف الشخص من القائمة', 'info');
+      syncStoreWithVercelCloud();
+      toast('تم حذف الشخص من القائمة ومن السحابة بنجاح', 'info');
       if (viewingContact?.id === id) setViewingContact(null);
     }
   };

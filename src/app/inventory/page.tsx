@@ -6,6 +6,7 @@ import {
   getProductCategories, saveProductCategory,
   printThermalReceipt, generateReceiptNumber,
 } from '@/lib/store';
+import { queueDeletedProduct, subscribeToCloudChanges, syncStoreWithVercelCloud } from '@/lib/cloud-sync';
 import { toast } from '@/components/Toast';
 import {
   Package, Plus, Search, X,
@@ -81,10 +82,15 @@ export default function InventoryPage() {
   const [selectedPersonId,setSelectedPersonId]= useState('');
 
   useEffect(() => {
-    setProducts(getLocalData('tajer_smart_products_v1', []));
-    setContacts(getLocalData('tajer_smart_contacts_v1', []));
-    setTransactions(getLocalData('tajer_smart_transactions_v1', []));
-    setCategories(getProductCategories());
+    const refreshData = () => {
+      setProducts(getLocalData('tajer_smart_products_v1', []));
+      setContacts(getLocalData('tajer_smart_contacts_v1', []));
+      setTransactions(getLocalData('tajer_smart_transactions_v1', []));
+      setCategories(getProductCategories());
+    };
+    refreshData();
+    const unsubscribe = subscribeToCloudChanges(refreshData);
+    return () => unsubscribe();
   }, []);
 
   const handleProductImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -173,10 +179,12 @@ export default function InventoryPage() {
   const handleDeleteProduct = (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (confirm('هل أنت تأكد من حذف هذا المنتج من المخزن؟')) {
+      queueDeletedProduct(id);
       const up = products.filter(p => p.id !== id);
       setProducts(up);
       setLocalData('tajer_smart_products_v1', up);
-      toast('تم حذف المنتج من المخزن', 'info');
+      syncStoreWithVercelCloud();
+      toast('تم حذف المنتج من المخزن ومن السحابة بنجاح', 'info');
       if (viewingProduct?.id === id) setViewingProduct(null);
     }
   };

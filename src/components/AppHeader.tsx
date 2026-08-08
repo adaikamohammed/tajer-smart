@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { getLocalData, setLocalData } from '@/lib/store';
 import { toast } from '@/components/Toast';
 import { Download, LogOut, ShieldCheck, X, RefreshCw, AlertCircle } from 'lucide-react';
-import { syncStoreWithVercelCloud } from '@/lib/cloud-sync';
+import { syncStoreWithVercelCloud, initAutoSyncEngine } from '@/lib/cloud-sync';
 
 export default function AppHeader() {
   const pathname = usePathname();
@@ -19,6 +19,8 @@ export default function AppHeader() {
   useEffect(() => {
     const loggedUser = getLocalData('tajer_smart_user', null);
     if (loggedUser) setUser(loggedUser);
+
+    initAutoSyncEngine();
 
     if (typeof window !== 'undefined') {
       const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;

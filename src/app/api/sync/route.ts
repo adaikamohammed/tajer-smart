@@ -5,7 +5,7 @@ export async function POST(req: Request) {
   if (!isVercelDbConfigured) {
     return NextResponse.json({
       success: false,
-      error: 'لم يتم ربط Vercel Postgres بنجاح في مشروعك بعد. يرجى الضغط على Continue ثم Connect في لوحة Vercel Storage.'
+      error: 'لم يتم ربط Vercel Postgres بنجاح في مشروعك بعد. يرجى الضغط على Connect في لوحة Vercel Storage و Redeploy مشروعك.'
     }, { status: 400 });
   }
 
@@ -19,7 +19,25 @@ export async function POST(req: Request) {
     await initTablesIfMissing();
 
     const body = await req.json();
-    const { contacts = [], products = [], transactions = [] } = body;
+    const {
+      contacts = [],
+      products = [],
+      transactions = [],
+      deleted_contacts = [],
+      deleted_products = [],
+      deleted_transactions = []
+    } = body;
+
+    // 0. تنفيذ عمليات الحذف الحقيقية أولاً من السحابة لعدم عودتها أبداً
+    for (const delId of deleted_contacts) {
+      if (delId) await query`DELETE FROM contacts WHERE id = ${delId};`;
+    }
+    for (const delId of deleted_products) {
+      if (delId) await query`DELETE FROM products WHERE id = ${delId};`;
+    }
+    for (const delId of deleted_transactions) {
+      if (delId) await query`DELETE FROM transactions WHERE id = ${delId};`;
+    }
 
     // 1. رفع وتحديث الأشخاص (contacts)
     for (const c of contacts) {
