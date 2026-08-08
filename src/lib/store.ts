@@ -258,19 +258,20 @@ export function deleteReceipt(id: string): void {
   setLocalData(STORAGE_KEYS.RECEIPTS, existing.filter(r => r.id !== id));
 }
 
-/** توليد رقم وصل فريد بالتاريخ والوقت */
+/** توليد رقم وصل فريد بالتاريخ والوقت والميلي ثانية لمنع التكرار */
 export function generateReceiptNumber(): string {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   const datePart = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
   const timePart = `${pad(now.getHours())}${pad(now.getMinutes())}`;
-  return `INV-${datePart}-${timePart}`;
+  const msPart   = String(now.getMilliseconds()).padStart(3, '0');
+  return `INV-${datePart}-${timePart}${msPart}`;
 }
 
 // ─── محرك الطباعة الحرارية (80mm / 58mm) ─────────────────────────────────
 export function buildThermalReceiptHTML(receipt: Receipt): string {
   const fmt = (n: number) => n.toLocaleString('en-US');
-  const dateStr = new Date(receipt.created_at).toLocaleString('ar-EG');
+  const dateStr = new Date(receipt.created_at).toLocaleDateString('en-GB').replace(/\//g, '/') + ' ' + new Date(receipt.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   const m = MERCHANT_INFO;
 
   const typeLabels: Record<ReceiptType, string> = {

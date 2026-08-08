@@ -205,7 +205,7 @@ export default function ReceiptsPage() {
                 {/* التاريخ */}
                 <div className="flex items-center gap-1 mt-1.5 text-[10px] text-slate-400">
                   <Calendar size={11} />
-                  {new Date(receipt.created_at).toLocaleString('ar-EG')}
+                  {new Date(receipt.created_at).toLocaleDateString('en-GB')} {new Date(receipt.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                 </div>
 
                 {/* التفاصيل الموسعة */}

@@ -375,8 +375,10 @@
     box-shadow: 0 8px 24px rgba(0,0,0,0.2);
   }
 
-  .toast-success { background: hsl(142 71% 40%); color: white; }
-  .toast-error   { background: hsl(var(--danger)); color: white; }
+  .toast-success { background: hsl(142 71% 36%);   color: white; }
+  .toast-error   { background: hsl(351 83% 52%);   color: white; }
+  .toast-warning { background: hsl(38  92% 44%);   color: white; }
+  .toast-info    { background: hsl(221 83% 50%);   color: white; }
 
   .product-card {
     border-radius: var(--radius);

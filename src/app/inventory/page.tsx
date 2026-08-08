@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import {
-  getLocalData, setLocalData, Product, Contact, Transaction,
-  getProductCategories, saveProductCategory
+  getLocalData, setLocalData, Product, Contact, Transaction, TransactionItem,
+  getProductCategories, saveProductCategory,
+  printThermalReceipt, generateReceiptNumber,
 } from '@/lib/store';
 import { toast } from '@/components/Toast';
 import {
@@ -53,7 +54,11 @@ export default function InventoryPage() {
   const [showAdjustModal,   setShowAdjustModal]   = useState(false);
   const [editingProduct,    setEditingProduct]    = useState<Product | null>(null);
   const [adjustingProduct,  setAdjustingProduct]  = useState<Product | null>(null);
-  const [viewingProduct,    setViewingProduct]    = useState<Product | null>(null); // Dedicated Subpage!
+  const [viewingProduct,    setViewingProduct]    = useState<Product | null>(null);
+  // بانر وصل البيع بعد الخصم
+  const [lastSale, setLastSale] = useState<{
+    product: Product; qty: number; person: Contact | null; total: number;
+  } | null>(null);
 
   // Form states
   const [name,             setName]             = useState('');
@@ -243,7 +248,15 @@ export default function InventoryPage() {
     setProducts(up);
     setLocalData('tajer_smart_products_v1', up);
     setShowAdjustModal(false);
-    toast(adjustType === 'add' ? `✅ تم إضافة +${actualPieces} حبة للمخزون` : `✅ تم خصم -${actualPieces} حبة من المخزون`);
+
+    if (adjustType === 'reduce') {
+      const total = actualPieces * adjustingProduct.retail_price;
+      setLastSale({ product: adjustingProduct, qty: actualPieces, person: person || null, total });
+      toast(`✅ تم خصم -${actualPieces} من المخزون${person ? ` (بيع لـ ${person.name})` : ''}`);
+    } else {
+      setLastSale(null);
+      toast(`✅ تم إضافة +${actualPieces} للمخزون${person ? ` من ${person.name}` : ''}`);
+    }
   };
 
   const sorted = useMemo(() => {
@@ -387,6 +400,61 @@ export default function InventoryPage() {
   /* ══ 📦 القائمة الرئيسية للمخزن ══ */
   return (
     <div className="space-y-4">
+
+      {/* ─── بانر وصل البيع بعد خصم المخزون (اختياري) ─── */}
+      {lastSale && (
+        <div className="glass-card p-4 border-2 border-emerald-400 bg-emerald-50 space-y-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🛒</span>
+            <div className="flex-1 min-w-0">
+              <p className="font-black text-emerald-900 text-sm">
+                تم خصم {lastSale.qty} من {lastSale.product.name}
+              </p>
+              <p className="text-xs text-emerald-700 font-bold">
+                {lastSale.person ? `مبيعة لـ ${lastSale.person.name} — ` : 'جرد عادي — '}
+                المبلغ: {fmt(lastSale.total)} د.ج
+              </p>
+            </div>
+            <button onClick={() => setLastSale(null)} className="p-1 rounded-lg text-emerald-700 hover:bg-emerald-100 shrink-0">
+              <X size={16} />
+            </button>
+          </div>
+          {lastSale.person ? (
+            <button
+              onClick={() => {
+                printThermalReceipt({
+                  id:            generateReceiptNumber(),
+                  receipt_type:  'SALE',
+                  contact_id:    lastSale.person!.id,
+                  contact_name:  lastSale.person!.name,
+                  contact_phone: lastSale.person!.phone,
+                  items: [{
+                    product_id:   lastSale.product.id,
+                    product_name: lastSale.product.name,
+                    quantity:     lastSale.qty,
+                    unit_price:   lastSale.product.retail_price,
+                    cost_price:   lastSale.product.cost_price,
+                  }],
+                  total_amount: lastSale.total,
+                  paid_amount:  lastSale.total,
+                  debt_amount:  0,
+                  created_at:   new Date().toISOString(),
+                });
+                setLastSale(null);
+                toast('🖨️ جارٍ فتح وصل البيع الحراري...', 'success');
+              }}
+              className="w-full py-3 bg-slate-900 text-white rounded-xl font-black text-sm flex items-center justify-center gap-2"
+            >
+              <Receipt size={18} />
+              🖨️ طباعة وصل البيع الحراري (اختياري)
+            </button>
+          ) : (
+            <p className="text-xs text-emerald-700 font-bold text-center py-1 bg-emerald-100 rounded-xl">
+              ℹ️ جرد عادي بدون زبون — لا يوجد وصل مطلوب
+            </p>
+          )}
+        </div>
+      )}
 
       {/* ── ملخص المخزن ── */}
       <div className="grid grid-cols-3 gap-2">
