@@ -269,9 +269,9 @@ export function setLocalData<T>(key: string, value: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
 
-    // المزامنة التلقائية السحابية في الخلفية
+    // المزامنة التلقائية السحابية مع Vercel Postgres في الخلفية
     if (key === STORAGE_KEYS.CONTACTS || key === STORAGE_KEYS.PRODUCTS || key === STORAGE_KEYS.TRANSACTIONS) {
-      import('./supabase').then(sb => sb.syncFullStoreWithCloud()).catch(() => {});
+      import('./cloud-sync').then(cs => cs.syncStoreWithVercelCloud()).catch(() => {});
     }
   } catch (e) {
     console.error('Error writing localStorage:', e);
@@ -599,8 +599,8 @@ export function initStorageIfEmpty(): void {
     setLocalData(STORAGE_KEYS.RECEIPTS, []);
   }
 
-  // مزامنة فورية في الخلفية مع السحابة لتوحيد الأشخاص والمنتجات والعمليات على كل الأجهزة
-  import('./supabase').then(sb => sb.syncFullStoreWithCloud()).catch(() => {});
+  // مزامنة فورية في الخلفية مع Vercel Postgres لتوحيد الأشخاص والمنتجات والعمليات على كل الأجهزة
+  import('./cloud-sync').then(cs => cs.syncStoreWithVercelCloud()).catch(() => {});
 }
 
 export function createWhatsAppLink(phone: string, text: string): string {

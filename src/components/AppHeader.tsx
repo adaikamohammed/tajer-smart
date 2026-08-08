@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { getLocalData, setLocalData } from '@/lib/store';
 import { toast } from '@/components/Toast';
 import { Download, LogOut, ShieldCheck, X, RefreshCw, AlertCircle } from 'lucide-react';
-import { syncFullStoreWithCloud } from '@/lib/supabase';
+import { syncStoreWithVercelCloud } from '@/lib/cloud-sync';
 
 export default function AppHeader() {
   const pathname = usePathname();
@@ -65,7 +65,7 @@ export default function AppHeader() {
     setIsSyncing(true);
     toast('🔄 جارٍ اختبار ومزامنة الأشخاص والمنتجات والطلبيات مع السحابة...', 'info');
     try {
-      const res = await syncFullStoreWithCloud();
+      const res = await syncStoreWithVercelCloud();
       if (res.success) {
         toast(`✅ تم المزامنة بنجاح! تم تحديث (${res.contactsCount}) شخص، (${res.productsCount}) منتج، و (${res.transactionsCount}) عملية!`, 'success');
         setTimeout(() => {
