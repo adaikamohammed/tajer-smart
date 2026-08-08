@@ -4,12 +4,10 @@ import { Contact, Product, Transaction, DebtPayment, getLocalData, setLocalData 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-// التحقق من صحة رابط Supabase لعدم إظهار أخطاء في المتصفح عند عدم وجود مشروع فعلي
 export const isSupabaseConfigured = Boolean(
   supabaseUrl &&
   supabaseAnonKey &&
-  supabaseUrl.startsWith('https://') &&
-  !supabaseUrl.includes('fcflbeyffvcepgmscdc') // استبعاد النطاق الوهمي التجريبي
+  supabaseUrl.startsWith('https://')
 );
 
 export const supabase = isSupabaseConfigured
@@ -17,96 +15,82 @@ export const supabase = isSupabaseConfigured
   : null;
 
 // -------------------------------------------------------------
-// 🔄 خدمات مزامنة Supabase مع التعامل الصامت مع الأخطاء
+// 🔄 خدمات مزامنة Supabase وطباعة تفاصيل الأخطاء الحقيقية
 // -------------------------------------------------------------
 
-export async function fetchContactsFromSupabase(): Promise<Contact[] | null> {
-  if (!supabase) return null;
+export async function fetchContactsFromSupabase(): Promise<{ data: Contact[] | null; error?: string }> {
+  if (!supabase) return { data: null, error: 'لم يتم ضبط إعدادات Supabase URL/Key في البيئة' };
   try {
     const { data, error } = await supabase.from('contacts').select('*').order('created_at', { ascending: false });
-    if (error) return null;
-    return data as Contact[];
-  } catch (err) {
-    return null;
+    if (error) {
+      return { data: null, error: `[contacts] ${error.message || error.details || JSON.stringify(error)}` };
+    }
+    return { data: data as Contact[] };
+  } catch (err: any) {
+    return { data: null, error: err?.message || 'خطأ اتصال بالشبكة' };
   }
 }
 
-export async function saveContactToSupabase(contact: Contact): Promise<boolean> {
-  if (!supabase) return false;
-  try {
-    const { error } = await supabase.from('contacts').upsert(contact);
-    return !error;
-  } catch (err) {
-    return false;
-  }
-}
-
-export async function saveAllContactsToSupabase(contacts: Contact[]): Promise<boolean> {
-  if (!supabase || contacts.length === 0) return false;
+export async function saveAllContactsToSupabase(contacts: Contact[]): Promise<{ success: boolean; error?: string }> {
+  if (!supabase || contacts.length === 0) return { success: false };
   try {
     const { error } = await supabase.from('contacts').upsert(contacts);
-    return !error;
-  } catch (err) {
-    return false;
+    if (error) return { success: false, error: `[contacts_upsert] ${error.message || JSON.stringify(error)}` };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message };
   }
 }
 
-export async function fetchProductsFromSupabase(): Promise<Product[] | null> {
-  if (!supabase) return null;
+export async function fetchProductsFromSupabase(): Promise<{ data: Product[] | null; error?: string }> {
+  if (!supabase) return { data: null, error: 'لم يتم ضبط إعدادات Supabase' };
   try {
     const { data, error } = await supabase.from('products').select('*').order('created_at', { ascending: false });
-    if (error) return null;
-    return data as Product[];
-  } catch (err) {
-    return null;
+    if (error) return { data: null, error: `[products] ${error.message || JSON.stringify(error)}` };
+    return { data: data as Product[] };
+  } catch (err: any) {
+    return { data: null, error: err?.message };
   }
 }
 
-export async function saveProductToSupabase(product: Product): Promise<boolean> {
-  if (!supabase) return false;
-  try {
-    const { error } = await supabase.from('products').upsert(product);
-    return !error;
-  } catch (err) {
-    return false;
-  }
-}
-
-export async function saveAllProductsToSupabase(products: Product[]): Promise<boolean> {
-  if (!supabase || products.length === 0) return false;
+export async function saveAllProductsToSupabase(products: Product[]): Promise<{ success: boolean; error?: string }> {
+  if (!supabase || products.length === 0) return { success: false };
   try {
     const { error } = await supabase.from('products').upsert(products);
-    return !error;
-  } catch (err) {
-    return false;
+    if (error) return { success: false, error: `[products_upsert] ${error.message || JSON.stringify(error)}` };
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message };
   }
 }
 
-export async function fetchTransactionsFromSupabase(): Promise<Transaction[] | null> {
-  if (!supabase) return null;
+export async function fetchTransactionsFromSupabase(): Promise<{ data: Transaction[] | null; error?: string }> {
+  if (!supabase) return { data: null, error: 'لم يتم ضبط إعدادات Supabase' };
   try {
     const { data: txData, error: txError } = await supabase.from('transactions').select('*').order('created_at', { ascending: false });
-    if (txError || !txData) return null;
+    if (txError) return { data: null, error: `[transactions] ${txError.message || JSON.stringify(txError)}` };
+    if (!txData) return { data: [] };
 
-    const { data: itemsData } = await supabase.from('transaction_items').select('*');
-    
+    const { data: itemsData, error: itemsError } = await supabase.from('transaction_items').select('*');
+    if (itemsError) return { data: null, error: `[transaction_items] ${itemsError.message}` };
+
     const transactionsWithItems: Transaction[] = txData.map(tx => ({
       ...tx,
       items: (itemsData || []).filter(item => item.transaction_id === tx.id),
     }));
 
-    return transactionsWithItems;
-  } catch (err) {
-    return null;
+    return { data: transactionsWithItems };
+  } catch (err: any) {
+    return { data: null, error: err?.message };
   }
 }
 
-export async function saveTransactionToSupabase(tx: Transaction): Promise<boolean> {
-  if (!supabase) return false;
+export async function saveTransactionToSupabase(tx: Transaction): Promise<{ success: boolean; error?: string }> {
+  if (!supabase) return { success: false };
   try {
     const { items, ...txData } = tx;
     const { error: txError } = await supabase.from('transactions').upsert(txData);
-    if (txError) return false;
+    if (txError) return { success: false, error: `[tx_upsert] ${txError.message}` };
 
     if (items && items.length > 0) {
       const dbItems = items.map(item => ({
@@ -117,96 +101,98 @@ export async function saveTransactionToSupabase(tx: Transaction): Promise<boolea
         unit_price: item.unit_price,
         cost_price: item.cost_price,
       }));
-      await supabase.from('transaction_items').upsert(dbItems);
+      const { error: itemsError } = await supabase.from('transaction_items').upsert(dbItems);
+      if (itemsError) return { success: false, error: `[items_upsert] ${itemsError.message}` };
     }
-    return true;
-  } catch (err) {
-    return false;
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err?.message };
   }
 }
 
-/** المزامنة الشاملة بين السحابة والتخزين المحلي لتوحيد البيانات على جميع الأجهزة */
+/** المزامنة الشاملة وطباعة التشخيص والخطأ بدقة عالية */
 export async function syncFullStoreWithCloud(): Promise<{
   success: boolean;
+  errorDetails?: string;
   contactsCount: number;
   productsCount: number;
   transactionsCount: number;
 }> {
   if (!supabase) {
-    return { success: false, contactsCount: 0, productsCount: 0, transactionsCount: 0 };
+    return {
+      success: false,
+      errorDetails: 'تنبيه: لم يتم العثور على مشروع Supabase مفعّل في متغيرات البيئة (.env.local)',
+      contactsCount: 0,
+      productsCount: 0,
+      transactionsCount: 0,
+    };
   }
 
+  const errors: string[] = [];
+
   try {
-    // 1. رفـع البيانات المحلية السابقة
+    // 1. رفـع البيانات المحلية السابقة للسحابة
     const localContacts: Contact[]     = getLocalData('tajer_smart_contacts_v1', []);
     const localProducts: Product[]     = getLocalData('tajer_smart_products_v1', []);
     const localTx:       Transaction[] = getLocalData('tajer_smart_transactions_v1', []);
 
-    if (localContacts.length > 0) await saveAllContactsToSupabase(localContacts);
-    if (localProducts.length > 0) await saveAllProductsToSupabase(localProducts);
+    if (localContacts.length > 0) {
+      const res = await saveAllContactsToSupabase(localContacts);
+      if (res.error) errors.push(res.error);
+    }
+
+    if (localProducts.length > 0) {
+      const res = await saveAllProductsToSupabase(localProducts);
+      if (res.error) errors.push(res.error);
+    }
+
     for (const tx of localTx) {
-      await saveTransactionToSupabase(tx);
+      const res = await saveTransactionToSupabase(tx);
+      if (res.error) errors.push(res.error);
     }
 
-    // 2. جـلـب أحدث بيانات السحابة
+    // 2. جـلـب أحدث البيانات من السحابة وتعديل الذاكرة المحلية
     const cloudContacts = await fetchContactsFromSupabase();
-    const cloudProducts = await fetchProductsFromSupabase();
-    const cloudTx       = await fetchTransactionsFromSupabase();
+    if (cloudContacts.error) errors.push(cloudContacts.error);
+    else if (cloudContacts.data && cloudContacts.data.length > 0) {
+      setLocalData('tajer_smart_contacts_v1', cloudContacts.data);
+    }
 
-    if (cloudContacts && cloudContacts.length > 0) {
-      setLocalData('tajer_smart_contacts_v1', cloudContacts);
+    const cloudProducts = await fetchProductsFromSupabase();
+    if (cloudProducts.error) errors.push(cloudProducts.error);
+    else if (cloudProducts.data && cloudProducts.data.length > 0) {
+      setLocalData('tajer_smart_products_v1', cloudProducts.data);
     }
-    if (cloudProducts && cloudProducts.length > 0) {
-      setLocalData('tajer_smart_products_v1', cloudProducts);
+
+    const cloudTx = await fetchTransactionsFromSupabase();
+    if (cloudTx.error) errors.push(cloudTx.error);
+    else if (cloudTx.data && cloudTx.data.length > 0) {
+      setLocalData('tajer_smart_transactions_v1', cloudTx.data);
     }
-    if (cloudTx && cloudTx.length > 0) {
-      setLocalData('tajer_smart_transactions_v1', cloudTx);
+
+    if (errors.length > 0) {
+      return {
+        success: false,
+        errorDetails: errors.join(' | '),
+        contactsCount: cloudContacts.data?.length || localContacts.length,
+        productsCount: cloudProducts.data?.length || localProducts.length,
+        transactionsCount: cloudTx.data?.length || localTx.length,
+      };
     }
 
     return {
       success: true,
-      contactsCount: cloudContacts?.length || localContacts.length,
-      productsCount: cloudProducts?.length || localProducts.length,
-      transactionsCount: cloudTx?.length || localTx.length,
+      contactsCount: cloudContacts.data?.length || localContacts.length,
+      productsCount: cloudProducts.data?.length || localProducts.length,
+      transactionsCount: cloudTx.data?.length || localTx.length,
     };
-  } catch (err) {
-    return { success: false, contactsCount: 0, productsCount: 0, transactionsCount: 0 };
-  }
-}
-
-// -------------------------------------------------------------
-// 📦 تصدير واستعادة الملفات الاحتياطية (JSON Backup & Restore)
-// -------------------------------------------------------------
-
-export function exportStoreBackupJSON(): string {
-  const data = {
-    contacts:     getLocalData('tajer_smart_contacts_v1', []),
-    products:     getLocalData('tajer_smart_products_v1', []),
-    transactions: getLocalData('tajer_smart_transactions_v1', []),
-    categories:   getLocalData('tajer_smart_product_categories_v1', []),
-    exported_at:  new Date().toISOString(),
-    app:          'التاجر المتنقل',
-  };
-  return JSON.stringify(data, null, 2);
-}
-
-export function importStoreBackupJSON(jsonStr: string): boolean {
-  try {
-    const data = JSON.parse(jsonStr);
-    if (data.contacts && Array.isArray(data.contacts)) {
-      setLocalData('tajer_smart_contacts_v1', data.contacts);
-    }
-    if (data.products && Array.isArray(data.products)) {
-      setLocalData('tajer_smart_products_v1', data.products);
-    }
-    if (data.transactions && Array.isArray(data.transactions)) {
-      setLocalData('tajer_smart_transactions_v1', data.transactions);
-    }
-    if (data.categories && Array.isArray(data.categories)) {
-      setLocalData('tajer_smart_product_categories_v1', data.categories);
-    }
-    return true;
-  } catch (e) {
-    return false;
+  } catch (err: any) {
+    return {
+      success: false,
+      errorDetails: err?.message || 'تعذر الاتصال بخادم قاعدة البيانات السحابية',
+      contactsCount: 0,
+      productsCount: 0,
+      transactionsCount: 0,
+    };
   }
 }
