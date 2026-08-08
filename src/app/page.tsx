@@ -17,8 +17,9 @@ import {
   ArrowUpRight, ArrowDownLeft, X,
   ShoppingCart, ShoppingBag, Sparkles,
   ChevronLeft, Clock3, CheckCircle,
-  Banknote, Package, Calendar, Filter
+  Banknote, Package, Calendar, Filter, Zap
 } from 'lucide-react';
+import QuickSaleModal from '@/components/QuickSaleModal';
 
 function getGreeting() {
   const h = new Date().getHours();
@@ -41,8 +42,9 @@ export default function HomePage() {
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [dateFilterMode, setDateFilterMode] = useState<'today' | 'all' | 'custom'>('today');
 
-  const [showSaleModal, setShowSaleModal] = useState(false);
-  const [showBuyModal,  setShowBuyModal]  = useState(false);
+  const [showSaleModal,      setShowSaleModal]      = useState(false);
+  const [showBuyModal,       setShowBuyModal]       = useState(false);
+  const [showQuickSaleModal, setShowQuickSaleModal] = useState(false);
 
   // نموذج البيع
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
@@ -253,23 +255,33 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* ══ زرا البيع والشراء ══ */}
-      <div className="grid grid-cols-2 gap-3">
-        <button onClick={() => setShowSaleModal(true)} className="action-btn sale">
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-1 bg-white/20 backdrop-blur-sm">
-            <ShoppingCart size={24} className="text-white" strokeWidth={2.5} />
-          </div>
-          <span className="font-black text-base text-white">بيع جديد</span>
-          <span className="text-[11px] text-white/80 font-semibold">خصم من المخزون</span>
+      {/* ══ زرا البيع والشراء والبيع السريع ══ */}
+      <div className="space-y-2">
+        <button
+          onClick={() => setShowQuickSaleModal(true)}
+          className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 border border-emerald-400/30 touch-active hover:brightness-105 transition-all"
+        >
+          <Zap size={20} className="fill-amber-300 text-amber-300 animate-pulse" />
+          <span>⚡ بيع سريع لزبون محدد (فحص المخزون والطباعة فوراً)</span>
         </button>
 
-        <button onClick={() => setShowBuyModal(true)} className="action-btn purchase">
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center mb-1 bg-white/20 backdrop-blur-sm">
-            <ShoppingBag size={24} className="text-white" strokeWidth={2.5} />
-          </div>
-          <span className="font-black text-base text-white">شراء جديد</span>
-          <span className="text-[11px] text-white/80 font-semibold">زيادة المخزون</span>
-        </button>
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={() => setShowSaleModal(true)} className="action-btn sale">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-1 bg-white/20 backdrop-blur-sm">
+              <ShoppingCart size={20} className="text-white" strokeWidth={2.5} />
+            </div>
+            <span className="font-black text-sm text-white">بيع فردي</span>
+            <span className="text-[10px] text-white/80 font-semibold">خصم قطعي</span>
+          </button>
+
+          <button onClick={() => setShowBuyModal(true)} className="action-btn purchase">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-1 bg-white/20 backdrop-blur-sm">
+              <ShoppingBag size={20} className="text-white" strokeWidth={2.5} />
+            </div>
+            <span className="font-black text-sm text-white">شراء جديد</span>
+            <span className="text-[10px] text-white/80 font-semibold">زيادة المخزون</span>
+          </button>
+        </div>
       </div>
 
       {/* ══ بطاقات الإجماليات المالية — مربوطة مباشرة بالصفحات ══ */}
@@ -602,6 +614,16 @@ export default function HomePage() {
           </div>
         </div>
       )}
+      {/* ══ مودال البيع السريع لزبون محدد ══ */}
+      <QuickSaleModal
+        isOpen={showQuickSaleModal}
+        onClose={() => setShowQuickSaleModal(false)}
+        onSuccess={() => {
+          setContacts(getLocalData('tajer_smart_contacts_v1', []));
+          setProducts(getLocalData('tajer_smart_products_v1', []));
+          setTransactions(getLocalData('tajer_smart_transactions_v1', []));
+        }}
+      />
     </div>
   );
 }

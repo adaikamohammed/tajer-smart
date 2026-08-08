@@ -10,8 +10,9 @@ import { toast } from '@/components/Toast';
 import {
   Users, UserPlus, Phone, MessageCircle,
   Search, X, Camera, MapPin, Tag, AlertTriangle,
-  Edit2, Trash2, Receipt, Copy, Check, ArrowRight
+  Edit2, Trash2, Receipt, Copy, Check, ArrowRight, Zap
 } from 'lucide-react';
+import QuickSaleModal from '@/components/QuickSaleModal';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
 
@@ -42,6 +43,10 @@ export default function ContactsPage() {
   const [editingContact,     setEditingContact]     = useState<Contact | null>(null);
   const [viewingContact,     setViewingContact]     = useState<Contact | null>(null);
   const [statementContact,   setStatementContact]   = useState<Contact | null>(null);
+
+  // البيع السريع لزبون محدد
+  const [showQuickSale,       setShowQuickSale]       = useState(false);
+  const [quickSaleCustomerId, setQuickSaleCustomerId] = useState<string>('');
   const [copiedStatement,    setCopiedStatement]    = useState(false);
 
   // Form states
@@ -278,6 +283,17 @@ export default function ContactsPage() {
                 </span>
               </p>
             </div>
+
+            <button
+              onClick={() => {
+                setQuickSaleCustomerId(viewingContact.id);
+                setShowQuickSale(true);
+              }}
+              className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-md touch-active"
+            >
+              <Zap size={16} className="fill-amber-300 text-amber-300" />
+              ⚡ بيع سريع فوري لهذا الزبون
+            </button>
 
             <div className="grid grid-cols-3 gap-2">
               {viewingContact.phone && (
@@ -662,6 +678,20 @@ export default function ContactsPage() {
           </div>
         </div>
       )}
+      {/* ══ مودال البيع السريع لزبون محدد ══ */}
+      <QuickSaleModal
+        isOpen={showQuickSale}
+        initialCustomerId={quickSaleCustomerId}
+        onClose={() => setShowQuickSale(false)}
+        onSuccess={() => {
+          setContacts(getLocalData('tajer_smart_contacts_v1', []));
+          setTransactions(getLocalData('tajer_smart_transactions_v1', []));
+          if (viewingContact) {
+            const updated = getLocalData('tajer_smart_contacts_v1', []).find((x: Contact) => x.id === viewingContact.id);
+            if (updated) setViewingContact(updated);
+          }
+        }}
+      />
     </div>
   );
 }

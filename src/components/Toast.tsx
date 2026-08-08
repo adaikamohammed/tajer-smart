@@ -23,21 +23,29 @@ const icons = {
   info:    Info,
 };
 
+const iconColors = {
+  success: 'text-emerald-400',
+  error:   'text-rose-400',
+  warning: 'text-amber-400',
+  info:    'text-blue-400',
+};
+
 function ToastItem({ toast, onClose }: ToastItemProps) {
   const Icon = icons[toast.type];
+  const colorClass = iconColors[toast.type];
 
   useEffect(() => {
-    const timer = setTimeout(() => onClose(toast.id), 3000);
+    const timer = setTimeout(() => onClose(toast.id), 3500);
     return () => clearTimeout(timer);
   }, [toast.id, onClose]);
 
   return (
     <div className={`toast toast-${toast.type}`} role="alert">
-      <Icon className="w-5 h-5 shrink-0" />
-      <span className="flex-1">{toast.message}</span>
+      <Icon className={`w-5 h-5 shrink-0 ${colorClass}`} />
+      <span className="flex-1 text-slate-50 font-bold">{toast.message}</span>
       <button
         onClick={() => onClose(toast.id)}
-        className="shrink-0 opacity-75 hover:opacity-100 transition-opacity"
+        className="shrink-0 text-slate-400 hover:text-white transition-colors"
       >
         <X className="w-4 h-4" />
       </button>
