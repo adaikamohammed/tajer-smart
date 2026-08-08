@@ -545,16 +545,42 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
   .rawbt-btn {
     background: #15803d;
   }
+  .rawbt-btn-alt {
+    background: #0369a1;
+  }
+  .help-box {
+    margin-top: 10px;
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    color: #92400e;
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.6;
+    text-align: right;
+  }
 </style>
 <script>
-  function printRawBT() {
+  function printRawBT(widthMode) {
     try {
       const clonedDoc = document.cloneNode(true);
       const noPrints = clonedDoc.querySelectorAll('.no-print');
       noPrints.forEach(el => el.remove());
+
+      if (widthMode === '58') {
+        const body = clonedDoc.querySelector('body');
+        if (body) {
+          body.style.maxWidth = '58mm';
+          body.style.fontSize = '12px';
+        }
+      }
+
       const htmlStr = clonedDoc.documentElement.outerHTML;
       const b64 = btoa(unescape(encodeURIComponent(htmlStr)));
-      window.location.href = 'intent:base64,' + b64 + '#Intent;scheme=rawbt;package=ru.a41500.rawbtprinter;end;';
+      
+      // Package ID الصحيح لتطبيق RawBT على Google Play هو ru.a402d.rawbtprinter
+      const intentUrl = 'intent:base64,' + b64 + '#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;';
+      window.location.href = intentUrl;
     } catch(e) {
       alert('خطأ في إرسال الوصل إلى RawBT: ' + e.message);
     }
@@ -594,8 +620,18 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
   </div>
 
   <div class="actions-container no-print">
-    <button class="print-btn rawbt-btn" onclick="printRawBT();">📱 طباعة مباشرة 80mm عبر RawBT (أندرويد)</button>
+    <button class="print-btn rawbt-btn" onclick="printRawBT('80');">📱 طباعة مباشرة RawBT (عرض 80mm)</button>
+    <button class="print-btn rawbt-btn-alt" onclick="printRawBT('58');">📱 طباعة مباشرة RawBT (عرض 58mm)</button>
     <button class="print-btn" onclick="window.print();">🖨️ طباعة متصفح (PC / هاتف)</button>
+
+    <div class="help-box">
+      💡 <b>تنبيه لتعديل عرض الطباعة لطابعة XP-P323B:</b><br/>
+      إذا كانت الطابعة تطبع 57mm فقط وتترك هامشاً يميناً:<br/>
+      1. افتح تطبيق <b>RawBT</b> في هاتفك 📱<br/>
+      2. اذهب إلى <b>الإعدادات ⚙️ ➔ عرض الورق (Paper Width)</b><br/>
+      3. غيّر الخيار من <b>58mm (384 dots)</b> إلى <b>80mm (576 dots)</b>.<br/>
+      4. اضغط <b>حفظ</b> واطبع مجدداً.
+    </div>
   </div>
 </body>
 </html>`;
