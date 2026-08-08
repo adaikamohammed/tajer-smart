@@ -176,9 +176,11 @@ export default function AppHeader() {
               </div>
 
               <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 space-y-1.5 text-xs text-amber-900 font-bold">
-                <p>💡 <strong>حل المشكلة لتفعيل المزامنة السحابية:</strong></p>
-                <p>1. تأكد من إدخال <code>NEXT_PUBLIC_SUPABASE_URL</code> و <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> الصالحة لمشروعك في Vercel أو <code>.env.local</code>.</p>
-                <p>2. تأكد من إنشاء الجداول في مشروع Supabase عبر تشغيل <code>schema.sql</code> المفعلة في المشروع.</p>
+                <p>💡 <strong>معنى الخطأ <code>Failed to fetch</code> والحل الخطوات بالترتيب:</strong></p>
+                <p>⚠️ <strong>السبب:</strong> المتصفح حاول الاتصال بالرابط المسجل لكنه نطاق غير موجود أو غير مفعّل على النت.</p>
+                <p>1️⃣ افتح حسابك في <a href="https://supabase.com" target="_blank" rel="noreferrer" className="underline text-emerald-700">Supabase.com</a> وانسخ <strong>Project URL</strong> و <strong>Anon Public Key</strong> الخاص بمشروعك الحقيقي.</p>
+                <p>2️⃣ ضع المفاتيح في ملف <code>.env.local</code> أو في إعدادات البيئة على Vercel.</p>
+                <p>3️⃣ شغل كود الجداول المرفق في المشروع <code className="bg-amber-100 px-1 rounded">schema.sql</code> في محرر SQL على Supabase.</p>
               </div>
 
               <button
