@@ -365,10 +365,18 @@ export default function HomePage() {
         </div>
 
         {filteredTx.length === 0 ? (
-          <div className="empty-state py-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+          <div className="empty-state py-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 space-y-2">
             <TrendingUp size={36} className="mx-auto text-slate-300 mb-1" />
             <p className="font-bold text-sm text-slate-600">لا توجد عمليات في هذا التاريخ المختار</p>
-            <p className="text-xs text-slate-400 mt-0.5">اضغط بيع سريع أو شراء للبدء!</p>
+            {dateFilterMode !== 'all' && (
+              <button
+                onClick={() => setDateFilterMode('all')}
+                className="text-xs font-black text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-xl transition-all touch-active"
+              >
+                عرض جميع العمليات السابقة (بدون تحديد تاريخ) ♾️
+              </button>
+            )}
+            <p className="text-xs text-slate-400">اضغط بيع سريع أو شراء للبدء!</p>
           </div>
         ) : (
           <div className="space-y-3">

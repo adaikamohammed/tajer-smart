@@ -197,6 +197,52 @@ const DEFAULT_PRODUCTS: Product[] = [
 
 const DEFAULT_PRODUCT_CATEGORIES = ['مواد غذائية', 'مشروبات', 'حلويات', 'مواد تنظيف', 'خضر وفواكه'];
 
+const DEFAULT_TRANSACTIONS: Transaction[] = [
+  {
+    id: 'tx_demo_1',
+    tx_type: 'SALE',
+    contact_id: 'c2',
+    contact_name: 'محمد العماري (زبون محل)',
+    total_amount: 3300,
+    paid_amount: 3300,
+    debt_amount: 0,
+    status: 'PAID',
+    items: [
+      { product_id: 'p1', product_name: 'زيت زيتون ممتاز 1 لتر', quantity: 3, unit_price: 1100, cost_price: 800 }
+    ],
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 'tx_demo_2',
+    tx_type: 'SALE',
+    contact_id: 'c2',
+    contact_name: 'محمد العماري (زبون محل)',
+    total_amount: 4500,
+    paid_amount: 0,
+    debt_amount: 4500,
+    status: 'DEBT',
+    items: [
+      { product_id: 'p1', product_name: 'زيت زيتون ممتاز 1 لتر', quantity: 2, unit_price: 1100, cost_price: 800 },
+      { product_id: 'p3', product_name: 'مشروب عصير طبيعي 1 لتر', quantity: 10, unit_price: 230, cost_price: 150 }
+    ],
+    created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
+  },
+  {
+    id: 'tx_demo_3',
+    tx_type: 'PURCHASE',
+    contact_id: 'c1',
+    contact_name: 'أحمد التاجر (مورد جملة)',
+    total_amount: 15000,
+    paid_amount: 0,
+    debt_amount: 15000,
+    status: 'DEBT',
+    items: [
+      { product_id: 'p1', product_name: 'زيت زيتون ممتاز 1 لتر', quantity: 15, unit_price: 800, cost_price: 800 }
+    ],
+    created_at: new Date(Date.now() - 86400000 * 1).toISOString(),
+  }
+];
+
 const STORAGE_KEYS = {
   CONTACTS:           'tajer_smart_contacts_v1',
   PRODUCTS:           'tajer_smart_products_v1',
@@ -539,7 +585,7 @@ export function initStorageIfEmpty(): void {
     setLocalData(STORAGE_KEYS.PRODUCT_CATEGORIES, DEFAULT_PRODUCT_CATEGORIES);
   }
   if (!localStorage.getItem(STORAGE_KEYS.TRANSACTIONS)) {
-    setLocalData(STORAGE_KEYS.TRANSACTIONS, []);
+    setLocalData(STORAGE_KEYS.TRANSACTIONS, DEFAULT_TRANSACTIONS);
   }
   if (!localStorage.getItem(STORAGE_KEYS.PAYMENTS)) {
     setLocalData(STORAGE_KEYS.PAYMENTS, []);
