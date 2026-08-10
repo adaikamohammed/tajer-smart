@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
   getLocalData, setLocalData, Product, Contact, Transaction, TransactionItem,
-  printThermalReceipt, generateReceiptNumber,
+  printThermalReceipt, generateReceiptNumber, saveReceipt,
 } from '@/lib/store';
 import { toast } from '@/components/Toast';
 import {
@@ -19,6 +19,8 @@ interface CartItem {
   product: Product;
   quantity: number;
   unitPrice: number;
+  packsCount?: number;
+  looseCount?: number;
 }
 
 function QuickSaleContent() {
@@ -72,9 +74,19 @@ function QuickSaleContent() {
     );
   }, [products, productSearch]);
 
-  // إجمالي الفاتورة
+  // إجمالي الفاتورة مع مراعاة بيع الكراتين والحبات الفردية
   const totalAmount = useMemo(() => {
-    return cart.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+    return cart.reduce((sum, item) => {
+      const p = item.product;
+      if (p.unit_type === 'pack') {
+        const cap = p.pack_quantity || 1;
+        const packs = item.packsCount ?? Math.floor(item.quantity / cap);
+        const loose = item.looseCount ?? (item.quantity % cap);
+        const loosePrice = item.unitPrice / cap;
+        return sum + (packs * item.unitPrice) + (loose * loosePrice);
+      }
+      return sum + (item.quantity * item.unitPrice);
+    }, 0);
   }, [cart]);
 
   // تحديث المدفوع تلقائياً بالكامل
@@ -99,6 +111,21 @@ function QuickSaleContent() {
         },
       ]);
     }
+  };
+
+  // تعديل كمية كراتين وحبات فردية لوحدة الكرتونة
+  const updatePackLooseQty = (productId: string, packs: number, loose: number) => {
+    setCart(prev =>
+      prev.map(ci => {
+        if (ci.product.id === productId) {
+          const cap = ci.product.pack_quantity || 1;
+          const totalQty = (Math.max(0, packs) * cap) + Math.max(0, loose);
+          if (totalQty <= 0) return null as any;
+          return { ...ci, quantity: totalQty, packsCount: Math.max(0, packs), looseCount: Math.max(0, loose) };
+        }
+        return ci;
+      }).filter(Boolean)
+    );
   };
 
   // تعديل كمية منتج
@@ -463,41 +490,102 @@ function QuickSaleContent() {
                       </td>
 
                       <td className="py-2.5 text-center">
-                        <div className="inline-flex items-center gap-1">
-                          <button
-                            onClick={() => updateCartQty(p.id, -1)}
-                            className="w-6 h-6 rounded bg-slate-100 text-slate-700 font-black flex items-center justify-center hover:bg-rose-100 hover:text-rose-700"
-                          >
-                            <Minus size={12} />
-                          </button>
+                        {p.unit_type === 'pack' ? (
+                          <div className="flex items-center justify-center gap-1 bg-indigo-50/80 p-1.5 rounded-xl border border-indigo-200">
+                            <div className="text-center">
+                              <span className="block text-[9px] font-black text-indigo-900">📦 كرتونة</span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={ci.packsCount ?? Math.floor(ci.quantity / (p.pack_quantity || 1))}
+                                onChange={e => updatePackLooseQty(p.id, +e.target.value, ci.looseCount ?? (ci.quantity % (p.pack_quantity || 1)))}
+                                className="w-10 text-center form-input py-0.5 px-0.5 font-black text-xs text-indigo-950 tabnum bg-white border-indigo-300"
+                              />
+                            </div>
+                            <span className="text-xs font-black text-indigo-400 mt-2">+</span>
+                            <div className="text-center">
+                              <span className="block text-[9px] font-black text-indigo-900">🥛 حبة</span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={ci.looseCount ?? (ci.quantity % (p.pack_quantity || 1))}
+                                onChange={e => updatePackLooseQty(p.id, ci.packsCount ?? Math.floor(ci.quantity / (p.pack_quantity || 1)), +e.target.value)}
+                                className="w-10 text-center form-input py-0.5 px-0.5 font-black text-xs text-indigo-950 tabnum bg-white border-indigo-300"
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="inline-flex items-center gap-1">
+                            <button
+                              onClick={() => updateCartQty(p.id, -1)}
+                              className="w-6 h-6 rounded bg-slate-100 text-slate-700 font-black flex items-center justify-center hover:bg-rose-100 hover:text-rose-700"
+                            >
+                              <Minus size={12} />
+                            </button>
+                            <input
+                              type="number"
+                              min="1"
+                              value={ci.quantity}
+                              onChange={e => setCartQtyDirect(p.id, +e.target.value)}
+                              className="w-10 text-center form-input py-0.5 px-0 text-xs font-black tabnum"
+                            />
+                            <button
+                              onClick={() => updateCartQty(p.id, 1)}
+                              className="w-6 h-6 rounded bg-emerald-100 text-emerald-800 font-black flex items-center justify-center hover:bg-emerald-200"
+                            >
+                              <Plus size={12} />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="py-2.5 text-center min-w-[120px]">
+                        <div className="flex flex-col items-center gap-1">
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => updateCartPrice(p.id, p.retail_price)}
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-black border transition-all ${
+                                ci.unitPrice === p.retail_price ? 'bg-emerald-600 text-white border-transparent' : 'bg-slate-100 text-slate-700 border-slate-200'
+                              }`}
+                            >
+                              تجزئة 1 ({p.retail_price})
+                            </button>
+                            {(p.retail_price_2 || 0) > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => updateCartPrice(p.id, p.retail_price_2 || p.retail_price)}
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-black border transition-all ${
+                                  ci.unitPrice === p.retail_price_2 ? 'bg-sky-600 text-white border-transparent' : 'bg-slate-100 text-slate-700 border-slate-200'
+                                }`}
+                              >
+                                تجزئة 2 ({p.retail_price_2})
+                              </button>
+                            )}
+                          </div>
                           <input
                             type="number"
-                            min="1"
-                            value={ci.quantity}
-                            onChange={e => setCartQtyDirect(p.id, +e.target.value)}
-                            className="w-10 text-center form-input py-0.5 px-0 text-xs font-black tabnum"
+                            min="0"
+                            value={ci.unitPrice}
+                            onChange={e => updateCartPrice(p.id, +e.target.value)}
+                            className="w-20 form-input py-0.5 px-1 text-xs font-black text-emerald-700 tabnum bg-emerald-50/60 text-center"
                           />
-                          <button
-                            onClick={() => updateCartQty(p.id, 1)}
-                            className="w-6 h-6 rounded bg-emerald-100 text-emerald-800 font-black flex items-center justify-center hover:bg-emerald-200"
-                          >
-                            <Plus size={12} />
-                          </button>
                         </div>
                       </td>
 
-                      <td className="py-2.5 text-center min-w-[80px]">
-                        <input
-                          type="number"
-                          min="0"
-                          value={ci.unitPrice}
-                          onChange={e => updateCartPrice(p.id, +e.target.value)}
-                          className="w-20 form-input py-0.5 px-1 text-xs font-black text-emerald-700 tabnum bg-emerald-50/60 text-center"
-                        />
-                      </td>
-
                       <td className="py-2.5 text-left font-black text-xs text-slate-900 tabnum min-w-[70px]">
-                        {fmt(ci.quantity * ci.unitPrice)} د.ج
+                        {p.unit_type === 'pack' ? (
+                          (() => {
+                            const cap = p.pack_quantity || 1;
+                            const packs = ci.packsCount ?? Math.floor(ci.quantity / cap);
+                            const loose = ci.looseCount ?? (ci.quantity % cap);
+                            const loosePrice = ci.unitPrice / cap;
+                            const itemTotal = (packs * ci.unitPrice) + (loose * loosePrice);
+                            return `${fmt(itemTotal)} د.ج`;
+                          })()
+                        ) : (
+                          `${fmt(ci.quantity * ci.unitPrice)} د.ج`
+                        )}
                       </td>
 
                       <td className="py-2.5 text-left">
