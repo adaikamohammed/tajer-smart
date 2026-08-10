@@ -29,7 +29,8 @@ export default function ReceiptsPage() {
   const [contacts,         setContacts]         = useState<Contact[]>([]);
   const [searchQuery,      setSearchQuery]      = useState('');
   const [filterType,       setFilterType]       = useState<ReceiptType | 'all'>('all');
-  const [filterMonth,      setFilterMonth]      = useState<string>('all');
+  const [fromDate,         setFromDate]         = useState<string>('');
+  const [toDate,           setToDate]           = useState<string>('');
   const [filterContactId,  setFilterContactId]  = useState<string>('all');
   const [selectedReceipt,  setSelectedReceipt]  = useState<Receipt | null>(null);
   const [expandedId,       setExpandedId]       = useState<string | null>(null);
@@ -39,17 +40,19 @@ export default function ReceiptsPage() {
     const raw = getReceipts();
     setContacts(getLocalData('tajer_smart_contacts_v1', []));
 
-    // إزالة التكرارات بناءً على ID (تحتفظ بأحدث نسخة)
+    // إزالة الأوصال التجريبية القديمة والتكرارات
     const seen = new Set<string>();
-    const deduped = raw.filter(r => {
+    const cleanReceipts = raw.filter(r => {
+      if (!r.id || String(r.id).includes('_seed_') || String(r.id).includes('REC-SEED')) return false;
       if (seen.has(r.id)) return false;
       seen.add(r.id);
       return true;
     });
-    if (deduped.length !== raw.length) {
-      setLocalData('tajer_smart_receipts_v1', deduped);
+
+    if (cleanReceipts.length !== raw.length) {
+      setLocalData('tajer_smart_receipts_v1', cleanReceipts);
     }
-    setReceipts(deduped);
+    setReceipts(cleanReceipts);
   }, []);
 
   const reloadReceipts = () => {
@@ -74,40 +77,38 @@ export default function ReceiptsPage() {
     }
   };
 
-  const handleReprint = (receipt: Receipt, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setSelectedReceipt(receipt);
+  // اختصارات التاريخ السريعة
+  const setQuickDate = (mode: 'all' | 'today' | 'week' | 'month') => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+    if (mode === 'all') {
+      setFromDate('');
+      setToDate('');
+    } else if (mode === 'today') {
+      setFromDate(todayStr);
+      setToDate(todayStr);
+    } else if (mode === 'week') {
+      const weekAgo = new Date();
+      weekAgo.setDate(now.getDate() - 7);
+      setFromDate(`${weekAgo.getFullYear()}-${pad(weekAgo.getMonth() + 1)}-${pad(weekAgo.getDate())}`);
+      setToDate(todayStr);
+    } else if (mode === 'month') {
+      setFromDate(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-01`);
+      setToDate(todayStr);
+    }
   };
 
-  // ─── قائمة الأشهر المتوفرة بالأرشيف للفلترة ───
-  const availableMonths = useMemo(() => {
-    const monthsSet = new Set<string>();
-    receipts.forEach(r => {
-      if (r.created_at) {
-        const d = new Date(r.created_at);
-        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        monthsSet.add(ym);
-      }
-    });
-    return Array.from(monthsSet).sort().reverse();
-  }, [receipts]);
-
   const filtered = useMemo(() => {
-    const now = new Date();
-    const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-
     return receipts.filter(r => {
       const matchType = filterType === 'all' || r.receipt_type === filterType;
       
-      let matchMonth = true;
-      if (filterMonth === 'this_month') {
-        const d = new Date(r.created_at);
-        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        matchMonth = ym === currentYM;
-      } else if (filterMonth !== 'all') {
-        const d = new Date(r.created_at);
-        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        matchMonth = ym === filterMonth;
+      let matchDate = true;
+      if (r.created_at) {
+        const itemDateStr = r.created_at.split('T')[0];
+        if (fromDate && itemDateStr < fromDate) matchDate = false;
+        if (toDate && itemDateStr > toDate) matchDate = false;
       }
 
       let matchContact = true;
@@ -120,9 +121,9 @@ export default function ReceiptsPage() {
         || (r.contact_name && r.contact_name.includes(searchQuery))
         || new Date(r.created_at).toLocaleDateString('ar-EG').includes(searchQuery);
 
-      return matchType && matchMonth && matchContact && matchSearch;
+      return matchType && matchDate && matchContact && matchSearch;
     });
-  }, [receipts, filterType, filterMonth, filterContactId, searchQuery]);
+  }, [receipts, filterType, fromDate, toDate, filterContactId, searchQuery]);
 
   // ─── إحصائيات سريعة ─────────────────────────────────────────────
   const totalSales    = receipts.filter(r => r.receipt_type === 'SALE').reduce((a, r) => a + (r.total_amount ?? 0), 0);
@@ -180,37 +181,51 @@ export default function ReceiptsPage() {
         />
       </div>
 
-      {/* ─── الفلترة بالمدة الزمنية (الشهر) والشخص ─── */}
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label className="block text-[11px] font-black text-slate-600 mb-1 flex items-center gap-1">
-            <Calendar size={13} className="text-emerald-600" />
-            فلترة بالمدة (الشهر):
+      {/* ─── الفلترة بالمدة الزمنية (من - إلى) والشخص ─── */}
+      <div className="glass-card p-3 space-y-2.5 border border-slate-200">
+        <div className="flex items-center justify-between flex-wrap gap-1">
+          <label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+            <Calendar size={14} className="text-emerald-600" />
+            تحديد مدة الأوصال (من - إلى):
           </label>
-          <select
-            value={filterMonth}
-            onChange={e => setFilterMonth(e.target.value)}
-            className="form-input py-1.5 text-xs font-bold bg-white"
-          >
-            <option value="all">📅 كل الفترات والأشهر</option>
-            <option value="this_month">🗓️ هذا الشهر الحقيقي</option>
-            {availableMonths.map(ym => (
-              <option key={ym} value={ym}>
-                📅 شهر {ym}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={() => setQuickDate('all')} className="px-2 py-0.5 rounded-md text-[10px] font-black bg-slate-100 text-slate-700 hover:bg-slate-200">الكل ♾️</button>
+            <button type="button" onClick={() => setQuickDate('today')} className="px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-100 text-emerald-800 hover:bg-emerald-200">اليوم ☀️</button>
+            <button type="button" onClick={() => setQuickDate('week')} className="px-2 py-0.5 rounded-md text-[10px] font-black bg-sky-100 text-sky-800 hover:bg-sky-200">الأسبوع 📅</button>
+            <button type="button" onClick={() => setQuickDate('month')} className="px-2 py-0.5 rounded-md text-[10px] font-black bg-indigo-100 text-indigo-800 hover:bg-indigo-200">الشهر 🗓️</button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <span className="block text-[10px] font-extrabold text-slate-500 mb-0.5">📅 من تاريخ:</span>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={e => setFromDate(e.target.value)}
+              className="form-input py-1 px-2 text-xs font-bold bg-white"
+            />
+          </div>
+          <div>
+            <span className="block text-[10px] font-extrabold text-slate-500 mb-0.5">📅 إلى تاريخ:</span>
+            <input
+              type="date"
+              value={toDate}
+              onChange={e => setToDate(e.target.value)}
+              className="form-input py-1 px-2 text-xs font-bold bg-white"
+            />
+          </div>
         </div>
 
         <div>
-          <label className="block text-[11px] font-black text-slate-600 mb-1 flex items-center gap-1">
-            <User size={13} className="text-emerald-600" />
-            فلترة حسب الشخص:
+          <label className="block text-[10px] font-extrabold text-slate-500 mb-0.5 flex items-center gap-1">
+            <User size={12} className="text-emerald-600" />
+            فلترة حسب الزبون / المورد:
           </label>
           <select
             value={filterContactId}
             onChange={e => setFilterContactId(e.target.value)}
-            className="form-input py-1.5 text-xs font-bold bg-white"
+            className="form-input py-1 px-2 text-xs font-bold bg-white"
           >
             <option value="all">👥 جميع الأشخاص والزبائن</option>
             {contacts.map(c => (
@@ -379,7 +394,7 @@ export default function ReceiptsPage() {
                     {/* أزرار الإجراءات */}
                     <div className="flex gap-2 pt-1">
                       <button
-                        onClick={(e) => handleReprint(receipt, e)}
+                        onClick={(e) => { e.stopPropagation(); setSelectedReceipt(receipt); }}
                         className="flex-1 py-2.5 bg-slate-900 text-white rounded-xl font-black text-xs flex items-center justify-center gap-1.5"
                       >
                         <Printer size={14} />

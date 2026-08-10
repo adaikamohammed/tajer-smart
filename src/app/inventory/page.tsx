@@ -644,16 +644,18 @@ export default function InventoryPage() {
               <div>
                 <label className="block text-xs font-black text-slate-600 mb-1.5">🏷️ قسم المنتج</label>
                 <div className="flex flex-wrap gap-1.5 mb-2">
-                  {categories.map(cat => (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => setCategory(cat)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${category === cat ? 'bg-indigo-600 text-white border-transparent' : 'bg-slate-100 text-slate-700 border-slate-200'}`}
-                    >
-                      {cat}
-                    </button>
-                  ))}
+                  {categories
+                    .filter(cat => cat === 'مواد غذائية' || cat === 'مواد تنظيف')
+                    .map(cat => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setCategory(cat)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${category === cat ? 'bg-indigo-600 text-white border-transparent' : 'bg-slate-100 text-slate-700 border-slate-200'}`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
                   <button
                     type="button"
                     onClick={() => setCategory('أخرى')}

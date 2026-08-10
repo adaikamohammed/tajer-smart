@@ -117,7 +117,7 @@ export const MERCHANT_INFO = {
 // ─── البيانات الافتراضية الفارغة (تم حذف البيانات التجريبية الوهمية كلياً) ─
 const DEFAULT_CONTACTS: Contact[] = [];
 const DEFAULT_PRODUCTS: Product[] = [];
-const DEFAULT_PRODUCT_CATEGORIES = ['مواد غذائية', 'مواد تنظيف', 'أخرى'];
+const DEFAULT_PRODUCT_CATEGORIES = ['مواد غذائية', 'مواد تنظيف'];
 const DEFAULT_TRANSACTIONS: Transaction[] = [];
 
 const STORAGE_KEYS = {
