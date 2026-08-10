@@ -220,36 +220,24 @@ export async function clearAllStoreDataAndCloud(): Promise<boolean> {
   }
 }
 
-// ─── محرك المزامنة المستمرة التلقائي (Auto Sync Engine) ─────────────────
+// ─── محرك المزامنة التلقائي المستقر (Silent Auto Sync Engine) ───────────
 let isEngineStarted = false;
 
 export function initAutoSyncEngine() {
   if (typeof window === 'undefined' || isEngineStarted) return;
   isEngineStarted = true;
 
-  // 1. مزامنة فورية عند فتح التطبيق
+  // 1. مزامنة أصلية هادئة واحدة عند فتح التطبيق لأول مرة
   syncStoreWithVercelCloud();
 
-  // 2. مزامنة فورية عند العودة للتبويب
+  // 2. مزامنة عند العودة للتبويب فقط إن كان متصلاً بالنت
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && navigator.onLine) {
       syncStoreWithVercelCloud();
     }
   });
 
-  // 3. مزامنة فورية عند الفوكس
-  window.addEventListener('focus', () => {
-    if (navigator.onLine) syncStoreWithVercelCloud();
-  });
-
-  // 4. استماع لحالة اتصال النت بالهاتف/الكمبيوتر
+  // 3. استماع لتغيرات شبكة الهاتف/الكمبيوتر
   window.addEventListener('online', () => syncStoreWithVercelCloud());
   window.addEventListener('offline', () => updateStatus('offline'));
-
-  // 5. فحص خفيف وسريع كل 10 ثوانٍ فقط عندما يكون التبويب مفتوحاً وم نشطاً
-  setInterval(() => {
-    if (navigator.onLine && document.visibilityState === 'visible') {
-      syncStoreWithVercelCloud();
-    }
-  }, 10000);
 }

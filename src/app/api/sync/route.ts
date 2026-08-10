@@ -26,6 +26,13 @@ export async function POST(req: Request) {
 
     await initTablesIfMissing();
 
+    // ─── 0. التطهير السحابي التلقائي لكافة البيانات الوهمية القديمة ───
+    await query`DELETE FROM contacts WHERE id LIKE '%_seed_%';`;
+    await query`DELETE FROM products WHERE id LIKE '%_seed_%';`;
+    await query`DELETE FROM transactions WHERE id LIKE '%_seed_%';`;
+    await query`DELETE FROM transaction_items WHERE product_id LIKE '%_seed_%' OR transaction_id LIKE '%_seed_%';`;
+    await query`DELETE FROM deleted_items WHERE id LIKE '%_seed_%';`;
+
     const body = await req.json();
     const {
       contacts = [],

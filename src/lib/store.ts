@@ -175,14 +175,15 @@ export function getLocalData<T>(key: string, defaultValue: T): T {
     const parsed = getEncryptedLocalData<T>(key, defaultValue);
 
     if (Array.isArray(parsed)) {
+      const cleanArray = parsed.filter((item: any) => !item.id || !String(item.id).includes('_seed_'));
       if (key === STORAGE_KEYS.CONTACTS) {
-        return parsed.map(sanitizeContact) as unknown as T;
+        return cleanArray.map(sanitizeContact) as unknown as T;
       }
       if (key === STORAGE_KEYS.PRODUCTS) {
-        return parsed.map(sanitizeProduct) as unknown as T;
+        return cleanArray.map(sanitizeProduct) as unknown as T;
       }
       if (key === STORAGE_KEYS.TRANSACTIONS) {
-        return parsed.map(sanitizeTransaction) as unknown as T;
+        return cleanArray.map(sanitizeTransaction) as unknown as T;
       }
     }
     return parsed;

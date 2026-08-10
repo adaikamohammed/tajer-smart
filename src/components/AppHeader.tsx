@@ -31,7 +31,7 @@ export default function AppHeader() {
     }
 
     return () => unsub();
-  }, [pathname]);
+  }, []);
 
   useEffect(() => {
     const handleBeforeInstall = (e: any) => {
