@@ -76,6 +76,8 @@ export default function InventoryPage() {
   const [expiryDate,       setExpiryDate]       = useState('');
   const [expiryAlertDays,  setExpiryAlertDays]  = useState(30);
   const [photoUrl,         setPhotoUrl]         = useState('');
+  const [initialPacks,     setInitialPacks]     = useState(2);
+  const [initialLoose,     setInitialLoose]     = useState(0);
 
   // Adjust stock states (ربط بالمورد والزبون وحساب الكرتونة + الحبات الفردية)
   const [adjustPacks,     setAdjustPacks]     = useState(0);
@@ -105,7 +107,7 @@ export default function InventoryPage() {
     reader.onload = (event) => {
       if (event.target?.result) {
         setPhotoUrl(event.target.result as string);
-        toast('تم رفع صورة المنتج بنجاح! 📷', 'success');
+        toast('تم رفع ومعاينة صورة المنتج بنجاح! 📷', 'success');
       }
     };
     reader.readAsDataURL(file);
@@ -116,6 +118,7 @@ export default function InventoryPage() {
     setName(''); setCategory('مواد غذائية'); setCustomCategory('');
     setUnitType('piece'); setPackQuantity(1);
     setCostPrice(0); setRetailPrice(0); setRetailPrice2(0); setStockQuantity(10);
+    setInitialPacks(2); setInitialLoose(0);
     setMinStockAlert(5); setExpiryDate(''); setExpiryAlertDays(30); setPhotoUrl('');
     setShowAddModal(true);
   };
@@ -126,7 +129,11 @@ export default function InventoryPage() {
     setName(p.name); setCategory(p.category || 'مواد غذائية');
     setUnitType(p.unit_type || 'piece'); setPackQuantity(p.pack_quantity || 1);
     setCostPrice(p.cost_price); setRetailPrice(p.retail_price); setRetailPrice2(p.retail_price_2 || 0);
-    setStockQuantity(p.stock_quantity); setMinStockAlert(p.min_stock_alert);
+    setStockQuantity(p.stock_quantity);
+    const cap = p.pack_quantity || 1;
+    setInitialPacks(Math.floor(p.stock_quantity / cap));
+    setInitialLoose(p.stock_quantity % cap);
+    setMinStockAlert(p.min_stock_alert);
     setExpiryDate(p.expiry_date || ''); setExpiryAlertDays(p.expiry_alert_days || 30);
     setPhotoUrl(p.photo_url || '');
     setShowAddModal(true);
@@ -143,13 +150,18 @@ export default function InventoryPage() {
       setCategories(updatedCats);
     }
 
+    const pCap = packQuantity > 0 ? packQuantity : 1;
+    const computedStock = unitType === 'pack'
+      ? ((Number(initialPacks) || 0) * pCap) + (Number(initialLoose) || 0)
+      : Number(stockQuantity) || 0;
+
     if (editingProduct) {
       const up = products.map(p => p.id === editingProduct.id ? {
         ...p,
         name: name.trim(), category: finalCategory,
-        unit_type: unitType, pack_quantity: packQuantity > 0 ? packQuantity : 1,
+        unit_type: unitType, pack_quantity: pCap,
         cost_price: +costPrice, retail_price: +retailPrice, retail_price_2: +retailPrice2,
-        stock_quantity: +stockQuantity, min_stock_alert: +minStockAlert,
+        stock_quantity: computedStock, min_stock_alert: +minStockAlert,
         expiry_date: expiryDate || undefined, expiry_alert_days: +expiryAlertDays,
         photo_url: photoUrl.trim() || undefined,
       } : p);
@@ -163,9 +175,9 @@ export default function InventoryPage() {
       const np: Product = {
         id: 'p_' + Date.now(),
         name: name.trim(), category: finalCategory,
-        unit_type: unitType, pack_quantity: packQuantity > 0 ? packQuantity : 1,
+        unit_type: unitType, pack_quantity: pCap,
         cost_price: +costPrice, retail_price: +retailPrice, retail_price_2: +retailPrice2,
-        stock_quantity: +stockQuantity, min_stock_alert: +minStockAlert,
+        stock_quantity: computedStock, min_stock_alert: +minStockAlert,
         expiry_date: expiryDate || undefined, expiry_alert_days: +expiryAlertDays,
         photo_url: photoUrl.trim() || undefined,
         last_purchased_at: new Date().toISOString(),
@@ -514,22 +526,22 @@ export default function InventoryPage() {
         </button>
       </div>
 
-      {/* ── 🏷️ فلاتر الأقسام التلقائية الملتفة flex-wrap ── */}
-      {categories.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 items-center">
-          <span className="text-[10px] font-bold text-slate-400 ml-1">الأقسام:</span>
-          <button onClick={() => setFilterCategory('all')}
-            className={`px-3 py-1 rounded-xl text-xs font-black ${filterCategory === 'all' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
-            كل الأقسام
-          </button>
-          {categories.map(cat => (
+      {/* ── 🏷️ فلاتر الأقسام التلقائية (مواد غذائية / مواد تنظيف فقط) ── */}
+      <div className="flex flex-wrap gap-1.5 items-center">
+        <span className="text-[10px] font-bold text-slate-400 ml-1">الأقسام:</span>
+        <button onClick={() => setFilterCategory('all')}
+          className={`px-3 py-1 rounded-xl text-xs font-black ${filterCategory === 'all' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
+          كل الأقسام
+        </button>
+        {categories
+          .filter(cat => cat === 'مواد غذائية' || cat === 'مواد تنظيف')
+          .map(cat => (
             <button key={cat} onClick={() => setFilterCategory(cat)}
               className={`px-3 py-1 rounded-xl text-xs font-black ${filterCategory === cat ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
               {cat}
             </button>
           ))}
-        </div>
-      )}
+      </div>
 
       {/* ── قائمة المنتجات مرتبة في شبكة متجاوبة مع التابلات والكمبيوتر ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -747,20 +759,54 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-black text-slate-600 mb-1.5">الكمية الحالية *</label>
-                  <input type="number" required min="0"
-                    value={stockQuantity} onChange={e => setStockQuantity(+e.target.value)}
-                    className="form-input text-center font-black text-lg tabnum" />
+              {unitType === 'pack' ? (
+                <div className="p-3 bg-indigo-50/80 border border-indigo-200 rounded-2xl space-y-2.5">
+                  <label className="block text-xs font-black text-indigo-950">📦 إدخال كمية المخزون بالكرتونة والحبات الإضافية (دقة الجرد):</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-indigo-900 mb-1">📦 عدد الكراتين الكاملة</label>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="مثال: 10 كرتونة"
+                        value={initialPacks || ''}
+                        onChange={e => setInitialPacks(+e.target.value)}
+                        className="form-input text-center font-black text-base tabnum bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-indigo-900 mb-1">🥛 حبات إضافية فردية</label>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="مثال: 5 حبات"
+                        value={initialLoose || ''}
+                        onChange={e => setInitialLoose(+e.target.value)}
+                        className="form-input text-center font-black text-base tabnum bg-white"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-between items-center text-[11px] font-black text-indigo-800 pt-1 border-t border-indigo-200/60">
+                    <span>إجمالي حبات المخزون:</span>
+                    <span className="text-sm tabnum text-indigo-950">{((initialPacks * (packQuantity || 1)) + initialLoose)} حبة</span>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-black text-slate-600 mb-1.5">حد تنبيه النقص</label>
-                  <input type="number" min="1"
-                    value={minStockAlert} onChange={e => setMinStockAlert(+e.target.value)}
-                    className="form-input text-center tabnum" />
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-black text-slate-600 mb-1.5">الكمية الحالية (بالحبة) *</label>
+                    <input type="number" required min="0"
+                      value={stockQuantity} onChange={e => setStockQuantity(+e.target.value)}
+                      className="form-input text-center font-black text-lg tabnum" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-black text-slate-600 mb-1.5">حد تنبيه النقص</label>
+                    <input type="number" min="1"
+                      value={minStockAlert} onChange={e => setMinStockAlert(+e.target.value)}
+                      className="form-input text-center tabnum" />
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="p-3 bg-slate-50 border rounded-2xl space-y-2">
                 <div>
