@@ -6,6 +6,7 @@ import {
   getLocalData, setLocalData, Product, Contact, Transaction, TransactionItem,
   printThermalReceipt, generateReceiptNumber, saveReceipt,
 } from '@/lib/store';
+import { SearchableSelect } from '@/components/SearchableSelect';
 import { toast } from '@/components/Toast';
 import {
   ShoppingCart, Search, Plus, Minus, Trash2,
@@ -348,18 +349,22 @@ function QuickSaleContent() {
             </div>
           </form>
         ) : (
-          <select
+          <SearchableSelect
+            options={contacts.map(c => ({
+              id: c.id,
+              label: c.name,
+              sublabel: c.phone || 'بدون هاتف',
+              badge: c.balance > 0 ? `دين: ${fmt(c.balance)} د.ج` : c.balance < 0 ? `مستحقات: ${fmt(Math.abs(c.balance))} د.ج` : 'متوازن',
+            }))}
             value={selectedCustomerId}
-            onChange={e => setSelectedCustomerId(e.target.value)}
-            className="form-input font-black text-sm text-slate-900 bg-slate-50 border-slate-300"
-          >
-            {contacts.length === 0 && <option value="">لا يوجد زبائن، أضف زبوناً</option>}
-            {contacts.map(c => (
-              <option key={c.id} value={c.id}>
-                {c.name} {c.balance > 0 ? `(عقبه دين: ${fmt(c.balance)} د.ج)` : c.balance < 0 ? `(له مستحقات: ${fmt(Math.abs(c.balance))} د.ج)` : ''}
-              </option>
-            ))}
-          </select>
+            onChange={id => setSelectedCustomerId(id)}
+            placeholder="🔍 ابحث بالاسم أو الرقم لاختيار الزبون..."
+            searchPlaceholder="اكتب اسم الزبون المشتري..."
+            icon="user"
+            required
+            onAddNew={() => setShowAddCustomer(true)}
+            addNewText="إضافة زبون جديد + "
+          />
         )}
       </div>
 

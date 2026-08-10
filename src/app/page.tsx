@@ -15,6 +15,7 @@ import {
   saveReceipt,
   cancelTransaction,
 } from '@/lib/store';
+import { SearchableSelect } from '@/components/SearchableSelect';
 import { toast } from '@/components/Toast';
 import {
   TrendingUp, AlertTriangle, MessageCircle,
@@ -140,9 +141,14 @@ export default function HomePage() {
 
   const executeSale = (e: React.FormEvent) => {
     e.preventDefault();
-    const prod = products.find(p => p.id === selectedProductId);
     const cust = contacts.find(c => c.id === selectedCustomerId);
-    if (!prod) { toast('يرجى اختيار المنتج', 'error'); return; }
+    if (!selectedCustomerId || !cust) {
+      toast('⚠️ يرجى اختيار الزبون أولاً لاستكمال عملية البيع!', 'error');
+      return;
+    }
+
+    const prod = products.find(p => p.id === selectedProductId);
+    if (!prod) { toast('⚠️ يرجى اختيار المنتج أولاً!', 'error'); return; }
 
     const cap = prod.pack_quantity || 1;
     const totalPieces = prod.unit_type === 'pack' ? ((Number(salePacks) || 0) * cap) + (Number(saleLoose) || 0) : Number(saleQty) || 1;
@@ -159,7 +165,7 @@ export default function HomePage() {
 
     const newTx: Transaction = {
       id: 'tx_' + Date.now(), tx_type: 'SALE',
-      contact_id: cust?.id, contact_name: cust?.name ?? 'زبون كاش',
+      contact_id: cust.id, contact_name: cust.name,
       total_amount: total, paid_amount: salePaid, debt_amount: debt, status,
       items: [{ product_id: prod.id, product_name: prod.name, quantity: totalPieces, unit_price: price, cost_price: prod.cost_price }],
       created_at: new Date().toISOString(),
@@ -168,8 +174,8 @@ export default function HomePage() {
     saveReceipt({
       id: generateReceiptNumber(),
       receipt_type: 'SALE',
-      contact_id: cust?.id,
-      contact_name: cust?.name ?? 'زبون كاش',
+      contact_id: cust.id,
+      contact_name: cust.name,
       items: newTx.items,
       total_amount: total,
       paid_amount: salePaid,
@@ -179,7 +185,7 @@ export default function HomePage() {
 
     const upProds = products.map(p => p.id === prod.id
       ? { ...p, stock_quantity: Math.max(0, p.stock_quantity - totalPieces), last_sold_at: new Date().toISOString() } : p);
-    const upConts = contacts.map(c => cust && c.id === cust.id && debt > 0
+    const upConts = contacts.map(c => c.id === cust.id && debt > 0
       ? { ...c, balance: c.balance + debt } : c);
     const upTx = [newTx, ...transactions];
 
@@ -189,7 +195,7 @@ export default function HomePage() {
     setLocalData('tajer_smart_transactions_v1', upTx);
     setShowSaleModal(false);
     setSelectedProductId(''); setSelectedCustomerId(''); setSaleQty(1); setSalePacks(1); setSaleLoose(0); setSaleUnitPrice(0); setSalePaid(0);
-    toast(debt > 0 ? `✅ تم البيع وحفظ الوصل — دين: ${fmt(debt)} د.ج` : '✅ تم البيع وحفظ الوصل نقداً بنجاح!');
+    toast(debt > 0 ? `✅ تم البيع لـ ${cust.name} — دين: ${fmt(debt)} د.ج` : `✅ تم البيع لـ ${cust.name} نقداً بنجاح!`);
   };
 
   /* ── الشراء ── */
@@ -201,9 +207,14 @@ export default function HomePage() {
 
   const executeBuy = (e: React.FormEvent) => {
     e.preventDefault();
-    const prod = products.find(p => p.id === buyProductId);
     const supp = contacts.find(c => c.id === selectedSupplierId);
-    if (!prod) { toast('يرجى اختيار المنتج', 'error'); return; }
+    if (!selectedSupplierId || !supp) {
+      toast('⚠️ يرجى اختيار المورد أولاً لاستكمال عملية الشراء!', 'error');
+      return;
+    }
+
+    const prod = products.find(p => p.id === buyProductId);
+    if (!prod) { toast('⚠️ يرجى اختيار المنتج أولاً!', 'error'); return; }
 
     const cap = prod.pack_quantity || 1;
     const totalPieces = prod.unit_type === 'pack' ? ((Number(buyPacks) || 0) * cap) + (Number(buyLoose) || 0) : Number(buyQty) || 1;
@@ -571,25 +582,39 @@ export default function HomePage() {
             <form onSubmit={executeSale} className="modal-body space-y-4">
 
               <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">👤 اختر الزبون</label>
-                <select value={selectedCustomerId} onChange={e => setSelectedCustomerId(e.target.value)} className="form-input">
-                  <option value="">— زبون كاش (بدون اسم) —</option>
-                  {contacts.filter(c => c.type !== 'supplier').map(c => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.phone || 'بدون هاتف'})</option>
-                  ))}
-                </select>
+                <label className="block text-xs font-black text-slate-600 mb-1.5">👤 اختر الزبون * (إجباري)</label>
+                <SearchableSelect
+                  options={contacts.filter(c => c.type !== 'supplier').map(c => ({
+                    id: c.id,
+                    label: c.name,
+                    sublabel: c.phone || 'بدون هاتف',
+                    badge: (Number(c.balance) || 0) > 0 ? `دين: ${fmt(c.balance)} د.ج` : 'حساب متوازن',
+                  }))}
+                  value={selectedCustomerId}
+                  onChange={id => setSelectedCustomerId(id)}
+                  placeholder="🔍 ابحث بالاسم أو الرقم لاختيار الزبون..."
+                  searchPlaceholder="اكتب اسم الزبون..."
+                  icon="user"
+                  required
+                />
               </div>
 
               <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">📦 اختر المنتج</label>
-                <select value={selectedProductId} onChange={e => handleProductSaleChange(e.target.value)} required className="form-input">
-                  <option value="">— اختر المنتج —</option>
-                  {products.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} — متوفر: {p.stock_quantity} حبة — {fmt(p.retail_price)} د.ج
-                    </option>
-                  ))}
-                </select>
+                <label className="block text-xs font-black text-slate-600 mb-1.5">📦 اختر المنتج * (إجباري)</label>
+                <SearchableSelect
+                  options={products.map(p => ({
+                    id: p.id,
+                    label: p.name,
+                    sublabel: `متوفر: ${p.stock_quantity} حبة — ${p.category || 'عام'}`,
+                    badge: `${fmt(p.retail_price)} د.ج`,
+                  }))}
+                  value={selectedProductId}
+                  onChange={id => handleProductSaleChange(id)}
+                  placeholder="🔍 ابحث باسم المنتج أو القسم..."
+                  searchPlaceholder="اكتب اسم المنتج..."
+                  icon="package"
+                  required
+                />
               </div>
 
               {/* اختيار سعر التجزئة 1 أو تجزئة 2 */}
@@ -749,30 +774,49 @@ export default function HomePage() {
             <form onSubmit={executeBuy} className="modal-body space-y-4">
 
               <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">🏭 المورد</label>
-                <select value={selectedSupplierId} onChange={e => setSelectedSupplierId(e.target.value)} className="form-input">
-                  <option value="">— مورد نقدي (بدون اسم) —</option>
-                  {contacts.filter(c => c.type !== 'customer').map(c => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.phone || 'بدون هاتف'})</option>
-                  ))}
-                </select>
+                <label className="block text-xs font-black text-slate-600 mb-1.5">🏭 اختر المورد * (إجباري)</label>
+                <SearchableSelect
+                  options={contacts.filter(c => c.type !== 'customer').map(c => ({
+                    id: c.id,
+                    label: c.name,
+                    sublabel: c.phone || 'بدون هاتف',
+                    badge: (Number(c.balance) || 0) < 0 ? `له علينا: ${fmt(Math.abs(c.balance))} د.ج` : 'حساب متوازن',
+                  }))}
+                  value={selectedSupplierId}
+                  onChange={id => setSelectedSupplierId(id)}
+                  placeholder="🔍 ابحث بالاسم أو الرقم لاختيار المورد..."
+                  searchPlaceholder="اكتب اسم المورد..."
+                  icon="user"
+                  required
+                />
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-black text-slate-600">📦 المنتج</label>
+                  <label className="text-xs font-black text-slate-600">📦 اختر المنتج * (إجباري)</label>
                   <Link href="/inventory" onClick={() => setShowBuyModal(false)} className="text-[11px] font-black text-indigo-700 hover:underline">
                     + إضافة منتج جديد للمخزن ➕
                   </Link>
                 </div>
-                <select value={buyProductId} onChange={e => handleProductBuyChange(e.target.value)} required className="form-input">
-                  <option value="">— اختر المنتج —</option>
-                  {products.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} — موجود: {p.stock_quantity} — {fmt(p.cost_price)} د.ج
-                    </option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  options={products.map(p => ({
+                    id: p.id,
+                    label: p.name,
+                    sublabel: `موجود بالمخزن: ${p.stock_quantity} حبة — ${p.category || 'عام'}`,
+                    badge: `${fmt(p.cost_price)} د.ج`,
+                  }))}
+                  value={buyProductId}
+                  onChange={id => handleProductBuyChange(id)}
+                  placeholder="🔍 ابحث باسم المنتج أو القسم..."
+                  searchPlaceholder="اكتب اسم المنتج..."
+                  icon="package"
+                  required
+                  onAddNew={() => {
+                    setShowBuyModal(false);
+                    window.location.href = '/inventory?action=new';
+                  }}
+                  addNewText="تسجيل منتج جديد بالمخزن ➕"
+                />
               </div>
 
               {buyProductId && (() => {
