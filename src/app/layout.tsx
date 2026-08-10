@@ -35,6 +35,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
         <link rel="apple-touch-icon" href="/icon-192.png" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js').then(
+                    function(r) { console.log('PWA SW registered'); },
+                    function(e) { console.log('PWA SW failed', e); }
+                  );
+                });
+              }
+            `,
+          }}
+        />
       </head>
       <body style={{ paddingBottom: '80px' }}>
 

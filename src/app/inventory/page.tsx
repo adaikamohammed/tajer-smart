@@ -592,18 +592,24 @@ export default function InventoryPage() {
                   <div className={`progress-bar-fill ${expiry?.barCls ?? (isLow ? 'warning' : '')}`} style={{ width: `${stockPct}%` }} />
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 grid grid-cols-3 gap-1.5">
-                    <div className="rounded-lg p-1.5 text-center bg-slate-100">
-                      <p className="text-[10px] text-slate-400 font-semibold">جملة</p>
+                <div className="flex items-center gap-2">
+                  <div className={`flex-1 grid ${ (p.retail_price_2 || 0) > 0 ? 'grid-cols-4' : 'grid-cols-3' } gap-1`}>
+                    <div className="rounded-lg p-1 text-center bg-slate-100">
+                      <p className="text-[9px] text-slate-400 font-semibold">شراء</p>
                       <p className="text-xs font-black text-slate-700 tabnum">{fmt(p.cost_price)}</p>
                     </div>
-                    <div className="rounded-lg p-1.5 text-center bg-emerald-50">
-                      <p className="text-[10px] font-semibold text-emerald-600">تجزئة</p>
+                    <div className="rounded-lg p-1 text-center bg-emerald-50 border border-emerald-200/50">
+                      <p className="text-[9px] font-bold text-emerald-700">تجزئة 1</p>
                       <p className="text-xs font-black tabnum text-emerald-800">{fmt(p.retail_price)}</p>
                     </div>
-                    <div className="rounded-lg p-1.5 text-center bg-indigo-50">
-                      <p className="text-[10px] font-semibold text-indigo-600">ربح</p>
+                    {(p.retail_price_2 || 0) > 0 && (
+                      <div className="rounded-lg p-1 text-center bg-sky-50 border border-sky-200/50">
+                        <p className="text-[9px] font-bold text-sky-700">تجزئة 2</p>
+                        <p className="text-xs font-black tabnum text-sky-800">{fmt(p.retail_price_2!)}</p>
+                      </div>
+                    )}
+                    <div className="rounded-lg p-1 text-center bg-indigo-50">
+                      <p className="text-[9px] font-semibold text-indigo-600">ربح</p>
                       <p className="text-xs font-black tabnum text-indigo-800">+{pct}%</p>
                     </div>
                   </div>
