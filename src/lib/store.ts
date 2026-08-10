@@ -8,7 +8,7 @@ export interface Contact {
   location?: string;
   category?: string;
   credit_limit?: number;
-  type: 'customer' | 'supplier' | 'both';
+  type: 'customer' | 'supplier';
   notes?: string;
   balance: number;
   created_at: string;
@@ -41,6 +41,7 @@ export interface Product {
   pack_quantity?: number;
   cost_price: number;
   retail_price: number;
+  retail_price_2?: number;
   stock_quantity: number;
   min_stock_alert: number;
   expiry_date?: string;
@@ -116,7 +117,7 @@ export const MERCHANT_INFO = {
 // ─── البيانات الافتراضية الفارغة (تم حذف البيانات التجريبية الوهمية كلياً) ─
 const DEFAULT_CONTACTS: Contact[] = [];
 const DEFAULT_PRODUCTS: Product[] = [];
-const DEFAULT_PRODUCT_CATEGORIES = ['مواد غذائية', 'مشروبات', 'حلويات', 'مواد تنظيف', 'خضر وفواكه'];
+const DEFAULT_PRODUCT_CATEGORIES = ['مواد غذائية', 'مواد تنظيف', 'أخرى'];
 const DEFAULT_TRANSACTIONS: Transaction[] = [];
 
 const STORAGE_KEYS = {
@@ -145,6 +146,7 @@ export function sanitizeProduct(p: any): Product {
     ...p,
     cost_price: Number(p.cost_price) || 0,
     retail_price: Number(p.retail_price) || 0,
+    retail_price_2: p.retail_price_2 !== undefined ? (Number(p.retail_price_2) || 0) : undefined,
     stock_quantity: Number(p.stock_quantity) || 0,
     pack_quantity: p.pack_quantity ? (Number(p.pack_quantity) || 1) : undefined,
     min_stock_alert: Number(p.min_stock_alert) || 5,
@@ -468,7 +470,7 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
     border-top: 3px dashed #000;
     padding-top: 5px;
     text-align: center;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 700;
   }
   .seal {
@@ -478,7 +480,22 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
     border-radius: 3px;
     font-size: 12px;
     font-weight: 900;
-    margin-bottom: 3px;
+    margin-bottom: 4px;
+  }
+  .legal-notice {
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.4;
+    border: 1px solid #000;
+    padding: 5px;
+    margin: 6px 0;
+    text-align: justify;
+    background: #fafafa;
+  }
+  .thanks-msg {
+    font-size: 13px;
+    font-weight: 900;
+    margin-top: 4px;
   }
 
   /* ── أزرار التحكم في الطباعة ── */
@@ -577,7 +594,10 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
 
   <div class="footer">
     <div class="seal">✅ معتمد ومسجل</div>
-    <div>شكراً لتعاملكم معنا 🌹</div>
+    <div class="legal-notice">
+      📌 <b>تنبيه قانوني هام:</b> يرجى مراجعة وتفقد البضاعة والوصل خلال 24 ساعة من تاريخ عملية الشراء. لا يُقبل أي اعتراض أو استرجاع بعد انقضاء المهلة.
+    </div>
+    <div class="thanks-msg">شكراً لتعاملكم معنا 🌹</div>
   </div>
 
   <div class="actions-container no-print">

@@ -463,16 +463,34 @@ export default function QuickSaleModal({
                       <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0 flex-1">
                           <p className="font-black text-xs text-slate-900 truncate">{p.name}</p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[10px] font-bold text-slate-500">
-                              سعر التجزئة:
-                            </span>
+                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                            <span className="text-[10px] font-bold text-slate-500">السعر:</span>
+                            <button
+                              type="button"
+                              onClick={() => updateCartPrice(p.id, p.retail_price)}
+                              className={`px-2 py-0.5 rounded-lg text-[11px] font-black border transition-all ${
+                                ci.unitPrice === p.retail_price ? 'bg-emerald-600 text-white border-transparent' : 'bg-slate-100 text-slate-700 border-slate-200'
+                              }`}
+                            >
+                              تجزئة 1 ({p.retail_price})
+                            </button>
+                            {(p.retail_price_2 || 0) > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => updateCartPrice(p.id, p.retail_price_2 || p.retail_price)}
+                                className={`px-2 py-0.5 rounded-lg text-[11px] font-black border transition-all ${
+                                  ci.unitPrice === p.retail_price_2 ? 'bg-sky-600 text-white border-transparent' : 'bg-slate-100 text-slate-700 border-slate-200'
+                                }`}
+                              >
+                                تجزئة 2 ({p.retail_price_2})
+                              </button>
+                            )}
                             <input
                               type="number"
                               min="0"
                               value={ci.unitPrice}
                               onChange={e => updateCartPrice(p.id, +e.target.value)}
-                              className="w-20 form-input py-0.5 px-1.5 text-xs font-black text-emerald-700 tabnum bg-emerald-50/50 border-emerald-200"
+                              className="w-16 form-input py-0.5 px-1 text-[11px] font-black text-emerald-700 tabnum bg-white border-slate-300"
                             />
                             <span className="text-[10px] font-bold text-slate-400">د.ج</span>
                           </div>

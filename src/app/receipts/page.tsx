@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   getLocalData, setLocalData, deleteReceipt, getReceipts,
-  printThermalReceipt, generateReceiptNumber,
+  printThermalReceipt, generateReceiptNumber, Contact,
   Receipt, ReceiptType, MERCHANT_INFO,
 } from '@/lib/store';
 import { toast } from '@/components/Toast';
@@ -11,8 +11,9 @@ import {
   Receipt as ReceiptIcon, Search, Trash2, Printer,
   ShoppingCart, Package, DollarSign, FileText,
   ChevronDown, ChevronRight, Calendar, Phone,
-  X, Filter, RefreshCw,
+  X, Filter, RefreshCw, Eye, User
 } from 'lucide-react';
+import ReceiptViewModal from '@/components/ReceiptViewModal';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
 
@@ -24,14 +25,20 @@ const RECEIPT_TYPE_LABELS: Record<ReceiptType, { label: string; emoji: string; c
 };
 
 export default function ReceiptsPage() {
-  const [receipts,      setReceipts]      = useState<Receipt[]>([]);
-  const [searchQuery,   setSearchQuery]   = useState('');
-  const [filterType,    setFilterType]    = useState<ReceiptType | 'all'>('all');
-  const [expandedId,    setExpandedId]    = useState<string | null>(null);
-  const [showDeleteAll, setShowDeleteAll] = useState(false);
+  const [receipts,         setReceipts]         = useState<Receipt[]>([]);
+  const [contacts,         setContacts]         = useState<Contact[]>([]);
+  const [searchQuery,      setSearchQuery]      = useState('');
+  const [filterType,       setFilterType]       = useState<ReceiptType | 'all'>('all');
+  const [filterMonth,      setFilterMonth]      = useState<string>('all');
+  const [filterContactId,  setFilterContactId]  = useState<string>('all');
+  const [selectedReceipt,  setSelectedReceipt]  = useState<Receipt | null>(null);
+  const [expandedId,       setExpandedId]       = useState<string | null>(null);
+  const [showDeleteAll,    setShowDeleteAll]    = useState(false);
 
   useEffect(() => {
     const raw = getReceipts();
+    setContacts(getLocalData('tajer_smart_contacts_v1', []));
+
     // إزالة التكرارات بناءً على ID (تحتفظ بأحدث نسخة)
     const seen = new Set<string>();
     const deduped = raw.filter(r => {
@@ -40,7 +47,6 @@ export default function ReceiptsPage() {
       return true;
     });
     if (deduped.length !== raw.length) {
-      // تحديث الأرشيف المحفوظ لتجنب التكرار مستقبلاً
       setLocalData('tajer_smart_receipts_v1', deduped);
     }
     setReceipts(deduped);
@@ -70,21 +76,53 @@ export default function ReceiptsPage() {
 
   const handleReprint = (receipt: Receipt, e: React.MouseEvent) => {
     e.stopPropagation();
-    printThermalReceipt({ ...receipt, id: receipt.id + '-REPRINT' });
-    toast('🖨️ جارٍ فتح نافذة الطباعة...', 'success');
+    setSelectedReceipt(receipt);
   };
 
+  // ─── قائمة الأشهر المتوفرة بالأرشيف للفلترة ───
+  const availableMonths = useMemo(() => {
+    const monthsSet = new Set<string>();
+    receipts.forEach(r => {
+      if (r.created_at) {
+        const d = new Date(r.created_at);
+        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        monthsSet.add(ym);
+      }
+    });
+    return Array.from(monthsSet).sort().reverse();
+  }, [receipts]);
+
   const filtered = useMemo(() => {
-    return receipts
-      .filter(r => {
-        const matchType   = filterType === 'all' || r.receipt_type === filterType;
-        const matchSearch = !searchQuery
-          || r.id.toLowerCase().includes(searchQuery.toLowerCase())
-          || (r.contact_name && r.contact_name.includes(searchQuery))
-          || new Date(r.created_at).toLocaleDateString('ar-EG').includes(searchQuery);
-        return matchType && matchSearch;
-      });
-  }, [receipts, filterType, searchQuery]);
+    const now = new Date();
+    const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    return receipts.filter(r => {
+      const matchType = filterType === 'all' || r.receipt_type === filterType;
+      
+      let matchMonth = true;
+      if (filterMonth === 'this_month') {
+        const d = new Date(r.created_at);
+        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        matchMonth = ym === currentYM;
+      } else if (filterMonth !== 'all') {
+        const d = new Date(r.created_at);
+        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        matchMonth = ym === filterMonth;
+      }
+
+      let matchContact = true;
+      if (filterContactId !== 'all') {
+        matchContact = r.contact_id === filterContactId;
+      }
+
+      const matchSearch = !searchQuery
+        || r.id.toLowerCase().includes(searchQuery.toLowerCase())
+        || (r.contact_name && r.contact_name.includes(searchQuery))
+        || new Date(r.created_at).toLocaleDateString('ar-EG').includes(searchQuery);
+
+      return matchType && matchMonth && matchContact && matchSearch;
+    });
+  }, [receipts, filterType, filterMonth, filterContactId, searchQuery]);
 
   // ─── إحصائيات سريعة ─────────────────────────────────────────────
   const totalSales    = receipts.filter(r => r.receipt_type === 'SALE').reduce((a, r) => a + (r.total_amount ?? 0), 0);
@@ -140,6 +178,48 @@ export default function ReceiptsPage() {
           onChange={e => setSearchQuery(e.target.value)}
           className="form-input pr-9"
         />
+      </div>
+
+      {/* ─── الفلترة بالمدة الزمنية (الشهر) والشخص ─── */}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-[11px] font-black text-slate-600 mb-1 flex items-center gap-1">
+            <Calendar size={13} className="text-emerald-600" />
+            فلترة بالمدة (الشهر):
+          </label>
+          <select
+            value={filterMonth}
+            onChange={e => setFilterMonth(e.target.value)}
+            className="form-input py-1.5 text-xs font-bold bg-white"
+          >
+            <option value="all">📅 كل الفترات والأشهر</option>
+            <option value="this_month">🗓️ هذا الشهر الحقيقي</option>
+            {availableMonths.map(ym => (
+              <option key={ym} value={ym}>
+                📅 شهر {ym}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-[11px] font-black text-slate-600 mb-1 flex items-center gap-1">
+            <User size={13} className="text-emerald-600" />
+            فلترة حسب الشخص:
+          </label>
+          <select
+            value={filterContactId}
+            onChange={e => setFilterContactId(e.target.value)}
+            className="form-input py-1.5 text-xs font-bold bg-white"
+          >
+            <option value="all">👥 جميع الأشخاص والزبائن</option>
+            {contacts.map(c => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({c.type === 'customer' ? 'زبون' : 'مورد'})
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* ─── فلترة النوع ─── */}
@@ -342,6 +422,8 @@ export default function ReceiptsPage() {
           </div>
         </div>
       )}
+      {/* Modal معاينة الوصل الحراري الموحد */}
+      <ReceiptViewModal receipt={selectedReceipt} onClose={() => setSelectedReceipt(null)} />
     </div>
   );
 }

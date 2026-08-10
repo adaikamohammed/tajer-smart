@@ -28,14 +28,14 @@ const AVATAR_COLORS = [
 ];
 const avatarGrad = (name: string) => AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length];
 
-const QUICK_CATEGORIES = ['مواد غذائية', 'مواد تنظيف', 'خضر وفواكه', 'أخرى'];
+const QUICK_CATEGORIES = ['مواد غذائية', 'مواد تنظيف', 'أخرى'];
 
 export default function ContactsPage() {
   const [contacts,     setContacts]     = useState<Contact[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [payments,     setPayments]     = useState<DebtPayment[]>([]);
 
-  const [filterType,     setFilterType]     = useState<'all' | 'customer' | 'supplier' | 'both'>('all');
+  const [filterType,     setFilterType]     = useState<'all' | 'customer' | 'supplier'>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [searchQuery,    setSearchQuery]    = useState('');
 
@@ -59,7 +59,7 @@ export default function ContactsPage() {
   const [category,         setCategory]         = useState('مواد غذائية');
   const [customCategory,   setCustomCategory]   = useState('');
   const [creditLimit,      setCreditLimit]      = useState(0);
-  const [type,             setType]             = useState<'customer' | 'supplier' | 'both'>('customer');
+  const [type,             setType]             = useState<'customer' | 'supplier'>('customer');
   const [notes,            setNotes]            = useState('');
   const [balanceDirection, setBalanceDirection] = useState<'customer_owes' | 'we_owe_customer'>('customer_owes');
   const [initialBalance,   setInitialBalance]   = useState(0);
@@ -215,8 +215,7 @@ export default function ContactsPage() {
       const matchType =
         filterType === 'all' ? true :
         filterType === 'customer' ? c.type === 'customer' :
-        filterType === 'supplier' ? c.type === 'supplier' :
-        c.type === 'both';
+        c.type === 'supplier';
 
       const matchCat = filterCategory === 'all' ? true : c.category === filterCategory;
 
@@ -389,10 +388,6 @@ export default function ContactsPage() {
                 className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${filterType === 'supplier' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
                 الموردين 🚚
               </button>
-              <button onClick={() => setFilterType('both')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${filterType === 'both' ? 'bg-amber-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
-                كلاهما 🔄
-              </button>
             </div>
 
             {availableCategories.length > 0 && (
@@ -423,7 +418,7 @@ export default function ContactsPage() {
               </div>
             ) : (
               filtered.map(c => {
-                const isSupplier  = c.type === 'supplier' || c.type === 'both';
+                const isSupplier  = c.type === 'supplier';
                 const hasDebt     = c.balance > 0;
                 const hasCredit   = c.balance < 0;
                 const isSettled   = c.balance === 0;
@@ -445,7 +440,7 @@ export default function ContactsPage() {
                           : c.name.charAt(0)
                         }
                         <span className="absolute -bottom-0.5 -left-0.5 w-5 h-5 rounded-full bg-white border flex items-center justify-center text-[10px]">
-                          {c.type === 'both' ? '🔄' : isSupplier ? '🚚' : '👥'}
+                          {isSupplier ? '🚚' : '👥'}
                         </span>
                       </div>
 
@@ -594,16 +589,15 @@ export default function ContactsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-black text-slate-600 mb-2">نوع الجهة</label>
-                <div className="grid grid-cols-3 gap-2">
+                <label className="block text-xs font-black text-slate-600 mb-2">نوع الجهة *</label>
+                <div className="grid grid-cols-2 gap-2">
                   {[
-                    { val: 'customer' as const, label: 'زبون', emoji: '👥' },
-                    { val: 'supplier' as const, label: 'مورد', emoji: '🚚' },
-                    { val: 'both'     as const, label: 'كلاهما', emoji: '🔄' },
+                    { val: 'customer' as const, label: 'زبون 👤', emoji: '👥' },
+                    { val: 'supplier' as const, label: 'مورد 🚚', emoji: '🚚' },
                   ].map(t => (
                     <button key={t.val} type="button" onClick={() => setType(t.val)}
                       className={`py-2.5 rounded-xl font-black text-xs border ${type === t.val ? 'bg-emerald-600 text-white border-transparent' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
-                      {t.emoji} {t.label}
+                      {t.label}
                     </button>
                   ))}
                 </div>

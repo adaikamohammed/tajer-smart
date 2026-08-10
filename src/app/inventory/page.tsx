@@ -70,17 +70,19 @@ export default function InventoryPage() {
   const [packQuantity,     setPackQuantity]     = useState(1);
   const [costPrice,        setCostPrice]        = useState(0);
   const [retailPrice,      setRetailPrice]      = useState(0);
+  const [retailPrice2,     setRetailPrice2]     = useState(0);
   const [stockQuantity,    setStockQuantity]    = useState(10);
   const [minStockAlert,    setMinStockAlert]    = useState(5);
   const [expiryDate,       setExpiryDate]       = useState('');
   const [expiryAlertDays,  setExpiryAlertDays]  = useState(30);
   const [photoUrl,         setPhotoUrl]         = useState('');
 
-  // Adjust stock states (ربط بالمورد والزبون وحساب الكرتونة)
-  const [adjustQty,       setAdjustQty]       = useState(1);
-  const [adjustUnitChoice,setAdjustUnitChoice] = useState<'pack' | 'half_pack' | 'piece'>('piece');
+  // Adjust stock states (ربط بالمورد والزبون وحساب الكرتونة + الحبات الفردية)
+  const [adjustPacks,     setAdjustPacks]     = useState(0);
+  const [adjustLoose,     setAdjustLoose]     = useState(0);
   const [adjustType,      setAdjustType]      = useState<'add' | 'reduce'>('add');
   const [selectedPersonId,setSelectedPersonId]= useState('');
+  const [selectedPriceType,setSelectedPriceType]= useState<'retail1' | 'retail2'>('retail1');
 
   useEffect(() => {
     const refreshData = () => {
@@ -113,7 +115,7 @@ export default function InventoryPage() {
     setEditingProduct(null);
     setName(''); setCategory('مواد غذائية'); setCustomCategory('');
     setUnitType('piece'); setPackQuantity(1);
-    setCostPrice(0); setRetailPrice(0); setStockQuantity(10);
+    setCostPrice(0); setRetailPrice(0); setRetailPrice2(0); setStockQuantity(10);
     setMinStockAlert(5); setExpiryDate(''); setExpiryAlertDays(30); setPhotoUrl('');
     setShowAddModal(true);
   };
@@ -123,7 +125,7 @@ export default function InventoryPage() {
     setEditingProduct(p);
     setName(p.name); setCategory(p.category || 'مواد غذائية');
     setUnitType(p.unit_type || 'piece'); setPackQuantity(p.pack_quantity || 1);
-    setCostPrice(p.cost_price); setRetailPrice(p.retail_price);
+    setCostPrice(p.cost_price); setRetailPrice(p.retail_price); setRetailPrice2(p.retail_price_2 || 0);
     setStockQuantity(p.stock_quantity); setMinStockAlert(p.min_stock_alert);
     setExpiryDate(p.expiry_date || ''); setExpiryAlertDays(p.expiry_alert_days || 30);
     setPhotoUrl(p.photo_url || '');
@@ -146,7 +148,7 @@ export default function InventoryPage() {
         ...p,
         name: name.trim(), category: finalCategory,
         unit_type: unitType, pack_quantity: packQuantity > 0 ? packQuantity : 1,
-        cost_price: +costPrice, retail_price: +retailPrice,
+        cost_price: +costPrice, retail_price: +retailPrice, retail_price_2: +retailPrice2,
         stock_quantity: +stockQuantity, min_stock_alert: +minStockAlert,
         expiry_date: expiryDate || undefined, expiry_alert_days: +expiryAlertDays,
         photo_url: photoUrl.trim() || undefined,
@@ -162,7 +164,7 @@ export default function InventoryPage() {
         id: 'p_' + Date.now(),
         name: name.trim(), category: finalCategory,
         unit_type: unitType, pack_quantity: packQuantity > 0 ? packQuantity : 1,
-        cost_price: +costPrice, retail_price: +retailPrice,
+        cost_price: +costPrice, retail_price: +retailPrice, retail_price_2: +retailPrice2,
         stock_quantity: +stockQuantity, min_stock_alert: +minStockAlert,
         expiry_date: expiryDate || undefined, expiry_alert_days: +expiryAlertDays,
         photo_url: photoUrl.trim() || undefined,
@@ -194,25 +196,29 @@ export default function InventoryPage() {
     if (e) e.stopPropagation();
     setAdjustingProduct(p);
     setAdjustType(type);
-    setAdjustQty(1);
-    setAdjustUnitChoice(p.unit_type === 'pack' ? 'pack' : 'piece');
+    setAdjustPacks(p.unit_type === 'pack' ? 1 : 0);
+    setAdjustLoose(p.unit_type === 'pack' ? 0 : 1);
     setSelectedPersonId('');
+    setSelectedPriceType('retail1');
     setShowAdjustModal(true);
   };
 
   const executeAdjustStock = (e: React.FormEvent) => {
     e.preventDefault();
-    const numQty = Number(adjustQty) || 0;
-    if (!adjustingProduct || numQty <= 0) return;
+    if (!adjustingProduct) return;
 
-    let actualPieces = numQty;
-    const packQty = Number(adjustingProduct.pack_quantity) || 1;
-    if (adjustingProduct.unit_type === 'pack' && packQty > 1) {
-      if (adjustUnitChoice === 'pack') {
-        actualPieces = numQty * packQty;
-      } else if (adjustUnitChoice === 'half_pack') {
-        actualPieces = numQty * Math.round(packQty / 2);
-      }
+    const packCapacity = Number(adjustingProduct.pack_quantity) || 1;
+    const numPacks = Number(adjustPacks) || 0;
+    const numLoose = Number(adjustLoose) || 0;
+
+    let actualPieces = numLoose;
+    if (adjustingProduct.unit_type === 'pack') {
+      actualPieces = (numPacks * packCapacity) + numLoose;
+    }
+
+    if (actualPieces <= 0) {
+      toast('يرجى تحديد كمية صحيحة حبات أو كراتين', 'error');
+      return;
     }
 
     const currentStock = Number(adjustingProduct.stock_quantity) || 0;
@@ -220,12 +226,26 @@ export default function InventoryPage() {
     const newStock = Math.max(0, currentStock + delta);
     const person = contacts.find(c => c.id === selectedPersonId);
 
-    // إنشاء معاملة رسمية تربط الحركة بالمورد أو الزبون
-    if (person) {
-      const isSale = adjustType === 'reduce';
-      const itemPrice = Number(isSale ? adjustingProduct.retail_price : adjustingProduct.cost_price) || 0;
-      const totalAmt = itemPrice * actualPieces;
+    // اختيار السعر المعتمد (تجزئة 1 أو تجزئة 2)
+    const isSale = adjustType === 'reduce';
+    let chosenPrice = Number(adjustingProduct.cost_price) || 0;
+    if (isSale) {
+      chosenPrice = selectedPriceType === 'retail2' && (adjustingProduct.retail_price_2 || 0) > 0
+        ? Number(adjustingProduct.retail_price_2)
+        : Number(adjustingProduct.retail_price) || 0;
+    }
 
+    const totalAmt = chosenPrice * (adjustingProduct.unit_type === 'pack' && packCapacity > 1 ? (actualPieces / packCapacity) : actualPieces);
+
+    let displayItemName = adjustingProduct.name;
+    if (adjustingProduct.unit_type === 'pack' && packCapacity > 1) {
+      const parts = [];
+      if (numPacks > 0) parts.push(`${numPacks} كرتونة`);
+      if (numLoose > 0) parts.push(`${numLoose} حبة`);
+      if (parts.length > 0) displayItemName = `${adjustingProduct.name} (${parts.join(' + ')})`;
+    }
+
+    if (person) {
       const newTx: Transaction = {
         id: 'tx_' + Date.now(),
         tx_type: isSale ? 'SALE' : 'PURCHASE',
@@ -237,9 +257,9 @@ export default function InventoryPage() {
         status: 'PAID',
         items: [{
           product_id: adjustingProduct.id,
-          product_name: adjustingProduct.name,
+          product_name: displayItemName,
           quantity: actualPieces,
-          unit_price: itemPrice,
+          unit_price: chosenPrice,
           cost_price: Number(adjustingProduct.cost_price) || 0,
         }],
         created_at: new Date().toISOString(),
@@ -262,12 +282,11 @@ export default function InventoryPage() {
     setShowAdjustModal(false);
 
     if (adjustType === 'reduce') {
-      const total = actualPieces * adjustingProduct.retail_price;
-      setLastSale({ product: adjustingProduct, qty: actualPieces, person: person || null, total });
-      toast(`✅ تم خصم -${actualPieces} من المخزون${person ? ` (بيع لـ ${person.name})` : ''}`);
+      setLastSale({ product: { ...adjustingProduct, name: displayItemName }, qty: actualPieces, person: person || null, total: totalAmt });
+      toast(`✅ تم خصم -${actualPieces} حبة من المخزون${person ? ` (بيع لـ ${person.name})` : ''}`);
     } else {
       setLastSale(null);
-      toast(`✅ تم إضافة +${actualPieces} للمخزون${person ? ` من ${person.name}` : ''}`);
+      toast(`✅ تم إضافة +${actualPieces} حبة للمخزون${person ? ` من ${person.name}` : ''}`);
     }
   };
 
@@ -706,17 +725,23 @@ export default function InventoryPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="block text-xs font-black text-slate-600 mb-1.5">سعر الجملة (د.ج) *</label>
+                  <label className="block text-[11px] font-black text-slate-600 mb-1">سعر الشراء (د.ج) *</label>
                   <input type="number" required min="0" placeholder="800"
-                    value={costPrice || ''} onChange={e => setCostPrice(+e.target.value)} className="form-input tabnum" />
+                    value={costPrice || ''} onChange={e => setCostPrice(+e.target.value)} className="form-input tabnum text-xs" />
                 </div>
                 <div>
-                  <label className="block text-xs font-black text-slate-600 mb-1.5">سعر التجزئة (د.ج) *</label>
+                  <label className="block text-[11px] font-black text-emerald-800 mb-1">سعر تجزئة 1 *</label>
                   <input type="number" required min="0" placeholder="1,100"
                     value={retailPrice || ''} onChange={e => setRetailPrice(+e.target.value)}
-                    className="form-input tabnum text-emerald-700" />
+                    className="form-input tabnum text-xs font-black text-emerald-700" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-black text-sky-800 mb-1">سعر تجزئة 2 (خاص)</label>
+                  <input type="number" min="0" placeholder="1,050"
+                    value={retailPrice2 || ''} onChange={e => setRetailPrice2(+e.target.value)}
+                    className="form-input tabnum text-xs font-black text-sky-700" />
                 </div>
               </div>
 
@@ -794,52 +819,79 @@ export default function InventoryPage() {
                 >
                   <option value="">-- بدون تحديد شخص (نقدي) --</option>
                   {contacts
-                    .filter(c => adjustType === 'add' ? c.type === 'supplier' || c.type === 'both' : c.type === 'customer' || c.type === 'both')
+                    .filter(c => adjustType === 'add' ? c.type === 'supplier' : c.type === 'customer')
                     .map(c => <option key={c.id} value={c.id}>{c.name} ({c.phone || 'بدون هاتف'})</option>)}
                 </select>
               </div>
 
-              {/* اختيار وحدة الكمية المضافة/المخصومة (كرتونة أو حبة) */}
-              {adjustingProduct.unit_type === 'pack' && (
+              {/* اختيار سعر التجزئة (تجزئة 1 أو تجزئة 2) */}
+              {adjustType === 'reduce' && (
                 <div>
-                  <label className="block text-xs font-black text-slate-700 mb-1">وحدة الإضافة/الخصم</label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <label className="block text-xs font-black text-slate-700 mb-1.5">🏷️ اعتمد سعر البيع</label>
+                  <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      onClick={() => setAdjustUnitChoice('pack')}
-                      className={`py-2 rounded-xl text-xs font-black border ${adjustUnitChoice === 'pack' ? 'bg-indigo-600 text-white border-transparent' : 'bg-slate-100 text-slate-700'}`}
+                      onClick={() => setSelectedPriceType('retail1')}
+                      className={`py-2 px-2 rounded-xl text-xs font-black border transition-all ${selectedPriceType === 'retail1' ? 'bg-emerald-600 text-white border-transparent shadow-sm' : 'bg-slate-100 text-slate-700 border-slate-200'}`}
                     >
-                      📦 كرتونة كاملة
+                      تجزئة 1 ({adjustingProduct.retail_price} د.ج)
                     </button>
                     <button
                       type="button"
-                      onClick={() => setAdjustUnitChoice('half_pack')}
-                      className={`py-2 rounded-xl text-xs font-black border ${adjustUnitChoice === 'half_pack' ? 'bg-indigo-600 text-white border-transparent' : 'bg-slate-100 text-slate-700'}`}
+                      onClick={() => setSelectedPriceType('retail2')}
+                      className={`py-2 px-2 rounded-xl text-xs font-black border transition-all ${selectedPriceType === 'retail2' ? 'bg-sky-600 text-white border-transparent shadow-sm' : 'bg-slate-100 text-slate-700 border-slate-200'}`}
                     >
-                      📦½ نصف كرتونة
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAdjustUnitChoice('piece')}
-                      className={`py-2 rounded-xl text-xs font-black border ${adjustUnitChoice === 'piece' ? 'bg-indigo-600 text-white border-transparent' : 'bg-slate-100 text-slate-700'}`}
-                    >
-                      🥛 بالحبة الفردية
+                      تجزئة 2 ({(adjustingProduct.retail_price_2 || 0) > 0 ? `${adjustingProduct.retail_price_2} د.ج` : 'غير محدد'})
                     </button>
                   </div>
                 </div>
               )}
 
-              <div>
-                <label className="block text-xs font-black text-slate-700 mb-1.5">الكمية</label>
-                <input
-                  type="number"
-                  required
-                  min="1"
-                  value={adjustQty}
-                  onChange={e => setAdjustQty(+e.target.value)}
-                  className="form-input text-center font-black text-2xl tabnum text-emerald-700"
-                />
-              </div>
+              {/* اختيار الكمية بالكرتونة + الحبات الفردية */}
+              {adjustingProduct.unit_type === 'pack' ? (
+                <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-2xl space-y-3">
+                  <p className="text-xs font-black text-indigo-900">📦 سعة الكرتونة الواحدة = {adjustingProduct.pack_quantity || 1} حبة</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-black text-indigo-950 mb-1">📦 عدد الكراتين</label>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        value={adjustPacks || ''}
+                        onChange={e => setAdjustPacks(+e.target.value)}
+                        className="form-input text-center font-black text-base tabnum"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black text-indigo-950 mb-1">🥛 حبات إضافية فردية</label>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        value={adjustLoose || ''}
+                        onChange={e => setAdjustLoose(+e.target.value)}
+                        className="form-input text-center font-black text-base tabnum"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] font-bold text-indigo-700 text-center">
+                    إجمالي الكمية: {((adjustPacks * (adjustingProduct.pack_quantity || 1)) + adjustLoose)} حبة
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1.5">الكمية (بالحبة)</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    value={adjustLoose || ''}
+                    onChange={e => setAdjustLoose(+e.target.value)}
+                    className="form-input text-center font-black text-lg tabnum"
+                  />
+                </div>
+              )}
 
               <button type="submit" className="btn btn-primary w-full py-4 text-base shadow-md">
                 تأكيد العملية وتحديث الحساب ✅

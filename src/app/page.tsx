@@ -23,6 +23,8 @@ import {
   Banknote, Package, Calendar, Filter, Zap, Printer
 } from 'lucide-react';
 import QuickSaleModal from '@/components/QuickSaleModal';
+import ReceiptViewModal from '@/components/ReceiptViewModal';
+import { Receipt } from '@/lib/store';
 
 function getGreeting() {
   const h = new Date().getHours();
@@ -39,6 +41,7 @@ export default function HomePage() {
   const [contacts,     setContacts]     = useState<Contact[]>([]);
   const [products,     setProducts]     = useState<Product[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
   const [mounted,      setMounted]      = useState(false);
 
   // فلترة بالتقويم والتاريخ
@@ -439,8 +442,8 @@ export default function HomePage() {
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => {
-                            printThermalReceipt({
-                              id: generateReceiptNumber(),
+                            setSelectedReceipt({
+                              id: tx.id,
                               receipt_type: tx.tx_type,
                               contact_id: tx.contact_id,
                               contact_name: tx.contact_name,
@@ -452,12 +455,11 @@ export default function HomePage() {
                               note: tx.notes,
                               created_at: tx.created_at,
                             });
-                            toast('🖨️ جارٍ فتح وصل الفاتورة الحراري...', 'success');
                           }}
                           className="py-1.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[11px] font-black flex items-center gap-1.5 touch-active"
                         >
                           <Printer size={13} />
-                          طباعة وصل 🖨️
+                          معاينة وطباعة الوصل 🖨️
                         </button>
 
                         <button
@@ -691,6 +693,11 @@ export default function HomePage() {
           setProducts(getLocalData('tajer_smart_products_v1', []));
           setTransactions(getLocalData('tajer_smart_transactions_v1', []));
         }}
+      />
+      {/* ══ مودال معاينة وطباعة الوصل الحراري الموحد ══ */}
+      <ReceiptViewModal
+        receipt={selectedReceipt}
+        onClose={() => setSelectedReceipt(null)}
       />
     </div>
   );
