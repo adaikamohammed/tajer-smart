@@ -1,3 +1,5 @@
+import { getEncryptedLocalData, setEncryptedLocalData } from './encryptedStore';
+
 export interface Contact {
   id: string;
   name: string;
@@ -111,47 +113,11 @@ export const MERCHANT_INFO = {
   address: 'تكسبت / الوادي',
 } as const;
 
-// ─── البيانات الافتراضية ─────────────────────────────────────────────────
-const DEFAULT_CONTACTS: Contact[] = [
-  { id: 'c_seed_1', name: 'أحمد التاجر (مورد جملة مواد غذائية)', phone: '0550123456', type: 'supplier', category: 'مواد غذائية', location: 'الرباح / الوادي', balance: -45000, notes: 'مورد أساسي للزيوت والمواد الغذائية بالجملة', created_at: new Date(Date.now() - 86400000 * 15).toISOString() },
-  { id: 'c_seed_2', name: 'محمد العماري (محل البركة)', phone: '0661987654', type: 'customer', category: 'مواد غذائية', location: 'تكسبت / الوادي', balance: 12500, credit_limit: 30000, notes: 'زبون دائم بالتقسيط الأسبوعي', created_at: new Date(Date.now() - 86400000 * 12).toISOString() },
-  { id: 'c_seed_3', name: 'شركة التمر الذهبي (مورد تمور)', phone: '0770112233', type: 'supplier', category: 'خضر وفواكه', location: 'طولقة / بسكرة', balance: -18000, notes: 'مورد دقلة نور ممتاز كارتون', created_at: new Date(Date.now() - 86400000 * 10).toISOString() },
-  { id: 'c_seed_4', name: 'كريم البقال (حي السلام)', phone: '0540998877', type: 'customer', category: 'مواد غذائية', location: 'حي السلام / الوادي', balance: 8400, credit_limit: 20000, notes: 'محل بقالة حي السلام', created_at: new Date(Date.now() - 86400000 * 8).toISOString() },
-  { id: 'c_seed_5', name: 'سفيان المنصوري (مطعم النخيل)', phone: '0655443322', type: 'customer', category: 'مشروبات', location: 'وسط المدينة', balance: 15200, credit_limit: 40000, notes: 'طلب أسبوعي عصائر وزيوت', created_at: new Date(Date.now() - 86400000 * 7).toISOString() },
-  { id: 'c_seed_6', name: 'مؤسسة الزيوت الذهبية', phone: '0780223344', type: 'supplier', category: 'مواد غذائية', location: 'حاسي مسعود', balance: 0, notes: 'مورد زيوت نباتية وزيت زيتون', created_at: new Date(Date.now() - 86400000 * 6).toISOString() },
-  { id: 'c_seed_7', name: 'عبد القادر بوعافية (بقال الرباح)', phone: '0560778899', type: 'customer', category: 'مواد غذائية', location: 'الرباح', balance: 6300, created_at: new Date(Date.now() - 86400000 * 5).toISOString() },
-  { id: 'c_seed_8', name: 'مراد الحلواني (مخبزة الأمل)', phone: '0670334455', type: 'customer', category: 'حلويات', location: 'شارع 1 نوفمبر', balance: 9800, created_at: new Date(Date.now() - 86400000 * 4).toISOString() },
-  { id: 'c_seed_9', name: 'شركة مياه سيدي حزام', phone: '0790445566', type: 'supplier', category: 'مشروبات', location: 'باتنة', balance: -32000, notes: 'شاحنة توزيع المياه والعصائر', created_at: new Date(Date.now() - 86400000 * 3).toISOString() },
-  { id: 'c_seed_10', name: 'ياسين العروسي (زبون تجزئة)', phone: '0551887766', type: 'customer', category: 'مواد تنظيف', location: 'الشط', balance: 3100, created_at: new Date(Date.now() - 86400000 * 2).toISOString() },
-];
-
-const DEFAULT_PRODUCTS: Product[] = [
-  { id: 'p_seed_1', name: 'زيت زيتون ممتاز 1 لتر (عصرة أولى)', category: 'مواد غذائية', unit_type: 'pack', pack_quantity: 12, cost_price: 850, retail_price: 1150, stock_quantity: 48, min_stock_alert: 10, expiry_date: '2027-06-01', expiry_alert_days: 30, last_purchased_at: new Date(Date.now() - 86400000 * 4).toISOString(), created_at: new Date(Date.now() - 86400000 * 10).toISOString() },
-  { id: 'p_seed_2', name: 'تمر دقلة نور ممتاز 1 كغ', category: 'خضر وفواكه', unit_type: 'piece', cost_price: 650, retail_price: 950, stock_quantity: 85, min_stock_alert: 15, expiry_date: '2027-02-28', expiry_alert_days: 30, last_purchased_at: new Date(Date.now() - 86400000 * 3).toISOString(), created_at: new Date(Date.now() - 86400000 * 9).toISOString() },
-  { id: 'p_seed_3', name: 'عسل سدر طبيعي 500غ', category: 'مواد غذائية', unit_type: 'piece', cost_price: 2400, retail_price: 3200, stock_quantity: 14, min_stock_alert: 5, expiry_date: '2028-01-15', expiry_alert_days: 30, last_purchased_at: new Date(Date.now() - 86400000 * 2).toISOString(), created_at: new Date(Date.now() - 86400000 * 8).toISOString() },
-  { id: 'p_seed_4', name: 'علبة شوكولاتة فاخرة 24 قطعة', category: 'حلويات', unit_type: 'piece', cost_price: 1300, retail_price: 1850, stock_quantity: 25, min_stock_alert: 8, expiry_date: '2026-11-30', expiry_alert_days: 20, last_purchased_at: new Date(Date.now() - 86400000 * 5).toISOString(), created_at: new Date(Date.now() - 86400000 * 7).toISOString() },
-  { id: 'p_seed_5', name: 'مشروب عصير طبيعي 1 لتر', category: 'مشروبات', unit_type: 'pack', pack_quantity: 12, cost_price: 160, retail_price: 240, stock_quantity: 120, min_stock_alert: 20, expiry_date: '2026-12-30', expiry_alert_days: 30, last_purchased_at: new Date(Date.now() - 86400000 * 1).toISOString(), created_at: new Date(Date.now() - 86400000 * 6).toISOString() },
-  { id: 'p_seed_6', name: 'معجون طماطم 800غ', category: 'مواد غذائية', unit_type: 'pack', pack_quantity: 24, cost_price: 190, retail_price: 270, stock_quantity: 72, min_stock_alert: 15, expiry_date: '2027-08-15', expiry_alert_days: 30, last_purchased_at: new Date(Date.now() - 86400000 * 4).toISOString(), created_at: new Date(Date.now() - 86400000 * 5).toISOString() },
-  { id: 'p_seed_7', name: 'مسحوق غسيل ممتاز 3 كغ', category: 'مواد تنظيف', unit_type: 'piece', cost_price: 820, retail_price: 1100, stock_quantity: 30, min_stock_alert: 6, expiry_date: '2028-05-01', expiry_alert_days: 30, last_purchased_at: new Date(Date.now() - 86400000 * 2).toISOString(), created_at: new Date(Date.now() - 86400000 * 4).toISOString() },
-  { id: 'p_seed_8', name: 'جبن مفروم فاخر 1 كغ', category: 'مواد غذائية', unit_type: 'piece', cost_price: 1100, retail_price: 1500, stock_quantity: 18, min_stock_alert: 5, expiry_date: '2026-10-20', expiry_alert_days: 15, last_purchased_at: new Date(Date.now() - 86400000 * 1).toISOString(), created_at: new Date(Date.now() - 86400000 * 3).toISOString() },
-  { id: 'p_seed_9', name: 'ماء معدني طبيعي 1.5 لتر', category: 'مشروبات', unit_type: 'pack', pack_quantity: 6, cost_price: 32, retail_price: 45, stock_quantity: 180, min_stock_alert: 30, expiry_date: '2027-11-01', expiry_alert_days: 30, last_purchased_at: new Date(Date.now() - 86400000 * 1).toISOString(), created_at: new Date(Date.now() - 86400000 * 2).toISOString() },
-  { id: 'p_seed_10', name: 'أرز بسمتي فاخر 1 كغ', category: 'مواد غذائية', unit_type: 'piece', cost_price: 280, retail_price: 390, stock_quantity: 65, min_stock_alert: 10, expiry_date: '2027-09-30', expiry_alert_days: 30, last_purchased_at: new Date(Date.now() - 86400000 * 2).toISOString(), created_at: new Date(Date.now() - 86400000 * 1).toISOString() },
-];
-
+// ─── البيانات الافتراضية الفارغة (تم حذف البيانات التجريبية الوهمية كلياً) ─
+const DEFAULT_CONTACTS: Contact[] = [];
+const DEFAULT_PRODUCTS: Product[] = [];
 const DEFAULT_PRODUCT_CATEGORIES = ['مواد غذائية', 'مشروبات', 'حلويات', 'مواد تنظيف', 'خضر وفواكه'];
-
-const DEFAULT_TRANSACTIONS: Transaction[] = [
-  { id: 'tx_seed_1', tx_type: 'SALE', contact_id: 'c_seed_2', contact_name: 'محمد العماري (محل البركة)', total_amount: 13800, paid_amount: 5000, debt_amount: 8800, status: 'PARTIAL', items: [{ product_id: 'p_seed_1', product_name: 'زيت زيتون ممتاز 1 لتر (عصرة أولى)', quantity: 8, unit_price: 1150, cost_price: 850 }, { product_id: 'p_seed_2', product_name: 'تمر دقلة نور ممتاز 1 كغ', quantity: 4, unit_price: 950, cost_price: 650 }], created_at: new Date(Date.now() - 3600000 * 3).toISOString() },
-  { id: 'tx_seed_2', tx_type: 'SALE', contact_id: 'c_seed_4', contact_name: 'كريم البقال (حي السلام)', total_amount: 8400, paid_amount: 0, debt_amount: 8400, status: 'DEBT', items: [{ product_id: 'p_seed_5', product_name: 'مشروب عصير طبيعي 1 لتر', quantity: 20, unit_price: 240, cost_price: 160 }, { product_id: 'p_seed_6', product_name: 'معجون طماطم 800غ', quantity: 13, unit_price: 270, cost_price: 190 }], created_at: new Date(Date.now() - 3600000 * 12).toISOString() },
-  { id: 'tx_seed_3', tx_type: 'PURCHASE', contact_id: 'c_seed_1', contact_name: 'أحمد التاجر (مورد جملة مواد غذائية)', total_amount: 45000, paid_amount: 0, debt_amount: 45000, status: 'DEBT', items: [{ product_id: 'p_seed_1', product_name: 'زيت زيتون ممتاز 1 لتر (عصرة أولى)', quantity: 36, unit_price: 850, cost_price: 850 }, { product_id: 'p_seed_6', product_name: 'معجون طماطم 800غ', quantity: 75, unit_price: 190, cost_price: 190 }], created_at: new Date(Date.now() - 86400000 * 1).toISOString() },
-  { id: 'tx_seed_4', tx_type: 'SALE', contact_id: 'c_seed_5', contact_name: 'سفيان المنصوري (مطعم النخيل)', total_amount: 15200, paid_amount: 0, debt_amount: 15200, status: 'DEBT', items: [{ product_id: 'p_seed_3', product_name: 'عسل سدر طبيعي 500غ', quantity: 4, unit_price: 3200, cost_price: 2400 }, { product_id: 'p_seed_5', product_name: 'مشروب عصير طبيعي 1 لتر', quantity: 10, unit_price: 240, cost_price: 160 }], created_at: new Date(Date.now() - 86400000 * 2).toISOString() },
-  { id: 'tx_seed_5', tx_type: 'PURCHASE', contact_id: 'c_seed_3', contact_name: 'شركة التمر الذهبي (مورد تمور)', total_amount: 18000, paid_amount: 0, debt_amount: 18000, status: 'DEBT', items: [{ product_id: 'p_seed_2', product_name: 'تمر دقلة نور ممتاز 1 كغ', quantity: 27, unit_price: 650, cost_price: 650 }], created_at: new Date(Date.now() - 86400000 * 3).toISOString() },
-  { id: 'tx_seed_6', tx_type: 'SALE', contact_id: 'c_seed_7', contact_name: 'عبد القادر بوعافية (بقال الرباح)', total_amount: 6300, paid_amount: 0, debt_amount: 6300, status: 'DEBT', items: [{ product_id: 'p_seed_10', product_name: 'أرز بسمتي فاخر 1 كغ', quantity: 10, unit_price: 390, cost_price: 280 }, { product_id: 'p_seed_9', product_name: 'ماء معدني طبيعي 1.5 لتر', quantity: 53, unit_price: 45, cost_price: 32 }], created_at: new Date(Date.now() - 86400000 * 4).toISOString() },
-  { id: 'tx_seed_7', tx_type: 'SALE', contact_id: 'c_seed_8', contact_name: 'مراد الحلواني (مخبزة الأمل)', total_amount: 9800, paid_amount: 0, debt_amount: 9800, status: 'DEBT', items: [{ product_id: 'p_seed_4', product_name: 'علبة شوكولاتة فاخرة 24 قطعة', quantity: 4, unit_price: 1850, cost_price: 1300 }, { product_id: 'p_seed_8', product_name: 'جبن مفروم فاخر 1 كغ', quantity: 1, unit_price: 1500, cost_price: 1100 }], created_at: new Date(Date.now() - 86400000 * 5).toISOString() },
-  { id: 'tx_seed_8', tx_type: 'PURCHASE', contact_id: 'c_seed_9', contact_name: 'شركة مياه سيدي حزام', total_amount: 32000, paid_amount: 0, debt_amount: 32000, status: 'DEBT', items: [{ product_id: 'p_seed_9', product_name: 'ماء معدني طبيعي 1.5 لتر', quantity: 1000, unit_price: 32, cost_price: 32 }], created_at: new Date(Date.now() - 86400000 * 6).toISOString() },
-  { id: 'tx_seed_9', tx_type: 'SALE', contact_id: 'c_seed_10', contact_name: 'ياسين العروسي (زبون تجزئة)', total_amount: 3100, paid_amount: 0, debt_amount: 3100, status: 'DEBT', items: [{ product_id: 'p_seed_7', product_name: 'مسحوق غسيل ممتاز 3 كغ', quantity: 2, unit_price: 1100, cost_price: 820 }, { product_id: 'p_seed_2', product_name: 'تمر دقلة نور ممتاز 1 كغ', quantity: 1, unit_price: 900, cost_price: 650 }], created_at: new Date(Date.now() - 86400000 * 7).toISOString() },
-  { id: 'tx_seed_10', tx_type: 'SALE', contact_id: 'c_seed_2', contact_name: 'محمد العماري (محل البركة)', total_amount: 3700, paid_amount: 3700, debt_amount: 0, status: 'PAID', items: [{ product_id: 'p_seed_1', product_name: 'زيت زيتون ممتاز 1 لتر (عصرة أولى)', quantity: 2, unit_price: 1150, cost_price: 850 }, { product_id: 'p_seed_8', product_name: 'جبن مفروم فاخر 1 كغ', quantity: 1, unit_price: 1400, cost_price: 1100 }], created_at: new Date().toISOString() },
-];
+const DEFAULT_TRANSACTIONS: Transaction[] = [];
 
 const STORAGE_KEYS = {
   CONTACTS:           'tajer_smart_contacts_v1',
@@ -202,13 +168,11 @@ export function sanitizeTransaction(t: any): Transaction {
   };
 }
 
-// ─── دوال التخزين العامة ──────────────────────────────────────────────────
+// ─── دوال التخزين العامة (المشفرة أمنياً بدقة) ──────────────────────────────
 export function getLocalData<T>(key: string, defaultValue: T): T {
   if (typeof window === 'undefined') return defaultValue;
   try {
-    const item = localStorage.getItem(key);
-    if (!item) return defaultValue;
-    const parsed = JSON.parse(item);
+    const parsed = getEncryptedLocalData<T>(key, defaultValue);
 
     if (Array.isArray(parsed)) {
       if (key === STORAGE_KEYS.CONTACTS) {
@@ -223,7 +187,7 @@ export function getLocalData<T>(key: string, defaultValue: T): T {
     }
     return parsed;
   } catch (e) {
-    console.error('Error reading localStorage:', e);
+    console.error('Error reading encrypted local storage:', e);
     return defaultValue;
   }
 }
@@ -231,14 +195,10 @@ export function getLocalData<T>(key: string, defaultValue: T): T {
 export function setLocalData<T>(key: string, value: T): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(key, JSON.stringify(value));
-
-    // المزامنة التلقائية السحابية مع Vercel Postgres في الخلفية
-    if (key === STORAGE_KEYS.CONTACTS || key === STORAGE_KEYS.PRODUCTS || key === STORAGE_KEYS.TRANSACTIONS) {
-      import('./cloud-sync').then(cs => cs.syncStoreWithVercelCloud()).catch(() => {});
-    }
+    // حفظ مشفر في التخزين المحلي بدون استدعاء لانهائي للمزامنة
+    setEncryptedLocalData<T>(key, value);
   } catch (e) {
-    console.error('Error writing localStorage:', e);
+    console.error('Error writing encrypted local storage:', e);
   }
 }
 

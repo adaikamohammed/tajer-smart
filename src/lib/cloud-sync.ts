@@ -119,21 +119,61 @@ export async function syncStoreWithVercelCloud(): Promise<{
 
     let changed = false;
 
-    if (Array.isArray(data.contacts)) {
-      if (JSON.stringify(data.contacts) !== JSON.stringify(localContacts)) {
-        setLocalData('tajer_smart_contacts_v1', data.contacts);
-        changed = true;
-      }
-    }
+    // ─── 1. الدمج الثنائي الذكي للمنتجات (Smart Union Merge) ───
     if (Array.isArray(data.products)) {
-      if (JSON.stringify(data.products) !== JSON.stringify(localProducts)) {
-        setLocalData('tajer_smart_products_v1', data.products);
+      const mergedProductsMap = new Map<string, Product>();
+      // إضافة عناصر السيرفر أولاً
+      data.products.forEach((p: Product) => {
+        if (!deletedProducts.includes(p.id)) mergedProductsMap.set(p.id, p);
+      });
+      // دمج العناصر المحلية ومنع مسح أي منتج محلي مضاف حديثاً
+      localProducts.forEach((p: Product) => {
+        if (!deletedProducts.includes(p.id)) {
+          const existing = mergedProductsMap.get(p.id);
+          mergedProductsMap.set(p.id, existing ? { ...existing, ...p } : p);
+        }
+      });
+      const mergedProducts = Array.from(mergedProductsMap.values());
+      if (JSON.stringify(mergedProducts) !== JSON.stringify(localProducts)) {
+        setLocalData('tajer_smart_products_v1', mergedProducts);
         changed = true;
       }
     }
+
+    // ─── 2. الدمج الثنائي الذكي للأشخاص والزبائن والموردين ───
+    if (Array.isArray(data.contacts)) {
+      const mergedContactsMap = new Map<string, Contact>();
+      data.contacts.forEach((c: Contact) => {
+        if (!deletedContacts.includes(c.id)) mergedContactsMap.set(c.id, c);
+      });
+      localContacts.forEach((c: Contact) => {
+        if (!deletedContacts.includes(c.id)) {
+          const existing = mergedContactsMap.get(c.id);
+          mergedContactsMap.set(c.id, existing ? { ...existing, ...c } : c);
+        }
+      });
+      const mergedContacts = Array.from(mergedContactsMap.values());
+      if (JSON.stringify(mergedContacts) !== JSON.stringify(localContacts)) {
+        setLocalData('tajer_smart_contacts_v1', mergedContacts);
+        changed = true;
+      }
+    }
+
+    // ─── 3. الدمج الثنائي الذكي للمعاملات والعمليات ───
     if (Array.isArray(data.transactions)) {
-      if (JSON.stringify(data.transactions) !== JSON.stringify(localTx)) {
-        setLocalData('tajer_smart_transactions_v1', data.transactions);
+      const mergedTxMap = new Map<string, Transaction>();
+      data.transactions.forEach((t: Transaction) => {
+        if (!deletedTransactions.includes(t.id)) mergedTxMap.set(t.id, t);
+      });
+      localTx.forEach((t: Transaction) => {
+        if (!deletedTransactions.includes(t.id)) {
+          const existing = mergedTxMap.get(t.id);
+          mergedTxMap.set(t.id, existing ? { ...existing, ...t } : t);
+        }
+      });
+      const mergedTx = Array.from(mergedTxMap.values());
+      if (JSON.stringify(mergedTx) !== JSON.stringify(localTx)) {
+        setLocalData('tajer_smart_transactions_v1', mergedTx);
         changed = true;
       }
     }
@@ -149,7 +189,7 @@ export async function syncStoreWithVercelCloud(): Promise<{
       transactionsCount: data.transactions?.length ?? localTx.length,
     };
   } catch (err: any) {
-    updateStatus('error');
+    updateStatus('offline');
     return {
       success: false,
       errorDetails: err?.name === 'AbortError' ? 'انتهت مهلة الاتصال' : err?.message,

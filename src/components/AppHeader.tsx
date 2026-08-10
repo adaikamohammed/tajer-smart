@@ -104,7 +104,7 @@ export default function AppHeader() {
         {/* مؤشر المزامنة الصامت والأزرار */}
         <div className="flex items-center gap-2">
 
-          {/* 🟢 مؤشر المزامنة الصامت المحترف بدون أزرار تشتيت */}
+          {/* 🟢 مؤشر المزامنة والحفظ المحلي المشفر المحترف */}
           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 border border-white/20 rounded-xl text-xs font-black text-white backdrop-blur-sm">
             {syncStatus === 'syncing' && (
               <>
@@ -115,13 +115,13 @@ export default function AppHeader() {
             {syncStatus === 'synced' && (
               <>
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span className="text-emerald-200">محفوظ سحابياً</span>
+                <span className="text-emerald-200">مزامن (Vercel) ☁️</span>
               </>
             )}
             {(syncStatus === 'offline' || syncStatus === 'error') && (
               <>
-                <WifiOff className="w-3.5 h-3.5 text-rose-300" />
-                <span className="text-rose-200">أوفلاين (محفوظ محلياً)</span>
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-300" />
+                <span className="text-emerald-200">محلي (محفوظ بأمان) 🔒</span>
               </>
             )}
           </div>
