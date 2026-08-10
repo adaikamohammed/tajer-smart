@@ -12,6 +12,7 @@ import {
   createWhatsAppLink,
   printThermalReceipt,
   generateReceiptNumber,
+  saveReceipt,
   cancelTransaction,
 } from '@/lib/store';
 import { toast } from '@/components/Toast';
@@ -67,6 +68,14 @@ export default function HomePage() {
   const [buyExpiry,          setBuyExpiry]          = useState('');
   const [buyPaid,            setBuyPaid]            = useState(0);
 
+  // خيارات التجزئة 1 و 2 والكراتين
+  const [salePriceType, setSalePriceType] = useState<'retail1' | 'retail2'>('retail1');
+  const [salePacks,     setSalePacks]     = useState(1);
+  const [saleLoose,     setSaleLoose]     = useState(0);
+
+  const [buyPacks,      setBuyPacks]      = useState(1);
+  const [buyLoose,      setBuyLoose]      = useState(0);
+
   useEffect(() => {
     initStorageIfEmpty();
     setContacts(getLocalData('tajer_smart_contacts_v1', []));
@@ -119,7 +128,14 @@ export default function HomePage() {
   const handleProductSaleChange = (id: string) => {
     setSelectedProductId(id);
     const p = products.find(x => x.id === id);
-    if (p) { setSaleUnitPrice(p.retail_price); setSalePaid(p.retail_price * saleQty); }
+    if (p) {
+      const price = (salePriceType === 'retail2' && (p.retail_price_2 || 0) > 0) ? p.retail_price_2! : p.retail_price;
+      setSaleUnitPrice(price);
+      const cap = p.pack_quantity || 1;
+      const totalPieces = p.unit_type === 'pack' ? (salePacks * cap) + saleLoose : saleQty;
+      const calcTotal = p.unit_type === 'pack' ? (salePacks * price) + (saleLoose * (price / cap)) : totalPieces * price;
+      setSalePaid(calcTotal);
+    }
   };
 
   const executeSale = (e: React.FormEvent) => {
@@ -127,9 +143,17 @@ export default function HomePage() {
     const prod = products.find(p => p.id === selectedProductId);
     const cust = contacts.find(c => c.id === selectedCustomerId);
     if (!prod) { toast('يرجى اختيار المنتج', 'error'); return; }
-    if (prod.stock_quantity < saleQty) { toast('الكمية أكبر من المخزون المتاح!', 'warning'); return; }
 
-    const total = saleUnitPrice * saleQty;
+    const cap = prod.pack_quantity || 1;
+    const totalPieces = prod.unit_type === 'pack' ? ((Number(salePacks) || 0) * cap) + (Number(saleLoose) || 0) : Number(saleQty) || 1;
+
+    if (totalPieces > prod.stock_quantity) {
+      toast(`⚠️ الكمية المطلوبة (${totalPieces} حبة) غير متوفرة بالمخزن! المتوفر حالياً: ${prod.stock_quantity} حبة فقط.`, 'warning');
+      return;
+    }
+
+    const price = (salePriceType === 'retail2' && (prod.retail_price_2 || 0) > 0) ? prod.retail_price_2! : (saleUnitPrice || prod.retail_price);
+    const total = prod.unit_type === 'pack' ? ((Number(salePacks) || 0) * price) + ((Number(saleLoose) || 0) * (price / cap)) : totalPieces * price;
     const debt  = Math.max(0, total - salePaid);
     const status = debt === 0 ? 'PAID' : salePaid > 0 ? 'PARTIAL' : 'DEBT';
 
@@ -137,12 +161,24 @@ export default function HomePage() {
       id: 'tx_' + Date.now(), tx_type: 'SALE',
       contact_id: cust?.id, contact_name: cust?.name ?? 'زبون كاش',
       total_amount: total, paid_amount: salePaid, debt_amount: debt, status,
-      items: [{ product_id: prod.id, product_name: prod.name, quantity: saleQty, unit_price: saleUnitPrice, cost_price: prod.cost_price }],
+      items: [{ product_id: prod.id, product_name: prod.name, quantity: totalPieces, unit_price: price, cost_price: prod.cost_price }],
       created_at: new Date().toISOString(),
     };
 
+    saveReceipt({
+      id: generateReceiptNumber(),
+      receipt_type: 'SALE',
+      contact_id: cust?.id,
+      contact_name: cust?.name ?? 'زبون كاش',
+      items: newTx.items,
+      total_amount: total,
+      paid_amount: salePaid,
+      debt_amount: debt,
+      created_at: newTx.created_at,
+    });
+
     const upProds = products.map(p => p.id === prod.id
-      ? { ...p, stock_quantity: Math.max(0, p.stock_quantity - saleQty), last_sold_at: new Date().toISOString() } : p);
+      ? { ...p, stock_quantity: Math.max(0, p.stock_quantity - totalPieces), last_sold_at: new Date().toISOString() } : p);
     const upConts = contacts.map(c => cust && c.id === cust.id && debt > 0
       ? { ...c, balance: c.balance + debt } : c);
     const upTx = [newTx, ...transactions];
@@ -152,8 +188,8 @@ export default function HomePage() {
     setLocalData('tajer_smart_contacts_v1', upConts);
     setLocalData('tajer_smart_transactions_v1', upTx);
     setShowSaleModal(false);
-    setSelectedProductId(''); setSelectedCustomerId(''); setSaleQty(1); setSaleUnitPrice(0); setSalePaid(0);
-    toast(debt > 0 ? `✅ تم البيع — دين: ${fmt(debt)} د.ج` : '✅ تم البيع نقداً بنجاح!');
+    setSelectedProductId(''); setSelectedCustomerId(''); setSaleQty(1); setSalePacks(1); setSaleLoose(0); setSaleUnitPrice(0); setSalePaid(0);
+    toast(debt > 0 ? `✅ تم البيع وحفظ الوصل — دين: ${fmt(debt)} د.ج` : '✅ تم البيع وحفظ الوصل نقداً بنجاح!');
   };
 
   /* ── الشراء ── */
@@ -169,7 +205,10 @@ export default function HomePage() {
     const supp = contacts.find(c => c.id === selectedSupplierId);
     if (!prod) { toast('يرجى اختيار المنتج', 'error'); return; }
 
-    const total = buyCostPrice * buyQty;
+    const cap = prod.pack_quantity || 1;
+    const totalPieces = prod.unit_type === 'pack' ? ((Number(buyPacks) || 0) * cap) + (Number(buyLoose) || 0) : Number(buyQty) || 1;
+
+    const total = buyCostPrice * (prod.unit_type === 'pack' ? (totalPieces / cap) : totalPieces);
     const debt  = Math.max(0, total - buyPaid);
     const status = debt === 0 ? 'PAID' : buyPaid > 0 ? 'PARTIAL' : 'DEBT';
 
@@ -177,12 +216,22 @@ export default function HomePage() {
       id: 'tx_' + Date.now(), tx_type: 'PURCHASE',
       contact_id: supp?.id, contact_name: supp?.name ?? 'مورد نقدي',
       total_amount: total, paid_amount: buyPaid, debt_amount: debt, status,
-      items: [{ product_id: prod.id, product_name: prod.name, quantity: buyQty, unit_price: buyCostPrice, cost_price: buyCostPrice }],
+      items: [{ product_id: prod.id, product_name: prod.name, quantity: totalPieces, unit_price: buyCostPrice, cost_price: buyCostPrice }],
       created_at: new Date().toISOString(),
     };
 
+    saveReceipt({
+      id: generateReceiptNumber(),
+      receipt_type: 'PURCHASE',
+      contact_id: supp?.id,
+      contact_name: supp?.name ?? 'مورد نقدي',
+      items: newTx.items,
+      total_amount: total, paid_amount: buyPaid, debt_amount: debt,
+      created_at: newTx.created_at,
+    });
+
     const upProds = products.map(p => p.id === prod.id
-      ? { ...p, stock_quantity: p.stock_quantity + Number(buyQty), cost_price: buyCostPrice, expiry_date: buyExpiry || p.expiry_date, last_purchased_at: new Date().toISOString() } : p);
+      ? { ...p, stock_quantity: p.stock_quantity + totalPieces, cost_price: buyCostPrice, expiry_date: buyExpiry || p.expiry_date, last_purchased_at: new Date().toISOString() } : p);
     const upConts = contacts.map(c => supp && c.id === supp.id && debt > 0
       ? { ...c, balance: c.balance - debt } : c);
     const upTx = [newTx, ...transactions];
@@ -192,8 +241,8 @@ export default function HomePage() {
     setLocalData('tajer_smart_contacts_v1', upConts);
     setLocalData('tajer_smart_transactions_v1', upTx);
     setShowBuyModal(false);
-    setBuyProductId(''); setSelectedSupplierId(''); setBuyQty(10); setBuyCostPrice(0); setBuyPaid(0); setBuyExpiry('');
-    toast(debt > 0 ? `📦 تم الشراء — دين للمورد: ${fmt(debt)} د.ج` : '📦 تم الشراء نقداً!');
+    setBuyPacks(1); setBuyLoose(0);
+    toast('✅ تم تسجيل الشراء وحفظ الوصل وزيادة المخزون بنجاح!');
   };
 
   const closeOnBg = (setter: (v: boolean) => void) =>
@@ -537,26 +586,115 @@ export default function HomePage() {
                   <option value="">— اختر المنتج —</option>
                   {products.map(p => (
                     <option key={p.id} value={p.id}>
-                      {p.name} — متوفر: {p.stock_quantity} — {fmt(p.retail_price)} د.ج
+                      {p.name} — متوفر: {p.stock_quantity} حبة — {fmt(p.retail_price)} د.ج
                     </option>
                   ))}
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-black text-slate-600 mb-1.5">الكمية</label>
-                  <input type="number" min="1" value={saleQty}
-                    onChange={e => { const q = +e.target.value; setSaleQty(q); setSalePaid(saleUnitPrice * q); }}
-                    className="form-input text-center font-black text-lg" />
-                </div>
-                <div>
-                  <label className="block text-xs font-black text-slate-600 mb-1.5">سعر التجزئة (د.ج)</label>
-                  <input type="number" value={saleUnitPrice}
-                    onChange={e => { const p = +e.target.value; setSaleUnitPrice(p); setSalePaid(p * saleQty); }}
-                    className="form-input font-black tabnum text-emerald-700" />
-                </div>
-              </div>
+              {/* اختيار سعر التجزئة 1 أو تجزئة 2 */}
+              {selectedProductId && (() => {
+                const prod = products.find(p => p.id === selectedProductId);
+                if (!prod) return null;
+                return (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between bg-emerald-50/70 p-2 rounded-xl border border-emerald-200">
+                      <span className="text-xs font-black text-emerald-950">المتوفر حالياً بالمخزن:</span>
+                      <span className="text-xs font-black text-emerald-800 tabnum">{prod.stock_quantity} حبة</span>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-black text-slate-700 mb-1">🏷️ اعتمـد سعر البيع</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSalePriceType('retail1');
+                            setSaleUnitPrice(prod.retail_price);
+                            const cap = prod.pack_quantity || 1;
+                            const tot = prod.unit_type === 'pack' ? (salePacks * prod.retail_price) + (saleLoose * (prod.retail_price / cap)) : saleQty * prod.retail_price;
+                            setSalePaid(tot);
+                          }}
+                          className={`py-2 px-2 rounded-xl text-xs font-black border transition-all ${salePriceType === 'retail1' ? 'bg-emerald-600 text-white border-transparent shadow-sm' : 'bg-slate-100 text-slate-700 border-slate-200'}`}
+                        >
+                          تجزئة 1 ({prod.retail_price} د.ج)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const p2 = (prod.retail_price_2 || 0) > 0 ? prod.retail_price_2! : prod.retail_price;
+                            setSalePriceType('retail2');
+                            setSaleUnitPrice(p2);
+                            const cap = prod.pack_quantity || 1;
+                            const tot = prod.unit_type === 'pack' ? (salePacks * p2) + (saleLoose * (p2 / cap)) : saleQty * p2;
+                            setSalePaid(tot);
+                          }}
+                          className={`py-2 px-2 rounded-xl text-xs font-black border transition-all ${salePriceType === 'retail2' ? 'bg-sky-600 text-white border-transparent shadow-sm' : 'bg-slate-100 text-slate-700 border-slate-200'}`}
+                        >
+                          تجزئة 2 ({(prod.retail_price_2 || 0) > 0 ? `${prod.retail_price_2} د.ج` : 'غير محدد'})
+                        </button>
+                      </div>
+                    </div>
+
+                    {prod.unit_type === 'pack' ? (
+                      <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-2xl space-y-2">
+                        <p className="text-xs font-black text-indigo-950">📦 سعة الكرتونة = {prod.pack_quantity || 1} حبة</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-black text-indigo-950 mb-1">📦 عدد الكراتين</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={salePacks}
+                              onChange={e => {
+                                const pk = +e.target.value;
+                                setSalePacks(pk);
+                                const price = saleUnitPrice || prod.retail_price;
+                                const cap = prod.pack_quantity || 1;
+                                const tot = (pk * price) + (saleLoose * (price / cap));
+                                setSalePaid(tot);
+                              }}
+                              className="form-input text-center font-black text-base tabnum"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-black text-indigo-950 mb-1">🥛 حبات إضافية</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={saleLoose}
+                              onChange={e => {
+                                const ls = +e.target.value;
+                                setSaleLoose(ls);
+                                const price = saleUnitPrice || prod.retail_price;
+                                const cap = prod.pack_quantity || 1;
+                                const tot = (salePacks * price) + (ls * (price / cap));
+                                setSalePaid(tot);
+                              }}
+                              className="form-input text-center font-black text-base tabnum"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-black text-slate-600 mb-1.5">الكمية (بالحبة)</label>
+                          <input type="number" min="1" value={saleQty}
+                            onChange={e => { const q = +e.target.value; setSaleQty(q); setSalePaid(saleUnitPrice * q); }}
+                            className="form-input text-center font-black text-lg" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-black text-slate-600 mb-1.5">سعر التجزئة (د.ج)</label>
+                          <input type="number" value={saleUnitPrice}
+                            onChange={e => { const p = +e.target.value; setSaleUnitPrice(p); setSalePaid(p * saleQty); }}
+                            className="form-input font-black tabnum text-emerald-700" />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div className="rounded-2xl p-3.5 bg-emerald-50 border border-emerald-200">
                 <div className="flex justify-between items-center">
@@ -621,7 +759,12 @@ export default function HomePage() {
               </div>
 
               <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">📦 المنتج</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-black text-slate-600">📦 المنتج</label>
+                  <Link href="/inventory" onClick={() => setShowBuyModal(false)} className="text-[11px] font-black text-indigo-700 hover:underline">
+                    + إضافة منتج جديد للمخزن ➕
+                  </Link>
+                </div>
                 <select value={buyProductId} onChange={e => handleProductBuyChange(e.target.value)} required className="form-input">
                   <option value="">— اختر المنتج —</option>
                   {products.map(p => (
@@ -632,9 +775,59 @@ export default function HomePage() {
                 </select>
               </div>
 
+              {buyProductId && (() => {
+                const prod = products.find(p => p.id === buyProductId);
+                if (!prod) return null;
+
+                if (prod.unit_type === 'pack') {
+                  return (
+                    <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-2xl space-y-2">
+                      <p className="text-xs font-black text-indigo-950">📦 سعة الكرتونة = {prod.pack_quantity || 1} حبة</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-black text-indigo-950 mb-1">📦 عدد الكراتين</label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={buyPacks}
+                            onChange={e => {
+                              const pk = +e.target.value;
+                              setBuyPacks(pk);
+                              const price = buyCostPrice || prod.cost_price;
+                              const cap = prod.pack_quantity || 1;
+                              const tot = (pk * price) + (buyLoose * (price / cap));
+                              setBuyPaid(tot);
+                            }}
+                            className="form-input text-center font-black text-base tabnum"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-black text-indigo-950 mb-1">🥛 حبات إضافية</label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={buyLoose}
+                            onChange={e => {
+                              const ls = +e.target.value;
+                              setBuyLoose(ls);
+                              const price = buyCostPrice || prod.cost_price;
+                              const cap = prod.pack_quantity || 1;
+                              const tot = (buyPacks * price) + (ls * (price / cap));
+                              setBuyPaid(tot);
+                            }}
+                            className="form-input text-center font-black text-base tabnum"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-black text-slate-600 mb-1.5">الكمية</label>
+                  <label className="block text-xs font-black text-slate-600 mb-1.5">الكمية (بالحبة)</label>
                   <input type="number" min="1" value={buyQty}
                     onChange={e => { const q = +e.target.value; setBuyQty(q); setBuyPaid(buyCostPrice * q); }}
                     className="form-input text-center font-black text-lg" />

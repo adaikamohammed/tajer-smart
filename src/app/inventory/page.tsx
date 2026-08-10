@@ -236,51 +236,6 @@ export default function InventoryPage() {
     const currentStock = Number(adjustingProduct.stock_quantity) || 0;
     const delta = adjustType === 'add' ? actualPieces : -actualPieces;
     const newStock = Math.max(0, currentStock + delta);
-    const person = contacts.find(c => c.id === selectedPersonId);
-
-    // اختيار السعر المعتمد (تجزئة 1 أو تجزئة 2)
-    const isSale = adjustType === 'reduce';
-    let chosenPrice = Number(adjustingProduct.cost_price) || 0;
-    if (isSale) {
-      chosenPrice = selectedPriceType === 'retail2' && (adjustingProduct.retail_price_2 || 0) > 0
-        ? Number(adjustingProduct.retail_price_2)
-        : Number(adjustingProduct.retail_price) || 0;
-    }
-
-    const totalAmt = chosenPrice * (adjustingProduct.unit_type === 'pack' && packCapacity > 1 ? (actualPieces / packCapacity) : actualPieces);
-
-    let displayItemName = adjustingProduct.name;
-    if (adjustingProduct.unit_type === 'pack' && packCapacity > 1) {
-      const parts = [];
-      if (numPacks > 0) parts.push(`${numPacks} كرتونة`);
-      if (numLoose > 0) parts.push(`${numLoose} حبة`);
-      if (parts.length > 0) displayItemName = `${adjustingProduct.name} (${parts.join(' + ')})`;
-    }
-
-    if (person) {
-      const newTx: Transaction = {
-        id: 'tx_' + Date.now(),
-        tx_type: isSale ? 'SALE' : 'PURCHASE',
-        contact_id: person.id,
-        contact_name: person.name,
-        total_amount: totalAmt,
-        paid_amount: totalAmt,
-        debt_amount: 0,
-        status: 'PAID',
-        items: [{
-          product_id: adjustingProduct.id,
-          product_name: displayItemName,
-          quantity: actualPieces,
-          unit_price: chosenPrice,
-          cost_price: Number(adjustingProduct.cost_price) || 0,
-        }],
-        created_at: new Date().toISOString(),
-      };
-
-      const upTx = [newTx, ...transactions];
-      setTransactions(upTx);
-      setLocalData('tajer_smart_transactions_v1', upTx);
-    }
 
     const up = products.map(p => p.id === adjustingProduct.id ? {
       ...p,
@@ -292,14 +247,7 @@ export default function InventoryPage() {
     setProducts(up);
     setLocalData('tajer_smart_products_v1', up);
     setShowAdjustModal(false);
-
-    if (adjustType === 'reduce') {
-      setLastSale({ product: { ...adjustingProduct, name: displayItemName }, qty: actualPieces, person: person || null, total: totalAmt });
-      toast(`✅ تم خصم -${actualPieces} حبة من المخزون${person ? ` (بيع لـ ${person.name})` : ''}`);
-    } else {
-      setLastSale(null);
-      toast(`✅ تم إضافة +${actualPieces} حبة للمخزون${person ? ` من ${person.name}` : ''}`);
-    }
+    toast(adjustType === 'add' ? `✅ تم إضافة +${actualPieces} حبة كمخزون بالجرد` : `✅ تم خصم -${actualPieces} حبة من المخزون بالجرد`, 'success');
   };
 
   const sorted = useMemo(() => {
@@ -848,7 +796,7 @@ export default function InventoryPage() {
             <div className="modal-handle" />
             <div className="modal-header">
               <h3 className="font-black text-slate-800 text-base">
-                {adjustType === 'add' ? 'إضافة مخزون (توريد من مورد) 🚚' : 'خصم مخزون (بيع لزبون) 👥'}
+                {adjustType === 'add' ? 'إضافة كمية للمخزون (جرد محلي) 📦' : 'خصم كمية من المخزون (جرد محلي) 📦'}
               </h3>
               <button onClick={() => setShowAdjustModal(false)} className="btn btn-ghost p-2 rounded-xl">
                 <X size={18} />
@@ -858,48 +806,8 @@ export default function InventoryPage() {
             <form onSubmit={executeAdjustStock} className="modal-body space-y-4">
               <div className="p-3 bg-slate-100 rounded-xl text-xs font-bold text-slate-800 flex justify-between">
                 <span>المنتج: {adjustingProduct.name}</span>
-                <span>الموجود: {adjustingProduct.stock_quantity} حبة</span>
+                <span>الموجود بالمخزن: {adjustingProduct.stock_quantity} حبة</span>
               </div>
-
-              {/* اختيار الشخص (المورد أو الزبون) */}
-              <div>
-                <label className="block text-xs font-black text-slate-700 mb-1.5">
-                  {adjustType === 'add' ? 'اختر المورد (اختياري)' : 'اختر الزبون (اختياري)'}
-                </label>
-                <select
-                  value={selectedPersonId}
-                  onChange={e => setSelectedPersonId(e.target.value)}
-                  className="form-input"
-                >
-                  <option value="">-- بدون تحديد شخص (نقدي) --</option>
-                  {contacts
-                    .filter(c => adjustType === 'add' ? c.type === 'supplier' : c.type === 'customer')
-                    .map(c => <option key={c.id} value={c.id}>{c.name} ({c.phone || 'بدون هاتف'})</option>)}
-                </select>
-              </div>
-
-              {/* اختيار سعر التجزئة (تجزئة 1 أو تجزئة 2) */}
-              {adjustType === 'reduce' && (
-                <div>
-                  <label className="block text-xs font-black text-slate-700 mb-1.5">🏷️ اعتمد سعر البيع</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedPriceType('retail1')}
-                      className={`py-2 px-2 rounded-xl text-xs font-black border transition-all ${selectedPriceType === 'retail1' ? 'bg-emerald-600 text-white border-transparent shadow-sm' : 'bg-slate-100 text-slate-700 border-slate-200'}`}
-                    >
-                      تجزئة 1 ({adjustingProduct.retail_price} د.ج)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedPriceType('retail2')}
-                      className={`py-2 px-2 rounded-xl text-xs font-black border transition-all ${selectedPriceType === 'retail2' ? 'bg-sky-600 text-white border-transparent shadow-sm' : 'bg-slate-100 text-slate-700 border-slate-200'}`}
-                    >
-                      تجزئة 2 ({(adjustingProduct.retail_price_2 || 0) > 0 ? `${adjustingProduct.retail_price_2} د.ج` : 'غير محدد'})
-                    </button>
-                  </div>
-                </div>
-              )}
 
               {/* اختيار الكمية بالكرتونة + الحبات الفردية */}
               {adjustingProduct.unit_type === 'pack' ? (
