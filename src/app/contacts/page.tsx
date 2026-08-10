@@ -445,8 +445,8 @@ export default function ContactsPage() {
                       </div>
 
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-black text-slate-900 text-base leading-tight truncate">{c.name}</h3>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-black text-slate-900 text-base leading-snug break-words">{c.name}</h3>
                           {c.category && (
                             <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md font-bold shrink-0">
                               {c.category}

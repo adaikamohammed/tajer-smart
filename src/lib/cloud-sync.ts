@@ -238,6 +238,12 @@ export function initAutoSyncEngine() {
   });
 
   // 3. استماع لتغيرات شبكة الهاتف/الكمبيوتر
-  window.addEventListener('online', () => syncStoreWithVercelCloud());
+  window.addEventListener('online', async () => {
+    const res = await syncStoreWithVercelCloud();
+    if (res && res.success) {
+      const { toast } = await import('@/components/Toast');
+      toast('☁️ تم المزامنة بنجاح', 'success');
+    }
+  });
   window.addEventListener('offline', () => updateStatus('offline'));
 }

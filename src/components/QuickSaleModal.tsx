@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   getLocalData, setLocalData, Product, Contact, Transaction, TransactionItem,
-  printThermalReceipt, generateReceiptNumber,
+  printThermalReceipt, generateReceiptNumber, saveReceipt,
 } from '@/lib/store';
 import { toast } from '@/components/Toast';
 import {
@@ -18,6 +18,8 @@ interface CartItem {
   product: Product;
   quantity: number;
   unitPrice: number;
+  packsCount?: number;
+  looseCount?: number;
 }
 
 interface QuickSaleModalProps {
@@ -85,9 +87,19 @@ export default function QuickSaleModal({
     );
   }, [products, productSearch]);
 
-  // حساب الإجمالي
+  // حساب الإجمالي مع مراعاة بيع الكراتين والحبات الفردية
   const totalAmount = useMemo(() => {
-    return cart.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+    return cart.reduce((sum, item) => {
+      const p = item.product;
+      if (p.unit_type === 'pack') {
+        const cap = p.pack_quantity || 1;
+        const packs = item.packsCount ?? Math.floor(item.quantity / cap);
+        const loose = item.looseCount ?? (item.quantity % cap);
+        const loosePrice = item.unitPrice / cap;
+        return sum + (packs * item.unitPrice) + (loose * loosePrice);
+      }
+      return sum + (item.quantity * item.unitPrice);
+    }, 0);
   }, [cart]);
 
   // إعداد المبلغ المدفوع تلقائياً عند تغيير السلة
@@ -139,6 +151,21 @@ export default function QuickSaleModal({
     }
     setCart(prev =>
       prev.map(ci => (ci.product.id === productId ? { ...ci, quantity: qty } : ci))
+    );
+  };
+
+  // تعديل كمية كراتين وحبات فردية لوحدة الكرتونة
+  const updatePackLooseQty = (productId: string, packs: number, loose: number) => {
+    setCart(prev =>
+      prev.map(ci => {
+        if (ci.product.id === productId) {
+          const cap = ci.product.pack_quantity || 1;
+          const totalQty = (Math.max(0, packs) * cap) + Math.max(0, loose);
+          if (totalQty <= 0) return null as any;
+          return { ...ci, quantity: totalQty, packsCount: Math.max(0, packs), looseCount: Math.max(0, loose) };
+        }
+        return ci;
+      }).filter(Boolean)
     );
   };
 
@@ -250,28 +277,32 @@ export default function QuickSaleModal({
       setLocalData('tajer_smart_transactions_v1', updatedTx);
 
       const receiptId = generateReceiptNumber();
+      const receiptObj = {
+        id: receiptId,
+        receipt_type: 'SALE' as const,
+        contact_id: selectedContact.id,
+        contact_name: selectedContact.name,
+        contact_phone: selectedContact.phone,
+        items: txItems,
+        total_amount: totalAmount,
+        paid_amount: paidAmount,
+        debt_amount: debtAmount,
+        note: note.trim() || undefined,
+        created_at: new Date().toISOString(),
+      };
+
+      // 4. حفظ الوصل دائماً في أرشيف الأوصال حتى يظهر في صفحة الأوصال وسجل حساب الشخص
+      saveReceipt(receiptObj);
 
       // طباعة حرارية إذا طلب التاجر
       if (shouldPrint) {
-        printThermalReceipt({
-          id: receiptId,
-          receipt_type: 'SALE',
-          contact_id: selectedContact.id,
-          contact_name: selectedContact.name,
-          contact_phone: selectedContact.phone,
-          items: txItems,
-          total_amount: totalAmount,
-          paid_amount: paidAmount,
-          debt_amount: debtAmount,
-          note: note.trim() || undefined,
-          created_at: new Date().toISOString(),
-        });
+        printThermalReceipt(receiptObj);
       }
 
       toast(
         debtAmount > 0
-          ? `✅ تم البيع! تم تسجيل ${fmt(debtAmount)} د.ج كدين على ${selectedContact.name}`
-          : `✅ تم تسديد البيع كاش بالكامل (${fmt(totalAmount)} د.ج)!`
+          ? `✅ تم البيع! وحفظ الوصل — دين: ${fmt(debtAmount)} د.ج على ${selectedContact.name}`
+          : `✅ تم البيع وحفظ الوصل كاش بالكامل (${fmt(totalAmount)} د.ج)!`
       );
 
       if (onSuccess) onSuccess();
@@ -496,37 +527,70 @@ export default function QuickSaleModal({
                           </div>
                         </div>
 
-                        {/* التحكم بالكمية المطلوبة */}
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            onClick={() => updateCartQty(p.id, -1)}
-                            className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 font-black flex items-center justify-center hover:bg-rose-100 hover:text-rose-700"
-                          >
-                            <Minus size={13} />
-                          </button>
+                        {/* التحكم بالكمية المطلوبة (مع مراعاة تجزئة الكرتونة والحبات الفردية) */}
+                        {p.unit_type === 'pack' ? (
+                          <div className="flex items-center gap-1.5 shrink-0 bg-indigo-50/80 p-1.5 rounded-xl border border-indigo-200">
+                            <div className="text-center">
+                              <span className="block text-[9px] font-black text-indigo-900">📦 كرتونة</span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={ci.packsCount ?? Math.floor(ci.quantity / (p.pack_quantity || 1))}
+                                onChange={e => updatePackLooseQty(p.id, +e.target.value, ci.looseCount ?? (ci.quantity % (p.pack_quantity || 1)))}
+                                className="w-10 text-center form-input py-0.5 px-0.5 font-black text-xs text-indigo-950 tabnum bg-white border-indigo-300"
+                              />
+                            </div>
+                            <span className="text-xs font-black text-indigo-400 mt-3">+</span>
+                            <div className="text-center">
+                              <span className="block text-[9px] font-black text-indigo-900">🥛 حبة</span>
+                              <input
+                                type="number"
+                                min="0"
+                                value={ci.looseCount ?? (ci.quantity % (p.pack_quantity || 1))}
+                                onChange={e => updatePackLooseQty(p.id, ci.packsCount ?? Math.floor(ci.quantity / (p.pack_quantity || 1)), +e.target.value)}
+                                className="w-10 text-center form-input py-0.5 px-0.5 font-black text-xs text-indigo-950 tabnum bg-white border-indigo-300"
+                              />
+                            </div>
+                            <button
+                              onClick={() => removeFromCart(p.id)}
+                              className="w-6 h-6 rounded-lg text-slate-400 hover:text-rose-600 flex items-center justify-center mt-3"
+                              title="إزالة المنتج من السلة"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() => updateCartQty(p.id, -1)}
+                              className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 font-black flex items-center justify-center hover:bg-rose-100 hover:text-rose-700"
+                            >
+                              <Minus size={13} />
+                            </button>
 
-                          <input
-                            type="number"
-                            min="1"
-                            value={ci.quantity}
-                            onChange={e => setCartQtyDirect(p.id, +e.target.value)}
-                            className="w-12 text-center form-input py-1 px-1 font-black text-sm text-slate-900 tabnum"
-                          />
+                            <input
+                              type="number"
+                              min="1"
+                              value={ci.quantity}
+                              onChange={e => setCartQtyDirect(p.id, +e.target.value)}
+                              className="w-12 text-center form-input py-1 px-1 font-black text-sm text-slate-900 tabnum"
+                            />
 
-                          <button
-                            onClick={() => updateCartQty(p.id, 1)}
-                            className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 font-black flex items-center justify-center hover:bg-emerald-200"
-                          >
-                            <Plus size={13} />
-                          </button>
+                            <button
+                              onClick={() => updateCartQty(p.id, 1)}
+                              className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 font-black flex items-center justify-center hover:bg-emerald-200"
+                            >
+                              <Plus size={13} />
+                            </button>
 
-                          <button
-                            onClick={() => removeFromCart(p.id)}
-                            className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-600 flex items-center justify-center mr-1"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
+                            <button
+                              onClick={() => removeFromCart(p.id)}
+                              className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-600 flex items-center justify-center mr-1"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       {/* ⚠️ تنبيه النقص في المخزن إن وجد */}

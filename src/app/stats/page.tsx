@@ -25,7 +25,8 @@ export default function StatsPage() {
   const [txTypeFilter,  setTxTypeFilter]  = useState<'all' | 'SALE' | 'PURCHASE' | 'CANCELLED'>('all');
 
   useEffect(() => {
-    setTransactions(getLocalData('tajer_smart_transactions_v1', []));
+    const rawTx = getLocalData<Transaction[]>('tajer_smart_transactions_v1', []);
+    setTransactions(rawTx.filter(t => t.status !== 'CANCELLED' && !String(t.id).includes('_seed_')));
     setContacts(getLocalData('tajer_smart_contacts_v1', []));
     setProducts(getLocalData('tajer_smart_products_v1', []));
   }, []);
