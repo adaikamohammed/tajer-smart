@@ -689,14 +689,13 @@ export function generateAccountStatementText(contactName: string, balance: numbe
   return msg;
 }
 
-/** إلغاء معاملة/طلبية بالكامل وإرجاع كميات المخزون وتسوية الديون */
+/** إلغاء معاملة/طلبية بالكامل وإرجاع كميات المخزون وتسوية الديون وحذفها نهائياً من كل الشاشات */
 export function cancelTransaction(txId: string): boolean {
   const transactions: Transaction[] = getLocalData('tajer_smart_transactions_v1', []);
   const txIndex = transactions.findIndex(t => t.id === txId);
   if (txIndex === -1) return false;
 
   const tx = transactions[txIndex];
-  if (tx.status === 'CANCELLED') return false;
 
   const products: Product[] = getLocalData('tajer_smart_products_v1', []);
   const contacts: Contact[] = getLocalData('tajer_smart_contacts_v1', []);
@@ -726,17 +725,17 @@ export function cancelTransaction(txId: string): boolean {
     return c;
   });
 
-  // 3. تحديث حالة المعاملة إلى CANCELLED
-  const updatedTx = [...transactions];
-  updatedTx[txIndex] = {
-    ...tx,
-    status: 'CANCELLED',
-    notes: (tx.notes ? tx.notes + ' ' : '') + '[تم إلغاء الطلبية وتصفية المخزون والدين]',
-  };
+  // 3. حذف المعاملة كلياً بدلاً من تعليمها كـ CANCELLED
+  const updatedTx = transactions.filter(t => t.id !== txId);
+
+  // 4. حذف الوصل المقابل من أرشيف الأوصال أيضاً
+  const receipts: Receipt[] = getLocalData('tajer_smart_receipts_v1', []);
+  const updatedReceipts = receipts.filter(r => r.id !== txId && (!r.note || !r.note.includes(txId)));
 
   setLocalData('tajer_smart_products_v1', updatedProducts);
   setLocalData('tajer_smart_contacts_v1', updatedContacts);
   setLocalData('tajer_smart_transactions_v1', updatedTx);
+  setLocalData('tajer_smart_receipts_v1', updatedReceipts);
 
   return true;
 }

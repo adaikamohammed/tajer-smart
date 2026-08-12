@@ -526,6 +526,7 @@ export default function QuickSaleModal({
                               min="0"
                               value={ci.unitPrice}
                               onChange={e => updateCartPrice(p.id, +e.target.value)}
+                              onFocus={e => e.target.select()}
                               className="w-16 form-input py-0.5 px-1 text-[11px] font-black text-emerald-700 tabnum bg-white border-slate-300"
                             />
                             <span className="text-[10px] font-bold text-slate-400">د.ج</span>
@@ -533,66 +534,107 @@ export default function QuickSaleModal({
                         </div>
 
                         {/* التحكم بالكمية المطلوبة (مع مراعاة تجزئة الكرتونة والحبات الفردية) */}
-                        {p.unit_type === 'pack' ? (
-                          <div className="flex items-center gap-1.5 shrink-0 bg-indigo-50/80 p-1.5 rounded-xl border border-indigo-200">
-                            <div className="text-center">
-                              <span className="block text-[9px] font-black text-indigo-900">📦 كرتونة</span>
+                        {p.unit_type === 'pack' ? (() => {
+                          const curPacks = ci.packsCount ?? Math.floor(ci.quantity / (p.pack_quantity || 1));
+                          const curLoose = ci.looseCount ?? (ci.quantity % (p.pack_quantity || 1));
+                          return (
+                            <div className="flex items-center gap-1.5 shrink-0 bg-indigo-50/80 p-1.5 rounded-xl border border-indigo-200">
+                              <div className="text-center">
+                                <span className="block text-[9px] font-black text-indigo-900 mb-0.5">📦 كرتونة</span>
+                                <div className="inline-flex items-center gap-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => updatePackLooseQty(p.id, Math.max(0, curPacks - 1), curLoose)}
+                                    className="w-5 h-5 rounded bg-white text-indigo-900 border border-indigo-200 font-black text-xs flex items-center justify-center hover:bg-rose-100 hover:text-rose-700"
+                                  >
+                                    -
+                                  </button>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={curPacks}
+                                    onChange={e => updatePackLooseQty(p.id, +e.target.value, curLoose)}
+                                    onFocus={e => e.target.select()}
+                                    className="w-9 text-center form-input py-0.5 px-0.5 font-black text-xs text-indigo-950 tabnum bg-white border-indigo-300"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => updatePackLooseQty(p.id, curPacks + 1, curLoose)}
+                                    className="w-5 h-5 rounded bg-indigo-600 text-white font-black text-xs flex items-center justify-center hover:bg-indigo-700"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </div>
+
+                              <span className="text-xs font-black text-indigo-300 self-end mb-1">+</span>
+
+                              <div className="text-center">
+                                <span className="block text-[9px] font-black text-indigo-900 mb-0.5">🥛 حبة</span>
+                                <div className="inline-flex items-center gap-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => updatePackLooseQty(p.id, curPacks, Math.max(0, curLoose - 1))}
+                                    className="w-5 h-5 rounded bg-white text-indigo-900 border border-indigo-200 font-black text-xs flex items-center justify-center hover:bg-rose-100 hover:text-rose-700"
+                                  >
+                                    -
+                                  </button>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={curLoose}
+                                    onChange={e => updatePackLooseQty(p.id, curPacks, +e.target.value)}
+                                    onFocus={e => e.target.select()}
+                                    className="w-9 text-center form-input py-0.5 px-0.5 font-black text-xs text-indigo-950 tabnum bg-white border-indigo-300"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => updatePackLooseQty(p.id, curPacks, curLoose + 1)}
+                                    className="w-5 h-5 rounded bg-emerald-600 text-white font-black text-xs flex items-center justify-center hover:bg-emerald-700"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </div>
+
+                              <button
+                                onClick={() => removeFromCart(p.id)}
+                                className="w-6 h-6 rounded-lg bg-rose-100 text-rose-700 font-black flex items-center justify-center hover:bg-rose-200 mr-1"
+                              >
+                                <X size={13} />
+                              </button>
+                            </div>
+                          );
+                        })() : (
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <div className="inline-flex items-center gap-1">
+                              <button
+                                onClick={() => updateCartQty(p.id, ci.quantity - 1)}
+                                className="w-6 h-6 rounded bg-slate-100 text-slate-700 font-black flex items-center justify-center hover:bg-rose-100 hover:text-rose-700"
+                              >
+                                <Minus size={12} />
+                              </button>
                               <input
                                 type="number"
-                                min="0"
-                                value={ci.packsCount ?? Math.floor(ci.quantity / (p.pack_quantity || 1))}
-                                onChange={e => updatePackLooseQty(p.id, +e.target.value, ci.looseCount ?? (ci.quantity % (p.pack_quantity || 1)))}
-                                className="w-10 text-center form-input py-0.5 px-0.5 font-black text-xs text-indigo-950 tabnum bg-white border-indigo-300"
+                                min="1"
+                                value={ci.quantity}
+                                onChange={e => updateCartQty(p.id, +e.target.value)}
+                                onFocus={e => e.target.select()}
+                                className="w-10 text-center form-input py-0.5 px-0 text-xs font-black tabnum"
                               />
+                              <button
+                                onClick={() => updateCartQty(p.id, ci.quantity + 1)}
+                                className="w-6 h-6 rounded bg-emerald-100 text-emerald-800 font-black flex items-center justify-center hover:bg-emerald-200"
+                              >
+                                <Plus size={12} />
+                              </button>
                             </div>
-                            <span className="text-xs font-black text-indigo-400 mt-3">+</span>
-                            <div className="text-center">
-                              <span className="block text-[9px] font-black text-indigo-900">🥛 حبة</span>
-                              <input
-                                type="number"
-                                min="0"
-                                value={ci.looseCount ?? (ci.quantity % (p.pack_quantity || 1))}
-                                onChange={e => updatePackLooseQty(p.id, ci.packsCount ?? Math.floor(ci.quantity / (p.pack_quantity || 1)), +e.target.value)}
-                                className="w-10 text-center form-input py-0.5 px-0.5 font-black text-xs text-indigo-950 tabnum bg-white border-indigo-300"
-                              />
-                            </div>
-                            <button
-                              onClick={() => removeFromCart(p.id)}
-                              className="w-6 h-6 rounded-lg text-slate-400 hover:text-rose-600 flex items-center justify-center mt-3"
-                              title="إزالة المنتج من السلة"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button
-                              onClick={() => updateCartQty(p.id, -1)}
-                              className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 font-black flex items-center justify-center hover:bg-rose-100 hover:text-rose-700"
-                            >
-                              <Minus size={13} />
-                            </button>
-
-                            <input
-                              type="number"
-                              min="1"
-                              value={ci.quantity}
-                              onChange={e => setCartQtyDirect(p.id, +e.target.value)}
-                              className="w-12 text-center form-input py-1 px-1 font-black text-sm text-slate-900 tabnum"
-                            />
-
-                            <button
-                              onClick={() => updateCartQty(p.id, 1)}
-                              className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 font-black flex items-center justify-center hover:bg-emerald-200"
-                            >
-                              <Plus size={13} />
-                            </button>
 
                             <button
                               onClick={() => removeFromCart(p.id)}
-                              className="w-7 h-7 rounded-lg text-slate-400 hover:text-rose-600 flex items-center justify-center mr-1"
+                              className="w-6 h-6 rounded-lg bg-rose-100 text-rose-700 font-black flex items-center justify-center hover:bg-rose-200"
                             >
-                              <Trash2 size={14} />
+                              <X size={13} />
                             </button>
                           </div>
                         )}
@@ -631,6 +673,7 @@ export default function QuickSaleModal({
                     max={totalAmount}
                     value={paidAmount}
                     onChange={e => setPaidAmount(+e.target.value)}
+                    onFocus={e => e.target.select()}
                     className="form-input text-base font-black text-center text-emerald-400 bg-slate-800 border-slate-700 tabnum"
                   />
                 </div>

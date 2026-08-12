@@ -827,6 +827,7 @@ export default function InventoryPage() {
                           placeholder="0"
                           value={adjustPacks || ''}
                           onChange={e => setAdjustPacks(+e.target.value)}
+                          onFocus={e => e.target.select()}
                           className="form-input text-center font-black text-base tabnum"
                         />
                       </div>
@@ -838,6 +839,7 @@ export default function InventoryPage() {
                           placeholder="0"
                           value={adjustLoose || ''}
                           onChange={e => setAdjustLoose(+e.target.value)}
+                          onFocus={e => e.target.select()}
                           className="form-input text-center font-black text-base tabnum"
                         />
                       </div>
@@ -855,6 +857,7 @@ export default function InventoryPage() {
                       min="1"
                       value={adjustLoose || ''}
                       onChange={e => setAdjustLoose(+e.target.value)}
+                      onFocus={e => e.target.select()}
                       className="form-input text-center font-black text-lg tabnum"
                     />
                   </div>

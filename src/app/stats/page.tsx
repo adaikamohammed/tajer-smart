@@ -22,7 +22,7 @@ export default function StatsPage() {
 
   // فلاتر سجل العمليات
   const [txSearchQuery, setTxSearchQuery] = useState('');
-  const [txTypeFilter,  setTxTypeFilter]  = useState<'all' | 'SALE' | 'PURCHASE' | 'CANCELLED'>('all');
+  const [txTypeFilter,  setTxTypeFilter]  = useState<'all' | 'SALE' | 'PURCHASE'>('all');
 
   useEffect(() => {
     const rawTx = getLocalData<Transaction[]>('tajer_smart_transactions_v1', []);
@@ -41,7 +41,7 @@ export default function StatsPage() {
   const totalOwedToUs = contacts.filter(c => (Number(c.balance) || 0) > 0).reduce((sum, c) => sum + (Number(c.balance) || 0), 0);
   const totalWeOwe    = contacts.filter(c => (Number(c.balance) || 0) < 0).reduce((sum, c) => sum + Math.abs(Number(c.balance) || 0), 0);
 
-  // 4️⃣ المبيعات والأرباح النقدية الفعلية (تستبعد الطلبيات الملغاة)
+  // 4️⃣ المبيعات والأرباح النقدية الفعلية
   const salesTx = transactions.filter(t => t.tx_type === 'SALE' && t.status !== 'CANCELLED');
   const totalSales = salesTx.reduce((sum, t) => sum + (Number(t.total_amount) || 0), 0);
   const totalPaidCash = salesTx.reduce((sum, t) => sum + (Number(t.paid_amount) || 0), 0);
@@ -64,9 +64,8 @@ export default function StatsPage() {
   // قائمة المعاملات التاريخية المفلترة
   const filteredLog = useMemo(() => {
     return transactions.filter(t => {
-      if (txTypeFilter === 'SALE' && (t.tx_type !== 'SALE' || t.status === 'CANCELLED')) return false;
-      if (txTypeFilter === 'PURCHASE' && (t.tx_type !== 'PURCHASE' || t.status === 'CANCELLED')) return false;
-      if (txTypeFilter === 'CANCELLED' && t.status !== 'CANCELLED') return false;
+      if (txTypeFilter === 'SALE' && t.tx_type !== 'SALE') return false;
+      if (txTypeFilter === 'PURCHASE' && t.tx_type !== 'PURCHASE') return false;
 
       if (!txSearchQuery.trim()) return true;
       const q = txSearchQuery.toLowerCase().trim();
@@ -317,7 +316,7 @@ export default function StatsPage() {
                 txTypeFilter === 'SALE' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-emerald-50 text-emerald-700'
               }`}
             >
-              🟢 المبيعات ({transactions.filter(t => t.tx_type === 'SALE' && t.status !== 'CANCELLED').length})
+              🟢 المبيعات ({transactions.filter(t => t.tx_type === 'SALE').length})
             </button>
             <button
               onClick={() => setTxTypeFilter('PURCHASE')}
@@ -325,15 +324,7 @@ export default function StatsPage() {
                 txTypeFilter === 'PURCHASE' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-indigo-50 text-indigo-700'
               }`}
             >
-              🔵 المشتريات ({transactions.filter(t => t.tx_type === 'PURCHASE' && t.status !== 'CANCELLED').length})
-            </button>
-            <button
-              onClick={() => setTxTypeFilter('CANCELLED')}
-              className={`px-3 py-1 rounded-xl text-xs font-black transition-all ${
-                txTypeFilter === 'CANCELLED' ? 'bg-rose-600 text-white shadow-sm' : 'bg-rose-50 text-rose-700'
-              }`}
-            >
-              ❌ الملغاة ({transactions.filter(t => t.status === 'CANCELLED').length})
+              🔵 المشتريات ({transactions.filter(t => t.tx_type === 'PURCHASE').length})
             </button>
           </div>
         </div>
@@ -353,14 +344,12 @@ export default function StatsPage() {
               const dateStr = txDate.toLocaleDateString('en-GB') + ' ' + txDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
               return (
-                <div key={tx.id} className={`p-3.5 rounded-2xl border space-y-2.5 transition-all ${
-                  tx.status === 'CANCELLED' ? 'bg-slate-100/70 border-slate-300 opacity-80' : 'bg-white border-slate-200 shadow-sm'
-                }`}>
+                <div key={tx.id} className="p-3.5 rounded-2xl border space-y-2.5 transition-all bg-white border-slate-200 shadow-sm">
                   {/* ترويسة الفاتورة */}
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                        tx.status === 'CANCELLED' ? 'bg-slate-200 text-slate-600' : isSale ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'
+                        isSale ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'
                       }`}>
                         {isSale ? <ArrowUpRight size={16} strokeWidth={2.5} /> : <ArrowDownLeft size={16} strokeWidth={2.5} />}
                       </div>
@@ -373,12 +362,10 @@ export default function StatsPage() {
                     </div>
 
                     <div className="text-left shrink-0">
-                      <p className={`font-black text-sm tabnum ${tx.status === 'CANCELLED' ? 'line-through text-slate-400' : isSale ? 'text-emerald-700' : 'text-slate-700'}`}>
+                      <p className={`font-black text-sm tabnum ${isSale ? 'text-emerald-700' : 'text-slate-700'}`}>
                         {fmt(tx.total_amount)} <span className="text-[10px]">د.ج</span>
                       </p>
-                      {tx.status === 'CANCELLED' ? (
-                        <span className="text-[10px] font-extrabold text-rose-700 bg-rose-100 px-1.5 py-0.2 rounded-md">ملغاة ❌</span>
-                      ) : tx.debt_amount > 0 ? (
+                      {tx.debt_amount > 0 ? (
                         <span className="text-[10px] font-extrabold text-rose-700 bg-rose-100 px-1.5 py-0.2 rounded-md">دين: {fmt(tx.debt_amount)}</span>
                       ) : (
                         <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-md">مدفوع كاش</span>
@@ -397,55 +384,49 @@ export default function StatsPage() {
                     ))}
                   </div>
 
-                  {/* الإجراءات: الطباعة وإلغاء الطلبية */}
+                  {/* الإجراءات: الطباعة وإلغاء الطلبية وحذفها */}
                   <div className="flex items-center justify-between pt-1 border-t border-slate-100 flex-wrap gap-1.5">
-                    {tx.status === 'CANCELLED' ? (
-                      <span className="text-[11px] font-black text-slate-500">
-                        طـلـبـيـة مـلـغـاة (تم إعادة المخزون والتصفية)
-                      </span>
-                    ) : (
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => {
-                            printThermalReceipt({
-                              id: generateReceiptNumber(),
-                              receipt_type: tx.tx_type,
-                              contact_id: tx.contact_id,
-                              contact_name: tx.contact_name,
-                              contact_phone: contact?.phone,
-                              items: tx.items,
-                              total_amount: tx.total_amount,
-                              paid_amount: tx.paid_amount,
-                              debt_amount: tx.debt_amount,
-                              note: tx.notes,
-                              created_at: tx.created_at,
-                            });
-                            toast('🖨️ جارٍ فتح وصل الفاتورة الحراري...', 'success');
-                          }}
-                          className="py-1.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[11px] font-black flex items-center gap-1.5 touch-active"
-                        >
-                          <Printer size={13} />
-                          طباعة الوصل 🖨️
-                        </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => {
+                          printThermalReceipt({
+                            id: generateReceiptNumber(),
+                            receipt_type: tx.tx_type,
+                            contact_id: tx.contact_id,
+                            contact_name: tx.contact_name,
+                            contact_phone: contact?.phone,
+                            items: tx.items,
+                            total_amount: tx.total_amount,
+                            paid_amount: tx.paid_amount,
+                            debt_amount: tx.debt_amount,
+                            note: tx.notes,
+                            created_at: tx.created_at,
+                          });
+                          toast('🖨️ جارٍ فتح وصل الفاتورة الحراري...', 'success');
+                        }}
+                        className="py-1.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[11px] font-black flex items-center gap-1.5 touch-active"
+                      >
+                        <Printer size={13} />
+                        طباعة الوصل 🖨️
+                      </button>
 
-                        <button
-                          onClick={() => {
-                            if (confirm('هل أنت تأكد من إلغاء هذه الطلبية؟ سيتم إرجاع كميات المخزون وتصفية الدين فوراً.')) {
-                              const ok = cancelTransaction(tx.id);
-                              if (ok) {
-                                setProducts(getLocalData('tajer_smart_products_v1', []));
-                                setContacts(getLocalData('tajer_smart_contacts_v1', []));
-                                setTransactions(getLocalData('tajer_smart_transactions_v1', []));
-                                toast('🔄 تم إلغاء الطلبية وإعادة الكميات للمخزون بنجاح!', 'warning');
-                              }
+                      <button
+                        onClick={() => {
+                          if (confirm('⚠️ هل أنت تأكد من إلغاء وحذف هذه الطلبية نهائياً؟ سيتم إعادة الكميات للمخزون، تسوية الدين وحذفها كلياً.')) {
+                            const ok = cancelTransaction(tx.id);
+                            if (ok) {
+                              setProducts(getLocalData('tajer_smart_products_v1', []));
+                              setContacts(getLocalData('tajer_smart_contacts_v1', []));
+                              setTransactions(getLocalData('tajer_smart_transactions_v1', []));
+                              toast('🗑️ تم إلغاء وحذف الطلبية نهائياً وإعادة المخزون بنجاح!', 'warning');
                             }
-                          }}
-                          className="py-1.5 px-2.5 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-xl text-[11px] font-black flex items-center gap-1 touch-active"
-                        >
-                          <X size={13} /> إلغاء ❌
-                        </button>
-                      </div>
-                    )}
+                          }
+                        }}
+                        className="py-1.5 px-2.5 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-xl text-[11px] font-black flex items-center gap-1 touch-active"
+                      >
+                        <X size={13} /> إلغاء وحذف ❌
+                      </button>
+                    </div>
 
                     {contact?.phone && (
                       <a

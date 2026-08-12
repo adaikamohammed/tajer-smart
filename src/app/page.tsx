@@ -679,6 +679,7 @@ export default function HomePage() {
                                   const tot = (pk * price) + (saleLoose * (price / cap));
                                   setSalePaid(tot);
                                 }}
+                                onFocus={e => e.target.select()}
                                 className="form-input text-center font-black text-base tabnum"
                               />
                             </div>
@@ -696,6 +697,7 @@ export default function HomePage() {
                                   const tot = (salePacks * price) + (ls * (price / cap));
                                   setSalePaid(tot);
                                 }}
+                                onFocus={e => e.target.select()}
                                 className="form-input text-center font-black text-base tabnum"
                               />
                             </div>
@@ -707,12 +709,14 @@ export default function HomePage() {
                             <label className="block text-xs font-black text-slate-600 mb-1.5">الكمية (بالحبة)</label>
                             <input type="number" min="1" value={saleQty}
                               onChange={e => { const q = +e.target.value; setSaleQty(q); setSalePaid(saleUnitPrice * q); }}
+                              onFocus={e => e.target.select()}
                               className="form-input text-center font-black text-lg" />
                           </div>
                           <div>
                             <label className="block text-xs font-black text-slate-600 mb-1.5">سعر التجزئة (د.ج)</label>
                             <input type="number" value={saleUnitPrice}
                               onChange={e => { const p = +e.target.value; setSaleUnitPrice(p); setSalePaid(p * saleQty); }}
+                              onFocus={e => e.target.select()}
                               className="form-input font-black tabnum text-emerald-700" />
                           </div>
                         </div>
@@ -730,7 +734,7 @@ export default function HomePage() {
 
                 <div>
                   <label className="block text-xs font-black text-slate-600 mb-1.5">💵 المبلغ المدفوع الآن (د.ج)</label>
-                  <input type="number" value={salePaid} onChange={e => setSalePaid(+e.target.value)} className="form-input font-black text-lg tabnum" />
+                  <input type="number" value={salePaid} onChange={e => setSalePaid(+e.target.value)} onFocus={e => e.target.select()} className="form-input font-black text-lg tabnum" />
                   {saleTotal - salePaid > 0 && (
                     <div className="flex items-center gap-1.5 mt-2 p-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-800">
                       <Banknote size={14} className="shrink-0" />
