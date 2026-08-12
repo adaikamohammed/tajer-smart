@@ -599,191 +599,195 @@ export default function InventoryPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSaveProduct} className="modal-body space-y-4">
-              <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">📝 اسم المنتج *</label>
-                <input type="text" required placeholder="مثال: زيت زيتون 1 لتر..."
-                  value={name} onChange={e => setName(e.target.value)} className="form-input" />
-              </div>
-
-              {/* 🏷️ قسم الفئة */}
-              <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">🏷️ قسم المنتج</label>
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {categories
-                    .filter(cat => cat === 'مواد غذائية' || cat === 'مواد تنظيف')
-                    .map(cat => (
-                      <button
-                        key={cat}
-                        type="button"
-                        onClick={() => setCategory(cat)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${category === cat ? 'bg-indigo-600 text-white border-transparent' : 'bg-slate-100 text-slate-700 border-slate-200'}`}
-                      >
-                        {cat}
-                      </button>
-                    ))}
-                  <button
-                    type="button"
-                    onClick={() => setCategory('أخرى')}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${category === 'أخرى' ? 'bg-indigo-600 text-white border-transparent' : 'bg-slate-100 text-slate-700 border-slate-200'}`}
-                  >
-                    + قسم جديد
-                  </button>
-                </div>
-                {category === 'أخرى' && (
-                  <input
-                    type="text"
-                    required
-                    placeholder="اكتب اسم القسم الجديد (مثلاً: حلويات، مشروبات غازية...)"
-                    value={customCategory}
-                    onChange={e => setCustomCategory(e.target.value)}
-                    className="form-input mt-1"
-                  />
-                )}
-              </div>
-
-              {/* 📦 نوع الوحدة وسعة الكرتونة */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+            <form onSubmit={handleSaveProduct} className="flex flex-col flex-1 overflow-hidden">
+              <div className="modal-body space-y-4">
                 <div>
-                  <label className="block text-xs font-black text-slate-700 mb-1.5">📦 وحدة التعبئة والبيع</label>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {[
-                      { val: 'piece' as const, label: 'حبة 🥛' },
-                      { val: 'pack'  as const, label: 'كرتونة 📦' },
-                      { val: 'kg'    as const, label: 'كغ ⚖️' },
-                      { val: 'liter' as const, label: 'لتر 🧴' },
-                    ].map(u => (
-                      <button
-                        key={u.val}
-                        type="button"
-                        onClick={() => setUnitType(u.val)}
-                        className={`py-2 rounded-xl text-xs font-black border ${unitType === u.val ? 'bg-slate-900 text-white border-transparent' : 'bg-white text-slate-700 border-slate-200'}`}
-                      >
-                        {u.label}
-                      </button>
-                    ))}
-                  </div>
+                  <label className="block text-xs font-black text-slate-600 mb-1.5">📝 اسم المنتج *</label>
+                  <input type="text" required placeholder="مثال: زيت زيتون 1 لتر..."
+                    value={name} onChange={e => setName(e.target.value)} className="form-input" />
                 </div>
 
-                {unitType === 'pack' && (
-                  <div>
-                    <label className="block text-xs font-black text-indigo-900 mb-1">🥚 سعة الكرتونة (كم حبة داخلها؟)</label>
+                {/* 🏷️ قسم الفئة */}
+                <div>
+                  <label className="block text-xs font-black text-slate-600 mb-1.5">🏷️ قسم المنتج</label>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {categories
+                      .filter(cat => cat === 'مواد غذائية' || cat === 'مواد تنظيف')
+                      .map(cat => (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => setCategory(cat)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${category === cat ? 'bg-indigo-600 text-white border-transparent' : 'bg-slate-100 text-slate-700 border-slate-200'}`}
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                    <button
+                      type="button"
+                      onClick={() => setCategory('أخرى')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all ${category === 'أخرى' ? 'bg-indigo-600 text-white border-transparent' : 'bg-slate-100 text-slate-700 border-slate-200'}`}
+                    >
+                      + قسم جديد
+                    </button>
+                  </div>
+                  {category === 'أخرى' && (
                     <input
-                      type="number"
+                      type="text"
                       required
-                      min="1"
-                      placeholder="مثال: 30 حبة للكرتونة"
-                      value={packQuantity || ''}
-                      onChange={e => setPackQuantity(+e.target.value)}
-                      className="form-input font-black tabnum text-indigo-900"
+                      placeholder="اكتب اسم القسم الجديد (مثلاً: حلويات، مشروبات غازية...)"
+                      value={customCategory}
+                      onChange={e => setCustomCategory(e.target.value)}
+                      className="form-input mt-1"
                     />
+                  )}
+                </div>
+
+                {/* 📦 نوع الوحدة وسعة الكرتونة */}
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                  <div>
+                    <label className="block text-xs font-black text-slate-700 mb-1.5">📦 وحدة التعبئة والبيع</label>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {[
+                        { val: 'piece' as const, label: 'حبة 🥛' },
+                        { val: 'pack'  as const, label: 'كرتونة 📦' },
+                        { val: 'kg'    as const, label: 'كغ ⚖️' },
+                        { val: 'liter' as const, label: 'لتر 🧴' },
+                      ].map(u => (
+                        <button
+                          key={u.val}
+                          type="button"
+                          onClick={() => setUnitType(u.val)}
+                          className={`py-2 rounded-xl text-xs font-black border ${unitType === u.val ? 'bg-slate-900 text-white border-transparent' : 'bg-white text-slate-700 border-slate-200'}`}
+                        >
+                          {u.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                )}
-              </div>
 
-              <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">📷 صورة المنتج</label>
-                <div className="flex items-center gap-3">
-                  <label htmlFor="product-photo-upload" className="flex-1 py-3 px-3 border-2 border-dashed border-indigo-300 rounded-2xl bg-indigo-50 text-indigo-800 text-xs font-black flex items-center justify-center gap-2 cursor-pointer touch-active">
-                    <Camera className="w-4 h-4 text-indigo-600" />
-                    <span>التقاط أو اختيار صورة من المعرض</span>
-                  </label>
-                  <input id="product-photo-upload" type="file" accept="image/*" onChange={handleProductImageChange} className="hidden" />
-                  {photoUrl && <img src={photoUrl} alt="معاينة" className="w-12 h-12 rounded-xl object-cover border shrink-0" />}
+                  {unitType === 'pack' && (
+                    <div>
+                      <label className="block text-xs font-black text-indigo-900 mb-1">🥚 سعة الكرتونة (كم حبة داخلها؟)</label>
+                      <input
+                        type="number"
+                        required
+                        min="1"
+                        placeholder="مثال: 30 حبة للكرتونة"
+                        value={packQuantity || ''}
+                        onChange={e => setPackQuantity(+e.target.value)}
+                        className="form-input font-black tabnum text-indigo-900"
+                      />
+                    </div>
+                  )}
                 </div>
-              </div>
 
-              <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="block text-[11px] font-black text-slate-600 mb-1">سعر الشراء (د.ج) *</label>
-                  <input type="number" required min="0" placeholder="800"
-                    value={costPrice || ''} onChange={e => setCostPrice(+e.target.value)} className="form-input tabnum text-xs" />
+                  <label className="block text-xs font-black text-slate-600 mb-1.5">📷 صورة المنتج</label>
+                  <div className="flex items-center gap-3">
+                    <label htmlFor="product-photo-upload" className="flex-1 py-3 px-3 border-2 border-dashed border-indigo-300 rounded-2xl bg-indigo-50 text-indigo-800 text-xs font-black flex items-center justify-center gap-2 cursor-pointer touch-active">
+                      <Camera className="w-4 h-4 text-indigo-600" />
+                      <span>التقاط أو اختيار صورة من المعرض</span>
+                    </label>
+                    <input id="product-photo-upload" type="file" accept="image/*" onChange={handleProductImageChange} className="hidden" />
+                    {photoUrl && <img src={photoUrl} alt="معاينة" className="w-12 h-12 rounded-xl object-cover border shrink-0" />}
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-[11px] font-black text-emerald-800 mb-1">سعر تجزئة 1 *</label>
-                  <input type="number" required min="0" placeholder="1,100"
-                    value={retailPrice || ''} onChange={e => setRetailPrice(+e.target.value)}
-                    className="form-input tabnum text-xs font-black text-emerald-700" />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-black text-sky-800 mb-1">سعر تجزئة 2 (خاص)</label>
-                  <input type="number" min="0" placeholder="1,050"
-                    value={retailPrice2 || ''} onChange={e => setRetailPrice2(+e.target.value)}
-                    className="form-input tabnum text-xs font-black text-sky-700" />
-                </div>
-              </div>
 
-              {unitType === 'pack' ? (
-                <div className="p-3 bg-indigo-50/80 border border-indigo-200 rounded-2xl space-y-2.5">
-                  <label className="block text-xs font-black text-indigo-950">📦 إدخال كمية المخزون بالكرتونة والحبات الإضافية (دقة الجرد):</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-black text-slate-600 mb-1">سعر الشراء (د.ج) *</label>
+                    <input type="number" required min="0" placeholder="800"
+                      value={costPrice || ''} onChange={e => setCostPrice(+e.target.value)} className="form-input tabnum text-xs" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-black text-emerald-800 mb-1">سعر تجزئة 1 *</label>
+                    <input type="number" required min="0" placeholder="1,100"
+                      value={retailPrice || ''} onChange={e => setRetailPrice(+e.target.value)}
+                      className="form-input tabnum text-xs font-black text-emerald-700" />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-black text-sky-800 mb-1">سعر تجزئة 2 (خاص)</label>
+                    <input type="number" min="0" placeholder="1,050"
+                      value={retailPrice2 || ''} onChange={e => setRetailPrice2(+e.target.value)}
+                      className="form-input tabnum text-xs font-black text-sky-700" />
+                  </div>
+                </div>
+
+                {unitType === 'pack' ? (
+                  <div className="p-3 bg-indigo-50/80 border border-indigo-200 rounded-2xl space-y-2.5">
+                    <label className="block text-xs font-black text-indigo-950">📦 إدخال كمية المخزون بالكرتونة والحبات الإضافية (دقة الجرد):</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-indigo-900 mb-1">📦 عدد الكراتين الكاملة</label>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="مثال: 10 كرتونة"
+                          value={initialPacks || ''}
+                          onChange={e => setInitialPacks(+e.target.value)}
+                          className="form-input text-center font-black text-base tabnum bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-indigo-900 mb-1">🥛 حبات إضافية فردية</label>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="مثال: 5 حبات"
+                          value={initialLoose || ''}
+                          onChange={e => setInitialLoose(+e.target.value)}
+                          className="form-input text-center font-black text-base tabnum bg-white"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] font-black text-indigo-800 pt-1 border-t border-indigo-200/60">
+                      <span>إجمالي حبات المخزون:</span>
+                      <span className="text-sm tabnum text-indigo-950">{((initialPacks * (packQuantity || 1)) + initialLoose)} حبة</span>
+                    </div>
+                  </div>
+                ) : (
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[11px] font-bold text-indigo-900 mb-1">📦 عدد الكراتين الكاملة</label>
-                      <input
-                        type="number"
-                        min="0"
-                        placeholder="مثال: 10 كرتونة"
-                        value={initialPacks || ''}
-                        onChange={e => setInitialPacks(+e.target.value)}
-                        className="form-input text-center font-black text-base tabnum bg-white"
-                      />
+                      <label className="block text-xs font-black text-slate-600 mb-1.5">الكمية الحالية (بالحبة) *</label>
+                      <input type="number" required min="0"
+                        value={stockQuantity} onChange={e => setStockQuantity(+e.target.value)}
+                        className="form-input text-center font-black text-lg tabnum" />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-bold text-indigo-900 mb-1">🥛 حبات إضافية فردية</label>
-                      <input
-                        type="number"
-                        min="0"
-                        placeholder="مثال: 5 حبات"
-                        value={initialLoose || ''}
-                        onChange={e => setInitialLoose(+e.target.value)}
-                        className="form-input text-center font-black text-base tabnum bg-white"
-                      />
+                      <label className="block text-xs font-black text-slate-600 mb-1.5">حد تنبيه النقص</label>
+                      <input type="number" min="1"
+                        value={minStockAlert} onChange={e => setMinStockAlert(+e.target.value)}
+                        className="form-input text-center tabnum" />
                     </div>
                   </div>
-                  <div className="flex justify-between items-center text-[11px] font-black text-indigo-800 pt-1 border-t border-indigo-200/60">
-                    <span>إجمالي حبات المخزون:</span>
-                    <span className="text-sm tabnum text-indigo-950">{((initialPacks * (packQuantity || 1)) + initialLoose)} حبة</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-black text-slate-600 mb-1.5">الكمية الحالية (بالحبة) *</label>
-                    <input type="number" required min="0"
-                      value={stockQuantity} onChange={e => setStockQuantity(+e.target.value)}
-                      className="form-input text-center font-black text-lg tabnum" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-black text-slate-600 mb-1.5">حد تنبيه النقص</label>
-                    <input type="number" min="1"
-                      value={minStockAlert} onChange={e => setMinStockAlert(+e.target.value)}
-                      className="form-input text-center tabnum" />
-                  </div>
-                </div>
-              )}
-
-              <div className="p-3 bg-slate-50 border rounded-2xl space-y-2">
-                <div>
-                  <label className="block text-xs font-black text-slate-700 mb-1">📅 تاريخ انتهاء الصلاحية (اختياري)</label>
-                  <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} className="form-input" />
-                </div>
-
-                {expiryDate && (
-                  <div>
-                    <label className="block text-xs font-black text-slate-700 mb-1">⏰ حد التنبيه بالصلاحية (التنبيه قبل كم يوم؟)</label>
-                    <select value={expiryAlertDays} onChange={e => setExpiryAlertDays(+e.target.value)} className="form-input">
-                      <option value={15}>15 يوم قبل الانتهاء</option>
-                      <option value={30}>30 يوم قبل الانتهاء</option>
-                      <option value={60}>60 يوم قبل الانتهاء</option>
-                    </select>
-                  </div>
                 )}
+
+                <div className="p-3 bg-slate-50 border rounded-2xl space-y-2">
+                  <div>
+                    <label className="block text-xs font-black text-slate-700 mb-1">📅 تاريخ انتهاء الصلاحية (اختياري)</label>
+                    <input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} className="form-input" />
+                  </div>
+
+                  {expiryDate && (
+                    <div>
+                      <label className="block text-xs font-black text-slate-700 mb-1">⏰ حد التنبيه بالصلاحية (التنبيه قبل كم يوم؟)</label>
+                      <select value={expiryAlertDays} onChange={e => setExpiryAlertDays(+e.target.value)} className="form-input">
+                        <option value={15}>15 يوم قبل الانتهاء</option>
+                        <option value={30}>30 يوم قبل الانتهاء</option>
+                        <option value={60}>60 يوم قبل الانتهاء</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <button type="submit" className="btn btn-primary w-full py-4 text-base shadow-md">
-                <BadgeCheck size={18} strokeWidth={2.5} />
-                حفظ المنتج 📦
-              </button>
+              <div className="modal-footer">
+                <button type="submit" className="btn btn-primary w-full py-3.5 text-base shadow-md">
+                  <BadgeCheck size={18} strokeWidth={2.5} />
+                  حفظ المنتج 📦
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -803,61 +807,65 @@ export default function InventoryPage() {
               </button>
             </div>
 
-            <form onSubmit={executeAdjustStock} className="modal-body space-y-4">
-              <div className="p-3 bg-slate-100 rounded-xl text-xs font-bold text-slate-800 flex justify-between">
-                <span>المنتج: {adjustingProduct.name}</span>
-                <span>الموجود بالمخزن: {adjustingProduct.stock_quantity} حبة</span>
+            <form onSubmit={executeAdjustStock} className="flex flex-col flex-1 overflow-hidden">
+              <div className="modal-body space-y-4">
+                <div className="p-3 bg-slate-100 rounded-xl text-xs font-bold text-slate-800 flex justify-between">
+                  <span>المنتج: {adjustingProduct.name}</span>
+                  <span>الموجود بالمخزن: {adjustingProduct.stock_quantity} حبة</span>
+                </div>
+
+                {/* اختيار الكمية بالكرتونة + الحبات الفردية */}
+                {adjustingProduct.unit_type === 'pack' ? (
+                  <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-2xl space-y-3">
+                    <p className="text-xs font-black text-indigo-900">📦 سعة الكرتونة الواحدة = {adjustingProduct.pack_quantity || 1} حبة</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-black text-indigo-950 mb-1">📦 عدد الكراتين</label>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          value={adjustPacks || ''}
+                          onChange={e => setAdjustPacks(+e.target.value)}
+                          className="form-input text-center font-black text-base tabnum"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black text-indigo-950 mb-1">🥛 حبات إضافية فردية</label>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          value={adjustLoose || ''}
+                          onChange={e => setAdjustLoose(+e.target.value)}
+                          className="form-input text-center font-black text-base tabnum"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[11px] font-bold text-indigo-700 text-center">
+                      إجمالي الكمية: {((adjustPacks * (adjustingProduct.pack_quantity || 1)) + adjustLoose)} حبة
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs font-black text-slate-700 mb-1.5">الكمية (بالحبة)</label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      value={adjustLoose || ''}
+                      onChange={e => setAdjustLoose(+e.target.value)}
+                      className="form-input text-center font-black text-lg tabnum"
+                    />
+                  </div>
+                )}
               </div>
 
-              {/* اختيار الكمية بالكرتونة + الحبات الفردية */}
-              {adjustingProduct.unit_type === 'pack' ? (
-                <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-2xl space-y-3">
-                  <p className="text-xs font-black text-indigo-900">📦 سعة الكرتونة الواحدة = {adjustingProduct.pack_quantity || 1} حبة</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-black text-indigo-950 mb-1">📦 عدد الكراتين</label>
-                      <input
-                        type="number"
-                        min="0"
-                        placeholder="0"
-                        value={adjustPacks || ''}
-                        onChange={e => setAdjustPacks(+e.target.value)}
-                        className="form-input text-center font-black text-base tabnum"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-black text-indigo-950 mb-1">🥛 حبات إضافية فردية</label>
-                      <input
-                        type="number"
-                        min="0"
-                        placeholder="0"
-                        value={adjustLoose || ''}
-                        onChange={e => setAdjustLoose(+e.target.value)}
-                        className="form-input text-center font-black text-base tabnum"
-                      />
-                    </div>
-                  </div>
-                  <p className="text-[11px] font-bold text-indigo-700 text-center">
-                    إجمالي الكمية: {((adjustPacks * (adjustingProduct.pack_quantity || 1)) + adjustLoose)} حبة
-                  </p>
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-xs font-black text-slate-700 mb-1.5">الكمية (بالحبة)</label>
-                  <input
-                    type="number"
-                    required
-                    min="1"
-                    value={adjustLoose || ''}
-                    onChange={e => setAdjustLoose(+e.target.value)}
-                    className="form-input text-center font-black text-lg tabnum"
-                  />
-                </div>
-              )}
-
-              <button type="submit" className="btn btn-primary w-full py-4 text-base shadow-md">
-                تأكيد العملية وتحديث الحساب ✅
-              </button>
+              <div className="modal-footer">
+                <button type="submit" className="btn btn-primary w-full py-3.5 text-base shadow-md">
+                  تأكيد العملية وتحديث المخزون ✅
+                </button>
+              </div>
             </form>
           </div>
         </div>

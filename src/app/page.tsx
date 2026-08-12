@@ -579,172 +579,175 @@ export default function HomePage() {
               </button>
             </div>
 
-            <form onSubmit={executeSale} className="modal-body space-y-4">
+            <form onSubmit={executeSale} className="flex flex-col flex-1 overflow-hidden">
+              <div className="modal-body space-y-4">
+                <div>
+                  <label className="block text-xs font-black text-slate-600 mb-1.5">👤 اختر الزبون * (إجباري)</label>
+                  <SearchableSelect
+                    options={contacts.filter(c => c.type !== 'supplier').map(c => ({
+                      id: c.id,
+                      label: c.name,
+                      sublabel: c.phone || 'بدون هاتف',
+                      badge: (Number(c.balance) || 0) > 0 ? `دين: ${fmt(c.balance)} د.ج` : 'حساب متوازن',
+                    }))}
+                    value={selectedCustomerId}
+                    onChange={id => setSelectedCustomerId(id)}
+                    placeholder="🔍 ابحث بالاسم أو الرقم لاختيار الزبون..."
+                    searchPlaceholder="اكتب اسم الزبون..."
+                    icon="user"
+                    required
+                  />
+                </div>
 
-              <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">👤 اختر الزبون * (إجباري)</label>
-                <SearchableSelect
-                  options={contacts.filter(c => c.type !== 'supplier').map(c => ({
-                    id: c.id,
-                    label: c.name,
-                    sublabel: c.phone || 'بدون هاتف',
-                    badge: (Number(c.balance) || 0) > 0 ? `دين: ${fmt(c.balance)} د.ج` : 'حساب متوازن',
-                  }))}
-                  value={selectedCustomerId}
-                  onChange={id => setSelectedCustomerId(id)}
-                  placeholder="🔍 ابحث بالاسم أو الرقم لاختيار الزبون..."
-                  searchPlaceholder="اكتب اسم الزبون..."
-                  icon="user"
-                  required
-                />
-              </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-600 mb-1.5">📦 اختر المنتج * (إجباري)</label>
+                  <SearchableSelect
+                    options={products.map(p => ({
+                      id: p.id,
+                      label: p.name,
+                      sublabel: `متوفر: ${p.stock_quantity} حبة — ${p.category || 'عام'}`,
+                      badge: `${fmt(p.retail_price)} د.ج`,
+                    }))}
+                    value={selectedProductId}
+                    onChange={id => handleProductSaleChange(id)}
+                    placeholder="🔍 ابحث باسم المنتج أو القسم..."
+                    searchPlaceholder="اكتب اسم المنتج..."
+                    icon="package"
+                    required
+                  />
+                </div>
 
-              <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">📦 اختر المنتج * (إجباري)</label>
-                <SearchableSelect
-                  options={products.map(p => ({
-                    id: p.id,
-                    label: p.name,
-                    sublabel: `متوفر: ${p.stock_quantity} حبة — ${p.category || 'عام'}`,
-                    badge: `${fmt(p.retail_price)} د.ج`,
-                  }))}
-                  value={selectedProductId}
-                  onChange={id => handleProductSaleChange(id)}
-                  placeholder="🔍 ابحث باسم المنتج أو القسم..."
-                  searchPlaceholder="اكتب اسم المنتج..."
-                  icon="package"
-                  required
-                />
-              </div>
-
-              {/* اختيار سعر التجزئة 1 أو تجزئة 2 */}
-              {selectedProductId && (() => {
-                const prod = products.find(p => p.id === selectedProductId);
-                if (!prod) return null;
-                return (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between bg-emerald-50/70 p-2 rounded-xl border border-emerald-200">
-                      <span className="text-xs font-black text-emerald-950">المتوفر حالياً بالمخزن:</span>
-                      <span className="text-xs font-black text-emerald-800 tabnum">{prod.stock_quantity} حبة</span>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-black text-slate-700 mb-1">🏷️ اعتمـد سعر البيع</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSalePriceType('retail1');
-                            setSaleUnitPrice(prod.retail_price);
-                            const cap = prod.pack_quantity || 1;
-                            const tot = prod.unit_type === 'pack' ? (salePacks * prod.retail_price) + (saleLoose * (prod.retail_price / cap)) : saleQty * prod.retail_price;
-                            setSalePaid(tot);
-                          }}
-                          className={`py-2 px-2 rounded-xl text-xs font-black border transition-all ${salePriceType === 'retail1' ? 'bg-emerald-600 text-white border-transparent shadow-sm' : 'bg-slate-100 text-slate-700 border-slate-200'}`}
-                        >
-                          تجزئة 1 ({prod.retail_price} د.ج)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const p2 = (prod.retail_price_2 || 0) > 0 ? prod.retail_price_2! : prod.retail_price;
-                            setSalePriceType('retail2');
-                            setSaleUnitPrice(p2);
-                            const cap = prod.pack_quantity || 1;
-                            const tot = prod.unit_type === 'pack' ? (salePacks * p2) + (saleLoose * (p2 / cap)) : saleQty * p2;
-                            setSalePaid(tot);
-                          }}
-                          className={`py-2 px-2 rounded-xl text-xs font-black border transition-all ${salePriceType === 'retail2' ? 'bg-sky-600 text-white border-transparent shadow-sm' : 'bg-slate-100 text-slate-700 border-slate-200'}`}
-                        >
-                          تجزئة 2 ({(prod.retail_price_2 || 0) > 0 ? `${prod.retail_price_2} د.ج` : 'غير محدد'})
-                        </button>
+                {/* اختيار سعر التجزئة 1 أو تجزئة 2 */}
+                {selectedProductId && (() => {
+                  const prod = products.find(p => p.id === selectedProductId);
+                  if (!prod) return null;
+                  return (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between bg-emerald-50/70 p-2 rounded-xl border border-emerald-200">
+                        <span className="text-xs font-black text-emerald-950">المتوفر حالياً بالمخزن:</span>
+                        <span className="text-xs font-black text-emerald-800 tabnum">{prod.stock_quantity} حبة</span>
                       </div>
-                    </div>
 
-                    {prod.unit_type === 'pack' ? (
-                      <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-2xl space-y-2">
-                        <p className="text-xs font-black text-indigo-950">📦 سعة الكرتونة = {prod.pack_quantity || 1} حبة</p>
+                      <div>
+                        <label className="block text-xs font-black text-slate-700 mb-1">🏷️ اعتمـد سعر البيع</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSalePriceType('retail1');
+                              setSaleUnitPrice(prod.retail_price);
+                              const cap = prod.pack_quantity || 1;
+                              const tot = prod.unit_type === 'pack' ? (salePacks * prod.retail_price) + (saleLoose * (prod.retail_price / cap)) : saleQty * prod.retail_price;
+                              setSalePaid(tot);
+                            }}
+                            className={`py-2 px-2 rounded-xl text-xs font-black border transition-all ${salePriceType === 'retail1' ? 'bg-emerald-600 text-white border-transparent shadow-sm' : 'bg-slate-100 text-slate-700 border-slate-200'}`}
+                          >
+                            تجزئة 1 ({prod.retail_price} د.ج)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const p2 = (prod.retail_price_2 || 0) > 0 ? prod.retail_price_2! : prod.retail_price;
+                              setSalePriceType('retail2');
+                              setSaleUnitPrice(p2);
+                              const cap = prod.pack_quantity || 1;
+                              const tot = prod.unit_type === 'pack' ? (salePacks * p2) + (saleLoose * (p2 / cap)) : saleQty * p2;
+                              setSalePaid(tot);
+                            }}
+                            className={`py-2 px-2 rounded-xl text-xs font-black border transition-all ${salePriceType === 'retail2' ? 'bg-sky-600 text-white border-transparent shadow-sm' : 'bg-slate-100 text-slate-700 border-slate-200'}`}
+                          >
+                            تجزئة 2 ({(prod.retail_price_2 || 0) > 0 ? `${prod.retail_price_2} د.ج` : 'غير محدد'})
+                          </button>
+                        </div>
+                      </div>
+
+                      {prod.unit_type === 'pack' ? (
+                        <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-2xl space-y-2">
+                          <p className="text-xs font-black text-indigo-950">📦 سعة الكرتونة = {prod.pack_quantity || 1} حبة</p>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-black text-indigo-950 mb-1">📦 عدد الكراتين</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={salePacks}
+                                onChange={e => {
+                                  const pk = +e.target.value;
+                                  setSalePacks(pk);
+                                  const price = saleUnitPrice || prod.retail_price;
+                                  const cap = prod.pack_quantity || 1;
+                                  const tot = (pk * price) + (saleLoose * (price / cap));
+                                  setSalePaid(tot);
+                                }}
+                                className="form-input text-center font-black text-base tabnum"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-black text-indigo-950 mb-1">🥛 حبات إضافية</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={saleLoose}
+                                onChange={e => {
+                                  const ls = +e.target.value;
+                                  setSaleLoose(ls);
+                                  const price = saleUnitPrice || prod.retail_price;
+                                  const cap = prod.pack_quantity || 1;
+                                  const tot = (salePacks * price) + (ls * (price / cap));
+                                  setSalePaid(tot);
+                                }}
+                                className="form-input text-center font-black text-base tabnum"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="block text-xs font-black text-indigo-950 mb-1">📦 عدد الكراتين</label>
-                            <input
-                              type="number"
-                              min="0"
-                              value={salePacks}
-                              onChange={e => {
-                                const pk = +e.target.value;
-                                setSalePacks(pk);
-                                const price = saleUnitPrice || prod.retail_price;
-                                const cap = prod.pack_quantity || 1;
-                                const tot = (pk * price) + (saleLoose * (price / cap));
-                                setSalePaid(tot);
-                              }}
-                              className="form-input text-center font-black text-base tabnum"
-                            />
+                            <label className="block text-xs font-black text-slate-600 mb-1.5">الكمية (بالحبة)</label>
+                            <input type="number" min="1" value={saleQty}
+                              onChange={e => { const q = +e.target.value; setSaleQty(q); setSalePaid(saleUnitPrice * q); }}
+                              className="form-input text-center font-black text-lg" />
                           </div>
                           <div>
-                            <label className="block text-xs font-black text-indigo-950 mb-1">🥛 حبات إضافية</label>
-                            <input
-                              type="number"
-                              min="0"
-                              value={saleLoose}
-                              onChange={e => {
-                                const ls = +e.target.value;
-                                setSaleLoose(ls);
-                                const price = saleUnitPrice || prod.retail_price;
-                                const cap = prod.pack_quantity || 1;
-                                const tot = (salePacks * price) + (ls * (price / cap));
-                                setSalePaid(tot);
-                              }}
-                              className="form-input text-center font-black text-base tabnum"
-                            />
+                            <label className="block text-xs font-black text-slate-600 mb-1.5">سعر التجزئة (د.ج)</label>
+                            <input type="number" value={saleUnitPrice}
+                              onChange={e => { const p = +e.target.value; setSaleUnitPrice(p); setSalePaid(p * saleQty); }}
+                              className="form-input font-black tabnum text-emerald-700" />
                           </div>
                         </div>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-black text-slate-600 mb-1.5">الكمية (بالحبة)</label>
-                          <input type="number" min="1" value={saleQty}
-                            onChange={e => { const q = +e.target.value; setSaleQty(q); setSalePaid(saleUnitPrice * q); }}
-                            className="form-input text-center font-black text-lg" />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-black text-slate-600 mb-1.5">سعر التجزئة (د.ج)</label>
-                          <input type="number" value={saleUnitPrice}
-                            onChange={e => { const p = +e.target.value; setSaleUnitPrice(p); setSalePaid(p * saleQty); }}
-                            className="form-input font-black tabnum text-emerald-700" />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
+                      )}
+                    </div>
+                  );
+                })()}
 
-              <div className="rounded-2xl p-3.5 bg-emerald-50 border border-emerald-200">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-slate-600">الإجمالي</span>
-                  <span className="font-black text-xl text-slate-900 tabnum">{fmt(saleTotal)} د.ج</span>
+                <div className="rounded-2xl p-3.5 bg-emerald-50 border border-emerald-200">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-slate-600">الإجمالي</span>
+                    <span className="font-black text-xl text-slate-900 tabnum">{fmt(saleTotal)} د.ج</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-slate-600 mb-1.5">💵 المبلغ المدفوع الآن (د.ج)</label>
+                  <input type="number" value={salePaid} onChange={e => setSalePaid(+e.target.value)} className="form-input font-black text-lg tabnum" />
+                  {saleTotal - salePaid > 0 && (
+                    <div className="flex items-center gap-1.5 mt-2 p-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-800">
+                      <Banknote size={14} className="shrink-0" />
+                      <p className="text-xs font-black">
+                        دين على الزبون: <span className="tabnum">{fmt(Math.max(0, saleTotal - salePaid))}</span> د.ج
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">💵 المبلغ المدفوع الآن (د.ج)</label>
-                <input type="number" value={salePaid} onChange={e => setSalePaid(+e.target.value)} className="form-input font-black text-lg tabnum" />
-                {saleTotal - salePaid > 0 && (
-                  <div className="flex items-center gap-1.5 mt-2 p-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-800">
-                    <Banknote size={14} className="shrink-0" />
-                    <p className="text-xs font-black">
-                      دين على الزبون: <span className="tabnum">{fmt(Math.max(0, saleTotal - salePaid))}</span> د.ج
-                    </p>
-                  </div>
-                )}
+              <div className="modal-footer">
+                <button type="submit" className="btn btn-primary w-full py-3.5 text-base shadow-md">
+                  <ShoppingCart size={18} strokeWidth={2.5} />
+                  تأكيد البيع وتسجيل الدين 🚀
+                </button>
               </div>
-
-              <button type="submit" className="btn btn-primary w-full py-4 text-base shadow-md">
-                <ShoppingCart size={18} strokeWidth={2.5} />
-                تأكيد البيع وتسجيل الدين 🚀
-              </button>
             </form>
           </div>
         </div>
@@ -771,152 +774,155 @@ export default function HomePage() {
               </button>
             </div>
 
-            <form onSubmit={executeBuy} className="modal-body space-y-4">
-
-              <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">🏭 اختر المورد * (إجباري)</label>
-                <SearchableSelect
-                  options={contacts.filter(c => c.type !== 'customer').map(c => ({
-                    id: c.id,
-                    label: c.name,
-                    sublabel: c.phone || 'بدون هاتف',
-                    badge: (Number(c.balance) || 0) < 0 ? `له علينا: ${fmt(Math.abs(c.balance))} د.ج` : 'حساب متوازن',
-                  }))}
-                  value={selectedSupplierId}
-                  onChange={id => setSelectedSupplierId(id)}
-                  placeholder="🔍 ابحث بالاسم أو الرقم لاختيار المورد..."
-                  searchPlaceholder="اكتب اسم المورد..."
-                  icon="user"
-                  required
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-black text-slate-600">📦 اختر المنتج * (إجباري)</label>
-                  <Link href="/inventory" onClick={() => setShowBuyModal(false)} className="text-[11px] font-black text-indigo-700 hover:underline">
-                    + إضافة منتج جديد للمخزن ➕
-                  </Link>
+            <form onSubmit={executeBuy} className="flex flex-col flex-1 overflow-hidden">
+              <div className="modal-body space-y-4">
+                <div>
+                  <label className="block text-xs font-black text-slate-600 mb-1.5">🏭 اختر المورد * (إجباري)</label>
+                  <SearchableSelect
+                    options={contacts.filter(c => c.type !== 'supplier').map(c => ({
+                      id: c.id,
+                      label: c.name,
+                      sublabel: c.phone || 'بدون هاتف',
+                      badge: (Number(c.balance) || 0) < 0 ? `له علينا: ${fmt(Math.abs(c.balance))} د.ج` : 'حساب متوازن',
+                    }))}
+                    value={selectedSupplierId}
+                    onChange={id => setSelectedSupplierId(id)}
+                    placeholder="🔍 ابحث بالاسم أو الرقم لاختيار المورد..."
+                    searchPlaceholder="اكتب اسم المورد..."
+                    icon="user"
+                    required
+                  />
                 </div>
-                <SearchableSelect
-                  options={products.map(p => ({
-                    id: p.id,
-                    label: p.name,
-                    sublabel: `موجود بالمخزن: ${p.stock_quantity} حبة — ${p.category || 'عام'}`,
-                    badge: `${fmt(p.cost_price)} د.ج`,
-                  }))}
-                  value={buyProductId}
-                  onChange={id => handleProductBuyChange(id)}
-                  placeholder="🔍 ابحث باسم المنتج أو القسم..."
-                  searchPlaceholder="اكتب اسم المنتج..."
-                  icon="package"
-                  required
-                  onAddNew={() => {
-                    setShowBuyModal(false);
-                    window.location.href = '/inventory?action=new';
-                  }}
-                  addNewText="تسجيل منتج جديد بالمخزن ➕"
-                />
-              </div>
 
-              {buyProductId && (() => {
-                const prod = products.find(p => p.id === buyProductId);
-                if (!prod) return null;
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-black text-slate-600">📦 اختر المنتج * (إجباري)</label>
+                    <Link href="/inventory" onClick={() => setShowBuyModal(false)} className="text-[11px] font-black text-indigo-700 hover:underline">
+                      + إضافة منتج جديد للمخزن ➕
+                    </Link>
+                  </div>
+                  <SearchableSelect
+                    options={products.map(p => ({
+                      id: p.id,
+                      label: p.name,
+                      sublabel: `موجود بالمخزن: ${p.stock_quantity} حبة — ${p.category || 'عام'}`,
+                      badge: `${fmt(p.cost_price)} د.ج`,
+                    }))}
+                    value={buyProductId}
+                    onChange={id => handleProductBuyChange(id)}
+                    placeholder="🔍 ابحث باسم المنتج أو القسم..."
+                    searchPlaceholder="اكتب اسم المنتج..."
+                    icon="package"
+                    required
+                    onAddNew={() => {
+                      setShowBuyModal(false);
+                      window.location.href = '/inventory?action=new';
+                    }}
+                    addNewText="تسجيل منتج جديد بالمخزن ➕"
+                  />
+                </div>
 
-                if (prod.unit_type === 'pack') {
-                  return (
-                    <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-2xl space-y-2">
-                      <p className="text-xs font-black text-indigo-950">📦 سعة الكرتونة = {prod.pack_quantity || 1} حبة</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-black text-indigo-950 mb-1">📦 عدد الكراتين</label>
-                          <input
-                            type="number"
-                            min="0"
-                            value={buyPacks}
-                            onChange={e => {
-                              const pk = +e.target.value;
-                              setBuyPacks(pk);
-                              const price = buyCostPrice || prod.cost_price;
-                              const cap = prod.pack_quantity || 1;
-                              const tot = (pk * price) + (buyLoose * (price / cap));
-                              setBuyPaid(tot);
-                            }}
-                            className="form-input text-center font-black text-base tabnum"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-black text-indigo-950 mb-1">🥛 حبات إضافية</label>
-                          <input
-                            type="number"
-                            min="0"
-                            value={buyLoose}
-                            onChange={e => {
-                              const ls = +e.target.value;
-                              setBuyLoose(ls);
-                              const price = buyCostPrice || prod.cost_price;
-                              const cap = prod.pack_quantity || 1;
-                              const tot = (buyPacks * price) + (ls * (price / cap));
-                              setBuyPaid(tot);
-                            }}
-                            className="form-input text-center font-black text-base tabnum"
-                          />
+                {buyProductId && (() => {
+                  const prod = products.find(p => p.id === buyProductId);
+                  if (!prod) return null;
+
+                  if (prod.unit_type === 'pack') {
+                    return (
+                      <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-2xl space-y-2">
+                        <p className="text-xs font-black text-indigo-950">📦 سعة الكرتونة = {prod.pack_quantity || 1} حبة</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-black text-indigo-950 mb-1">📦 عدد الكراتين</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={buyPacks}
+                              onChange={e => {
+                                const pk = +e.target.value;
+                                setBuyPacks(pk);
+                                const price = buyCostPrice || prod.cost_price;
+                                const cap = prod.pack_quantity || 1;
+                                const tot = (pk * price) + (buyLoose * (price / cap));
+                                setBuyPaid(tot);
+                              }}
+                              className="form-input text-center font-black text-base tabnum"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-black text-indigo-950 mb-1">🥛 حبات إضافية</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={buyLoose}
+                              onChange={e => {
+                                const ls = +e.target.value;
+                                setBuyLoose(ls);
+                                const price = buyCostPrice || prod.cost_price;
+                                const cap = prod.pack_quantity || 1;
+                                const tot = (buyPacks * price) + (ls * (price / cap));
+                                setBuyPaid(tot);
+                              }}
+                              className="form-input text-center font-black text-base tabnum"
+                            />
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
+                    );
+                  }
+                  return null;
+                })()}
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-black text-slate-600 mb-1.5">الكمية (بالحبة)</label>
-                  <input type="number" min="1" value={buyQty}
-                    onChange={e => { const q = +e.target.value; setBuyQty(q); setBuyPaid(buyCostPrice * q); }}
-                    className="form-input text-center font-black text-lg" />
-                </div>
-                <div>
-                  <label className="block text-xs font-black text-slate-600 mb-1.5">سعر الجملة (د.ج)</label>
-                  <input type="number" value={buyCostPrice}
-                    onChange={e => { const p = +e.target.value; setBuyCostPrice(p); setBuyPaid(p * buyQty); }}
-                    className="form-input font-black tabnum text-indigo-700" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">📅 تاريخ الصلاحية (اختياري)</label>
-                <input type="date" value={buyExpiry} onChange={e => setBuyExpiry(e.target.value)} className="form-input" />
-              </div>
-
-              <div className="rounded-2xl p-3.5 bg-indigo-50 border border-indigo-200">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-slate-600">إجمالي الشراء</span>
-                  <span className="font-black text-xl text-slate-900 tabnum">{fmt(buyTotal)} د.ج</span>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-black text-slate-600 mb-1.5">💵 المدفوع للمورد الآن</label>
-                <input type="number" value={buyPaid} onChange={e => setBuyPaid(+e.target.value)} className="form-input font-black text-lg tabnum" />
-                {buyTotal - buyPaid > 0 && (
-                  <div className="flex items-center gap-1.5 mt-2 p-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-800">
-                    <Banknote size={14} className="shrink-0" />
-                    <p className="text-xs font-black">
-                      دين للمورد علينا: <span className="tabnum">{fmt(Math.max(0, buyTotal - buyPaid))}</span> د.ج
-                    </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-black text-slate-600 mb-1.5">الكمية (بالحبة)</label>
+                    <input type="number" min="1" value={buyQty}
+                      onChange={e => { const q = +e.target.value; setBuyQty(q); setBuyPaid(buyCostPrice * q); }}
+                      className="form-input text-center font-black text-lg" />
                   </div>
-                )}
+                  <div>
+                    <label className="block text-xs font-black text-slate-600 mb-1.5">سعر الجملة (د.ج)</label>
+                    <input type="number" value={buyCostPrice}
+                      onChange={e => { const p = +e.target.value; setBuyCostPrice(p); setBuyPaid(p * buyQty); }}
+                      className="form-input font-black tabnum text-indigo-700" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-slate-600 mb-1.5">📅 تاريخ الصلاحية (اختياري)</label>
+                  <input type="date" value={buyExpiry} onChange={e => setBuyExpiry(e.target.value)} className="form-input" />
+                </div>
+
+                <div className="rounded-2xl p-3.5 bg-indigo-50 border border-indigo-200">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-slate-600">إجمالي الشراء</span>
+                    <span className="font-black text-xl text-slate-900 tabnum">{fmt(buyTotal)} د.ج</span>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-black text-slate-600 mb-1.5">💵 المدفوع للمورد الآن</label>
+                  <input type="number" value={buyPaid} onChange={e => setBuyPaid(+e.target.value)} className="form-input font-black text-lg tabnum" />
+                  {buyTotal - buyPaid > 0 && (
+                    <div className="flex items-center gap-1.5 mt-2 p-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-800">
+                      <Banknote size={14} className="shrink-0" />
+                      <p className="text-xs font-black">
+                        دين للمورد علينا: <span className="tabnum">{fmt(Math.max(0, buyTotal - buyPaid))}</span> د.ج
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <button
-                type="submit"
-                className="btn w-full py-4 text-base text-white shadow-md"
-                style={{ background: 'var(--grad-indigo)' }}
-              >
-                <Package size={18} strokeWidth={2.5} />
-                تأكيد الشراء وزيادة المخزون 📦
-              </button>
+              <div className="modal-footer">
+                <button
+                  type="submit"
+                  className="btn w-full py-3.5 text-base text-white shadow-md"
+                  style={{ background: 'var(--grad-indigo)' }}
+                >
+                  <Package size={18} strokeWidth={2.5} />
+                  تأكيد الشراء وزيادة المخزون 🚀
+                </button>
+              </div>
             </form>
           </div>
         </div>
