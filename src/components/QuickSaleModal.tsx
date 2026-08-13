@@ -55,17 +55,18 @@ export default function QuickSaleModal({
 
   useEffect(() => {
     if (isOpen) {
-      const c: Contact[]     = getLocalData('tajer_smart_contacts_v1', []);
+      const rawContacts: Contact[] = getLocalData('tajer_smart_contacts_v1', []);
+      const customersOnly = rawContacts.filter(c => c.type !== 'supplier');
       const p: Product[]     = getLocalData('tajer_smart_products_v1', []);
       const t: Transaction[] = getLocalData('tajer_smart_transactions_v1', []);
-      setContacts(c);
+      setContacts(customersOnly);
       setProducts(p);
       setTransactions(t);
 
       if (initialCustomerId) {
         setSelectedCustomerId(initialCustomerId);
-      } else if (c.length > 0) {
-        setSelectedCustomerId(c[0].id);
+      } else if (customersOnly.length > 0) {
+        setSelectedCustomerId(customersOnly[0].id);
       }
       setCart([]);
       setPaidAmount(0);

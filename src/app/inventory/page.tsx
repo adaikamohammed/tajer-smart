@@ -647,12 +647,10 @@ export default function InventoryPage() {
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
                   <div>
                     <label className="block text-xs font-black text-slate-700 mb-1.5">📦 وحدة التعبئة والبيع</label>
-                    <div className="grid grid-cols-4 gap-1.5">
+                    <div className="grid grid-cols-2 gap-2">
                       {[
                         { val: 'piece' as const, label: 'حبة 🥛' },
                         { val: 'pack'  as const, label: 'كرتونة 📦' },
-                        { val: 'kg'    as const, label: 'كغ ⚖️' },
-                        { val: 'liter' as const, label: 'لتر 🧴' },
                       ].map(u => (
                         <button
                           key={u.val}

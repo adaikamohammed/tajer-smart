@@ -321,33 +321,39 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* ══ زرا البيع والشراء والبيع السريع ══ */}
-      <div className="space-y-2">
+      {/* ══ زرا البيع السريع والشراء السريع ══ */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Link
           href="/quick-sale"
-          className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 border border-emerald-400/30 touch-active hover:brightness-105 transition-all block text-center"
+          className="p-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white shadow-lg shadow-emerald-600/20 border border-emerald-400/30 touch-active hover:brightness-105 transition-all flex items-center justify-between group"
         >
-          <Zap size={20} className="fill-amber-300 text-amber-300 animate-pulse inline-block" />
-          <span>⚡ بيع سريع لزبون محدد (صفحة واسعة + فحص المخزون والطباعة)</span>
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center shrink-0">
+              <Zap size={24} className="fill-amber-300 text-amber-300 animate-pulse" />
+            </div>
+            <div>
+              <span className="font-black text-base text-white block">⚡ بيع سريع (للزبائن)</span>
+              <span className="text-xs text-emerald-100 font-bold block">سلة مبيعات متعددة + طباعة</span>
+            </div>
+          </div>
+          <ChevronLeft size={20} className="text-emerald-200 group-hover:-translate-x-1 transition-transform" />
         </Link>
 
-        <div className="grid grid-cols-2 gap-3">
-          <button onClick={() => setShowSaleModal(true)} className="action-btn sale">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-1 bg-white/20 backdrop-blur-sm">
-              <ShoppingCart size={20} className="text-white" strokeWidth={2.5} />
+        <Link
+          href="/quick-buy"
+          className="p-4 rounded-2xl bg-gradient-to-r from-indigo-700 via-slate-800 to-indigo-900 text-white shadow-lg shadow-indigo-900/20 border border-indigo-400/30 touch-active hover:brightness-105 transition-all flex items-center justify-between group"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center shrink-0">
+              <ShoppingBag size={24} className="text-indigo-200" strokeWidth={2.5} />
             </div>
-            <span className="font-black text-sm text-white">بيع فردي</span>
-            <span className="text-[10px] text-white/80 font-semibold">خصم قطعي</span>
-          </button>
-
-          <button onClick={() => setShowBuyModal(true)} className="action-btn purchase">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-1 bg-white/20 backdrop-blur-sm">
-              <ShoppingBag size={20} className="text-white" strokeWidth={2.5} />
+            <div>
+              <span className="font-black text-base text-white block">🛒 شراء سريع (للموردين)</span>
+              <span className="text-xs text-indigo-200 font-bold block">شحنات متعددة + زيادة المخزون</span>
             </div>
-            <span className="font-black text-sm text-white">شراء جديد</span>
-            <span className="text-[10px] text-white/80 font-semibold">زيادة المخزون</span>
-          </button>
-        </div>
+          </div>
+          <ChevronLeft size={20} className="text-indigo-200 group-hover:-translate-x-1 transition-transform" />
+        </Link>
       </div>
 
       {/* ══ بطاقات الإجماليات المالية — مربوطة مباشرة بالصفحات (متجاوبة مع التابلات) ══ */}

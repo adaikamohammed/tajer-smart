@@ -56,6 +56,9 @@ export interface TransactionItem {
   product_id: string;
   product_name: string;
   quantity: number;
+  packs_count?: number;
+  loose_count?: number;
+  pack_quantity?: number;
   unit_type?: string;
   unit_price: number;
   cost_price: number;
@@ -265,19 +268,41 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
   // ─ جدول المنتجات ─
   let itemsHTML = '';
   if (receipt.items && receipt.items.length > 0) {
-    const rows = receipt.items.map(i => `
+    const rows = receipt.items.map(i => {
+      const isPackUnit = i.unit_type === 'pack' || (i.pack_quantity && i.pack_quantity > 1);
+      const packCap = i.pack_quantity || 1;
+      const packs = i.packs_count !== undefined
+        ? i.packs_count
+        : isPackUnit ? Math.floor((Number(i.quantity) || 0) / packCap) : 0;
+      const loose = i.loose_count !== undefined
+        ? i.loose_count
+        : isPackUnit ? ((Number(i.quantity) || 0) % packCap) : (Number(i.quantity) || 0);
+
+      const packsDisplay = isPackUnit ? `${packs}` : '-';
+      const looseDisplay = `${loose}`;
+      const lineTotal = (Number(i.quantity) || 0) * (Number(i.unit_price) || 0);
+
+      return `
     <tr>
       <td class="name-cell">${i.product_name}</td>
-      <td>${Number(i.quantity) || 0}</td>
-      <td>${fmt(i.unit_price)}</td>
-      <td>${fmt((Number(i.quantity) || 0) * (Number(i.unit_price) || 0))}</td>
-    </tr>`).join('');
+      <td style="text-align: center;">${packsDisplay}</td>
+      <td style="text-align: center;">${looseDisplay}</td>
+      <td style="text-align: center;">${fmt(i.unit_price)}</td>
+      <td style="text-align: left; font-weight: 900;">${fmt(lineTotal)}</td>
+    </tr>`;
+    }).join('');
 
     itemsHTML = `
     <div class="section-title">── تفاصيل البضاعة ──</div>
     <table class="items-table">
       <thead>
-        <tr><th>المنتج</th><th>ك</th><th>السعر</th><th>المجموع</th></tr>
+        <tr>
+          <th style="text-align: right;">المنتج</th>
+          <th style="text-align: center;">كرتونة</th>
+          <th style="text-align: center;">حبة</th>
+          <th style="text-align: center;">السعر</th>
+          <th style="text-align: left;">المجموع</th>
+        </tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>
