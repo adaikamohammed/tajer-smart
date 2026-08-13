@@ -259,22 +259,24 @@ function QuickSaleContent() {
       setLocalData('tajer_smart_contacts_v1', updatedContacts);
       setLocalData('tajer_smart_transactions_v1', updatedTx);
 
-      const receiptId = generateReceiptNumber();
+      const receipt = {
+        id: generateReceiptNumber(),
+        receipt_type: 'SALE' as const,
+        contact_id: selectedContact.id,
+        contact_name: selectedContact.name,
+        contact_phone: selectedContact.phone,
+        items: txItems,
+        total_amount: totalAmount,
+        paid_amount: paidAmount,
+        debt_amount: debtAmount,
+        note: note.trim() || undefined,
+        created_at: newTx.created_at,
+      };
+
+      saveReceipt(receipt);
 
       if (shouldPrint) {
-        printThermalReceipt({
-          id: receiptId,
-          receipt_type: 'SALE',
-          contact_id: selectedContact.id,
-          contact_name: selectedContact.name,
-          contact_phone: selectedContact.phone,
-          items: txItems,
-          total_amount: totalAmount,
-          paid_amount: paidAmount,
-          debt_amount: debtAmount,
-          note: note.trim() || undefined,
-          created_at: new Date().toISOString(),
-        });
+        printThermalReceipt(receipt);
       }
 
       toast(

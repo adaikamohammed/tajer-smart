@@ -5,16 +5,17 @@ import Link from 'next/link';
 import {
   getLocalData, setLocalData, Contact, Transaction, DebtPayment,
   createWhatsAppLink, generateAccountStatementText,
-  printThermalReceipt, generateReceiptNumber,
+  printThermalReceipt, generateReceiptNumber, Receipt as ReceiptType,
 } from '@/lib/store';
 import { queueDeletedContact, subscribeToCloudChanges, syncStoreWithVercelCloud } from '@/lib/cloud-sync';
 import { toast } from '@/components/Toast';
 import {
   Users, UserPlus, Phone, MessageCircle,
   Search, X, Camera, MapPin, Tag, AlertTriangle,
-  Edit2, Trash2, Receipt, Copy, Check, ArrowRight, Zap
+  Edit2, Trash2, Receipt, Copy, Check, ArrowRight, Zap, Printer, Eye
 } from 'lucide-react';
 import QuickSaleModal from '@/components/QuickSaleModal';
+import ReceiptViewModal from '@/components/ReceiptViewModal';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
 
@@ -46,10 +47,11 @@ export default function ContactsPage() {
   const [viewingContact,     setViewingContact]     = useState<Contact | null>(null);
   const [statementContact,   setStatementContact]   = useState<Contact | null>(null);
 
-  // البيع السريع لزبون محدد
-  const [showQuickSale,       setShowQuickSale]       = useState(false);
-  const [quickSaleCustomerId, setQuickSaleCustomerId] = useState<string>('');
-  const [copiedStatement,    setCopiedStatement]    = useState(false);
+  // البيع السريع لزبون محدد ومعاينة الأوصال
+  const [showQuickSale,          setShowQuickSale]          = useState(false);
+  const [quickSaleCustomerId,    setQuickSaleCustomerId]    = useState<string>('');
+  const [copiedStatement,       setCopiedStatement]       = useState(false);
+  const [viewingReceiptForModal, setViewingReceiptForModal] = useState<ReceiptType | null>(null);
 
   // Form states
   const [name,             setName]             = useState('');
@@ -333,28 +335,112 @@ export default function ContactsPage() {
             {transactions.filter(t => t.contact_id === viewingContact.id).length === 0 ? (
               <p className="text-xs text-slate-400 font-bold p-4 bg-slate-50 rounded-xl text-center">لا توجد عمليات بيع أو شراء مدونة بعد لهذا الشخص</p>
             ) : (
-              <div className="space-y-2">
-                {transactions.filter(t => t.contact_id === viewingContact.id).map(tx => (
-                  <div key={tx.id} className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5">
-                    <div className="flex justify-between items-center text-xs font-black">
-                      <span className={tx.tx_type === 'SALE' ? 'text-emerald-700' : 'text-indigo-700'}>
-                        {tx.tx_type === 'SALE' ? '🛒 بيع للزبون' : '📦 شراء من المورد'}
-                      </span>
-                      <span className="text-slate-400 font-normal text-[10px]">
-                        {new Date(tx.created_at).toLocaleString('ar-EG')}
-                      </span>
-                    </div>
+              <div className="space-y-3">
+                {transactions.filter(t => t.contact_id === viewingContact.id).map(tx => {
+                  const rObj: ReceiptType = {
+                    id: tx.id,
+                    receipt_type: tx.tx_type === 'SALE' ? 'SALE' : 'PURCHASE',
+                    contact_id: viewingContact.id,
+                    contact_name: viewingContact.name,
+                    contact_phone: viewingContact.phone,
+                    items: tx.items,
+                    total_amount: tx.total_amount,
+                    paid_amount: tx.paid_amount,
+                    debt_amount: tx.debt_amount,
+                    note: tx.notes,
+                    created_at: tx.created_at,
+                  };
 
-                    <div className="text-xs text-slate-800 font-bold">
-                      المنتجات: {tx.items.map(i => `${i.product_name} (${i.quantity} قطعة)`).join(', ')}
-                    </div>
+                  return (
+                    <div key={tx.id} className="p-3.5 rounded-2xl bg-white border-2 border-slate-200 shadow-sm space-y-2.5">
+                      {/* رأس الوصل الحراري */}
+                      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                        <div>
+                          <div className="flex items-center gap-1.5 font-black text-xs">
+                            <span className={tx.tx_type === 'SALE' ? 'text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200' : 'text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200'}>
+                              {tx.tx_type === 'SALE' ? '🧾 وصل بيع' : '🧾 وصل شراء'}
+                            </span>
+                            <span className="font-mono text-slate-500 text-[11px] font-bold">#{tx.id}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-400 font-bold block mt-0.5">
+                            📅 {new Date(tx.created_at).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' })}
+                          </span>
+                        </div>
 
-                    <div className="flex justify-between items-center text-xs pt-1 border-t border-slate-200/60">
-                      <span className="text-slate-600 font-bold">الإجمالي: <strong className="tabnum text-slate-900">{fmt(tx.total_amount)} د.ج</strong></span>
-                      <span className="text-emerald-700 font-bold">المدفوع: <strong className="tabnum">{fmt(tx.paid_amount)} د.ج</strong></span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => printThermalReceipt(rObj)}
+                            className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[11px] font-black flex items-center gap-1 shadow-sm transition-all"
+                            title="طباعة الوصل الحراري"
+                          >
+                            <Printer size={13} />
+                            <span>طباعة 🖨️</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setViewingReceiptForModal(rObj)}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[11px] font-black flex items-center gap-1 border transition-all"
+                            title="معاينة الوصل"
+                          >
+                            <Eye size={13} />
+                            <span>معاينة 👁️</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 📊 جدول تفاصيل المواد 5 أعمدة */}
+                      <div className="overflow-x-auto rounded-xl border border-slate-200">
+                        <table className="w-full text-right text-[11px]">
+                          <thead className="bg-slate-100/80 text-slate-700 font-black border-b border-slate-200">
+                            <tr>
+                              <th className="p-1.5 text-right">المنتج</th>
+                              <th className="p-1.5 text-center">كرتونة</th>
+                              <th className="p-1.5 text-center">حبة</th>
+                              <th className="p-1.5 text-center">السعر</th>
+                              <th className="p-1.5 text-left">المجموع</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
+                            {tx.items.map((item, idx) => {
+                              const cap = item.pack_quantity || 1;
+                              const isPack = item.unit_type === 'pack';
+                              const packs = isPack ? (item.packs_count ?? Math.floor(item.quantity / cap)) : 0;
+                              const loose = isPack ? (item.loose_count ?? (item.quantity % cap)) : item.quantity;
+                              const loosePrice = isPack ? (item.unit_price / cap) : item.unit_price;
+                              const lineTotal = isPack
+                                ? (packs * item.unit_price) + (loose * loosePrice)
+                                : (item.quantity * item.unit_price);
+
+                              return (
+                                <tr key={idx} className="hover:bg-slate-50/50">
+                                  <td className="p-1.5 font-bold text-slate-900">{item.product_name}</td>
+                                  <td className="p-1.5 text-center font-black tabnum text-indigo-700">{isPack ? `${packs} 📦` : '-'}</td>
+                                  <td className="p-1.5 text-center font-black tabnum text-emerald-700">{loose > 0 || !isPack ? `${loose} 🥛` : '-'}</td>
+                                  <td className="p-1.5 text-center font-black tabnum">{fmt(item.unit_price)}</td>
+                                  <td className="p-1.5 text-left font-black tabnum text-slate-900">{fmt(lineTotal)} د.ج</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* ملخص الحساب والأرقام */}
+                      <div className="flex items-center justify-between pt-1 text-xs border-t border-slate-100 font-bold bg-slate-50 p-2 rounded-xl">
+                        <div className="flex items-center gap-3">
+                          <span className="text-slate-600">الإجمالي: <strong className="tabnum text-slate-900 text-sm">{fmt(tx.total_amount)} د.ج</strong></span>
+                          <span className="text-emerald-700">المدفوع: <strong className="tabnum">{fmt(tx.paid_amount)} د.ج</strong></span>
+                        </div>
+                        {tx.debt_amount > 0 && (
+                          <span className="text-rose-700 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200">
+                            الدين: <strong className="tabnum">{fmt(tx.debt_amount)} د.ج</strong>
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -692,6 +778,11 @@ export default function ContactsPage() {
             if (updated) setViewingContact(updated);
           }
         }}
+      />
+      {/* ══ مودال معاينة الوصل الحراري ══ */}
+      <ReceiptViewModal
+        receipt={viewingReceiptForModal}
+        onClose={() => setViewingReceiptForModal(null)}
       />
     </div>
   );
