@@ -9,7 +9,7 @@ import {
 import { toast } from '@/components/Toast';
 import {
   ShoppingBag, Search, Plus, Minus, Trash2, Printer, CheckCircle2,
-  AlertTriangle, UserPlus, ArrowRight, UserCheck, Package, DollarSign
+  AlertTriangle, UserPlus, ArrowRight, UserCheck, Package, DollarSign, X
 } from 'lucide-react';
 import Link from 'next/link';
 import { SearchableSelect } from '@/components/SearchableSelect';
@@ -42,6 +42,16 @@ export default function QuickBuyPage() {
   const [newSuppName,         setNewSuppName]         = useState('');
   const [newSuppPhone,        setNewSuppPhone]        = useState('');
   const [isSubmitting,        setIsSubmitting]        = useState(false);
+
+  // مودال إضافة منتج جديد للمخزن لحظياً
+  const [showAddProduct,     setShowAddProduct]     = useState(false);
+  const [newProdName,        setNewProdName]        = useState('');
+  const [newProdCategory,    setNewProdCategory]    = useState('مواد غذائية');
+  const [newProdUnitType,    setNewProdUnitType]    = useState<'piece' | 'pack'>('piece');
+  const [newProdPackQty,     setNewProdPackQty]     = useState<number>(12);
+  const [newProdCostPrice,   setNewProdCostPrice]   = useState<number>(0);
+  const [newProdRetailPrice, setNewProdRetailPrice] = useState<number>(0);
+  const [newProdStockQty,    setNewProdStockQty]    = useState<number>(0);
 
   useEffect(() => {
     const rawContacts: Contact[] = getLocalData('tajer_smart_contacts_v1', []);
@@ -192,6 +202,42 @@ export default function QuickBuyPage() {
     setNewSuppName('');
     setNewSuppPhone('');
     toast(`✅ تم إضافة المورد "${newS.name}" بنجاح!`);
+  };
+
+  // إضافة منتج جديد للمخزن لحظياً وإضافته للسلة
+  const handleCreateProduct = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProdName.trim()) {
+      toast('يرجى كتابة اسم المنتج', 'error');
+      return;
+    }
+    const newP: Product = {
+      id: 'p_' + Date.now(),
+      name: newProdName.trim(),
+      category: newProdCategory.trim() || 'عام',
+      unit_type: newProdUnitType,
+      pack_quantity: newProdUnitType === 'pack' ? (Number(newProdPackQty) || 1) : 1,
+      cost_price: Number(newProdCostPrice) || 0,
+      retail_price: Number(newProdRetailPrice) || 0,
+      stock_quantity: Number(newProdStockQty) || 0,
+      min_stock_alert: 5,
+      created_at: new Date().toISOString(),
+    };
+
+    const allProducts: Product[] = getLocalData('tajer_smart_products_v1', []);
+    const updatedAll = [newP, ...allProducts];
+    setLocalData('tajer_smart_products_v1', updatedAll);
+
+    setProducts(updatedAll);
+    addToCart(newP); // إضافة أوتوماتيكية لسلة الشراء!
+    setShowAddProduct(false);
+
+    // إعادة تعيين الحقول
+    setNewProdName('');
+    setNewProdCostPrice(0);
+    setNewProdRetailPrice(0);
+    setNewProdStockQty(0);
+    toast(`✅ تم إضافة المنتج "${newP.name}" للمخزن وإضافته لسلة الشراء فوراً!`);
   };
 
   // تنفيذ عملية الشراء
@@ -347,6 +393,8 @@ export default function QuickBuyPage() {
           value={selectedSupplierId}
           onChange={setSelectedSupplierId}
           placeholder="ابحث عن اسم المورد برقم الهاتف أو الاسم..."
+          onAddNew={() => setShowAddSupplier(true)}
+          addNewText="إضافة مورد جديد ➕"
         />
       </div>
 
@@ -389,19 +437,143 @@ export default function QuickBuyPage() {
         </div>
       )}
 
+      {/* مودال إضافة منتج جديد للمخزن لحظياً */}
+      {showAddProduct && (
+        <div className="modal-overlay">
+          <div className="modal-sheet max-w-md">
+            <div className="modal-header">
+              <h3 className="font-black text-sm text-slate-800">إضافة منتج جديد للمخزن لحظياً 📦</h3>
+              <button onClick={() => setShowAddProduct(false)} className="btn btn-ghost p-1 rounded-xl text-slate-400">✕</button>
+            </div>
+            <form onSubmit={handleCreateProduct} className="p-4 space-y-3">
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-1">اسم المنتج *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="مثال: زيت زيتون 1 لتر"
+                  value={newProdName}
+                  onChange={e => setNewProdName(e.target.value)}
+                  className="form-input text-xs font-bold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1">الفئة / القسم</label>
+                  <input
+                    type="text"
+                    placeholder="مواد غذائية"
+                    value={newProdCategory}
+                    onChange={e => setNewProdCategory(e.target.value)}
+                    className="form-input text-xs font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1">وحدة التعبئة والبيع</label>
+                  <div className="grid grid-cols-2 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setNewProdUnitType('piece')}
+                      className={`py-1.5 rounded-xl text-xs font-black border ${newProdUnitType === 'piece' ? 'bg-indigo-600 text-white border-transparent' : 'bg-slate-100 text-slate-700'}`}
+                    >
+                      حبة 🥛
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewProdUnitType('pack')}
+                      className={`py-1.5 rounded-xl text-xs font-black border ${newProdUnitType === 'pack' ? 'bg-indigo-600 text-white border-transparent' : 'bg-slate-100 text-slate-700'}`}
+                    >
+                      كرتونة 📦
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {newProdUnitType === 'pack' && (
+                <div className="p-2.5 bg-indigo-50 rounded-xl border border-indigo-200">
+                  <label className="block text-xs font-black text-indigo-950 mb-1">سعة الكرتونة الواحدة (عدد الحبات)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={newProdPackQty}
+                    onChange={e => setNewProdPackQty(+e.target.value)}
+                    onFocus={e => e.target.select()}
+                    className="form-input text-center font-black text-sm text-indigo-950 bg-white"
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1">سعر الجملة / الشراء *</label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    value={newProdCostPrice}
+                    onChange={e => setNewProdCostPrice(+e.target.value)}
+                    onFocus={e => e.target.select()}
+                    className="form-input font-black text-xs text-indigo-700 tabnum"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1">سعر التجزئة 1 *</label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    value={newProdRetailPrice}
+                    onChange={e => setNewProdRetailPrice(+e.target.value)}
+                    onFocus={e => e.target.select()}
+                    className="form-input font-black text-xs text-emerald-700 tabnum"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-1">الكمية الحالية المتوفرة بالمخزن</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={newProdStockQty}
+                  onChange={e => setNewProdStockQty(+e.target.value)}
+                  onFocus={e => e.target.select()}
+                  className="form-input font-black text-xs tabnum"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button type="button" onClick={() => setShowAddProduct(false)} className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold">إلغاء</button>
+                <button type="submit" className="px-4 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-black shadow-sm">حفظ وإضافة لسلة الشراء 🛒</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* ── 📦 2. البحث واختيار المنتجات للشراء ── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         {/* قسم المنتجات المتاحة (يسار في الحاسوب) */}
         <div className="lg:col-span-7 space-y-3">
-          <div className="relative">
-            <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="ابحث عن المنتجات بالاسم أو الفئة لإضافتها لشحنة الشراء..."
-              value={productSearch}
-              onChange={e => setProductSearch(e.target.value)}
-              className="form-input pr-9 text-xs font-bold bg-white"
-            />
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="ابحث عن المنتجات بالاسم أو الفئة لإضافتها لشحنة الشراء..."
+                value={productSearch}
+                onChange={e => setProductSearch(e.target.value)}
+                className="form-input pr-9 text-xs font-bold bg-white"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAddProduct(true)}
+              className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black flex items-center gap-1 shrink-0 shadow-sm touch-active"
+            >
+              <Plus size={15} /> منتج جديد ➕
+            </button>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-[460px] overflow-y-auto pr-1">
