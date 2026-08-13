@@ -310,7 +310,7 @@ function QuickSaleContent() {
       </div>
 
       {/* ── 👤 1. اختيار الزبون ── */}
-      <div className="glass-card p-4 space-y-3 border-2 border-emerald-500/20 bg-white">
+      <div className="glass-card p-4 space-y-3 border-2 border-emerald-500/20 bg-white relative z-30">
         <div className="flex items-center justify-between">
           <label className="text-sm font-black text-slate-800 flex items-center gap-2">
             <User className="w-4 h-4 text-emerald-600" />
@@ -370,7 +370,7 @@ function QuickSaleContent() {
       </div>
 
       {/* ── 🔍 2. البحث عن المنتجات وفحص المخزون ── */}
-      <div className="glass-card p-4 space-y-3 bg-white">
+      <div className="glass-card p-4 space-y-3 bg-white relative z-10">
         <div className="flex items-center justify-between">
           <h3 className="font-black text-sm text-slate-800 flex items-center gap-2">
             <Search className="w-4 h-4 text-indigo-600" />

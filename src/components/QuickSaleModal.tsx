@@ -340,7 +340,7 @@ export default function QuickSaleModal({
         <div className="modal-body overflow-y-auto space-y-4 flex-1 py-4">
 
           {/* ── 👤 1. اختيار الزبون ── */}
-          <div className="space-y-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+          <div className="space-y-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200 relative z-30">
             <div className="flex items-center justify-between">
               <label className="text-xs font-black text-slate-700 flex items-center gap-1.5">
                 <User size={15} className="text-emerald-600" />
@@ -400,7 +400,7 @@ export default function QuickSaleModal({
           </div>
 
           {/* ── 🔍 2. البحث السريع عن منتج وفحص المخزون ── */}
-          <div className="space-y-2">
+          <div className="space-y-2 relative z-10">
             <div className="relative">
               <Search size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
               <input

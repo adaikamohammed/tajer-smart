@@ -368,7 +368,7 @@ export default function QuickBuyPage() {
       </div>
 
       {/* ── 🚚 1. اختيار المورد (الموردين فقط) ── */}
-      <div className="glass-card p-4 space-y-3 border border-indigo-200/80 bg-indigo-50/30">
+      <div className="glass-card p-4 space-y-3 border border-indigo-200/80 bg-indigo-50/30 relative z-30">
         <div className="flex items-center justify-between">
           <label className="text-xs font-black text-indigo-950 flex items-center gap-1.5">
             <UserCheck size={16} className="text-indigo-600" />

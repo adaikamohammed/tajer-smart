@@ -81,7 +81,7 @@ export function SearchableSelect({
   };
 
   return (
-    <div className={`relative w-full ${isOpen ? 'z-40' : ''}`} ref={containerRef}>
+    <div className={`relative w-full ${isOpen ? 'z-50' : ''}`} ref={containerRef}>
       {/* 🔘 زر القائمة المنسدلة الرئيسي */}
       <button
         type="button"
@@ -121,7 +121,7 @@ export function SearchableSelect({
 
       {/* 🔽 قائمة الخيارات المنسدلة مع حقل البحث المباشر */}
       {isOpen && (
-        <div className="absolute z-50 top-full right-0 left-0 mt-1 bg-white border border-slate-300 rounded-2xl shadow-2xl overflow-hidden space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
+        <div className="absolute z-[100] top-full right-0 left-0 mt-1 bg-white border-2 border-slate-300 rounded-2xl shadow-2xl overflow-hidden space-y-1 animate-in fade-in slide-in-from-top-2 duration-150">
           {/* حقل البحث داخل القائمة */}
           <div className="p-2 border-b border-slate-100 bg-slate-50/90 sticky top-0 z-10 flex items-center gap-2">
             <Search className="w-4 h-4 text-slate-400 shrink-0 mr-1" />
