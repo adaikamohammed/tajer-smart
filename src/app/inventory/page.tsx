@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import {
   getLocalData, setLocalData, Product, Contact, Transaction, TransactionItem,
   getProductCategories, saveProductCategory,
-  printThermalReceipt, generateReceiptNumber,
+  printThermalReceipt, generateReceiptNumber, smartMatchText,
 } from '@/lib/store';
 import { queueDeletedProduct, subscribeToCloudChanges, syncStoreWithVercelCloud, clearAllStoreDataAndCloud } from '@/lib/cloud-sync';
 import { toast } from '@/components/Toast';
@@ -50,6 +50,9 @@ export default function InventoryPage() {
 
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [searchQuery,    setSearchQuery]    = useState('');
+  const [currentPage,    setCurrentPage]    = useState(1);
+  const [zeroingProduct, setZeroingProduct] = useState<Product | null>(null);
+  const itemsPerPage = 10;
 
   // Modals & Dedicated Subpage
   const [showAddModal,      setShowAddModal]      = useState(false);
@@ -117,8 +120,8 @@ export default function InventoryPage() {
     setEditingProduct(null);
     setName(''); setCategory('مواد غذائية'); setCustomCategory('');
     setUnitType('piece'); setPackQuantity(1);
-    setCostPrice(0); setRetailPrice(0); setRetailPrice2(0); setStockQuantity(10);
-    setInitialPacks(2); setInitialLoose(0);
+    setCostPrice(0); setRetailPrice(0); setRetailPrice2(0); setStockQuantity(0);
+    setInitialPacks(0); setInitialLoose(0);
     setMinStockAlert(5); setExpiryDate(''); setExpiryAlertDays(30); setPhotoUrl('');
     setShowAddModal(true);
   };
@@ -167,7 +170,9 @@ export default function InventoryPage() {
       } : p);
       setProducts(up);
       setLocalData('tajer_smart_products_v1', up);
+      setShowAddModal(false);
       toast('✅ تم تحديث المنتج بنجاح');
+      setTimeout(() => syncStoreWithVercelCloud(), 50);
       if (viewingProduct?.id === editingProduct.id) {
         setViewingProduct(up.find(x => x.id === editingProduct.id) || null);
       }
@@ -208,8 +213,8 @@ export default function InventoryPage() {
     if (e) e.stopPropagation();
     setAdjustingProduct(p);
     setAdjustType(type);
-    setAdjustPacks(p.unit_type === 'pack' ? 1 : 0);
-    setAdjustLoose(p.unit_type === 'pack' ? 0 : 1);
+    setAdjustPacks(0);
+    setAdjustLoose(0);
     setSelectedPersonId('');
     setSelectedPriceType('retail1');
     setShowAdjustModal(true);
@@ -250,147 +255,168 @@ export default function InventoryPage() {
     toast(adjustType === 'add' ? `✅ تم إضافة +${actualPieces} حبة كمخزون بالجرد` : `✅ تم خصم -${actualPieces} حبة من المخزون بالجرد`, 'success');
   };
 
+  const handleExecuteZeroing = () => {
+    if (!zeroingProduct) return;
+    const up = products.map(p => p.id === zeroingProduct.id ? { ...p, stock_quantity: 0 } : p);
+    setProducts(up);
+    setLocalData('tajer_smart_products_v1', up);
+    toast(`✅ تم تصفير كمية ${zeroingProduct.name} إلى 0 بنجاح`, 'success');
+    setTimeout(() => syncStoreWithVercelCloud(), 50);
+    if (viewingProduct?.id === zeroingProduct.id) {
+      setViewingProduct({ ...zeroingProduct, stock_quantity: 0 });
+    }
+    setZeroingProduct(null);
+  };
+
   const sorted = useMemo(() => {
     const q = searchQuery.toLowerCase();
     return products
       .filter(p => {
-        const matchCat = filterCategory === 'all' ? true : p.category === filterCategory;
-        const matchSearch = p.name.toLowerCase().includes(q) || (p.category && p.category.toLowerCase().includes(q));
+        let matchCat = true;
+        if (filterCategory === 'low_stock') {
+          matchCat = p.stock_quantity <= p.min_stock_alert || p.stock_quantity <= 0;
+        } else if (filterCategory !== 'all') {
+          matchCat = p.category === filterCategory;
+        }
+        const matchSearch = !q || smartMatchText(p.name, q) || (p.category && smartMatchText(p.category, q)) || (p.barcode && smartMatchText(p.barcode, q));
         return matchCat && matchSearch;
       })
-      .sort((a, b) => {
-        if (a.expiry_date && b.expiry_date) {
-          return new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime();
-        }
-        if (a.expiry_date) return -1;
-        if (b.expiry_date) return 1;
-        return a.stock_quantity - b.stock_quantity;
-      });
+      .sort((a, b) => a.name.localeCompare(b.name, 'ar'));
   }, [products, searchQuery, filterCategory]);
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / itemsPerPage));
+  const paginatedProducts = useMemo(() => {
+    if (searchQuery.trim() !== '' || filterCategory === 'low_stock') {
+      return sorted;
+    }
+    const start = (currentPage - 1) * itemsPerPage;
+    return sorted.slice(start, start + itemsPerPage);
+  }, [sorted, currentPage, itemsPerPage, searchQuery, filterCategory]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, filterCategory]);
 
   const lowCount     = products.filter(p => p.stock_quantity <= p.min_stock_alert).length;
   const expiredCount = products.filter(p => (getExpiryStatus(p.expiry_date, p.expiry_alert_days)?.cardCls === 'expired')).length;
   const profitPct    = (c: number, r: number) => c > 0 ? Math.round(((r - c) / c) * 100) : 0;
 
   /* ══ 🏛️ الصفحة الفرعية الكملة للمنتج (DEDICATED PRODUCT SUBPAGE) ══ */
-  if (viewingProduct) {
-    const productSales = transactions.filter(t => t.tx_type === 'SALE' && t.items.some(i => i.product_id === viewingProduct.id));
-    const productPurchases = transactions.filter(t => t.tx_type === 'PURCHASE' && t.items.some(i => i.product_id === viewingProduct.id));
+  const productSales = viewingProduct ? transactions.filter(t => t.tx_type === 'SALE' && t.items.some(i => i.product_id === viewingProduct.id)) : [];
+  const productPurchases = viewingProduct ? transactions.filter(t => t.tx_type === 'PURCHASE' && t.items.some(i => i.product_id === viewingProduct.id)) : [];
 
-    return (
-      <div className="space-y-4">
-        <button
-          onClick={() => setViewingProduct(null)}
-          className="flex items-center gap-2 px-3 py-2 bg-slate-900 text-white rounded-xl text-xs font-black shadow-sm touch-active"
-        >
-          <ArrowRight className="w-4 h-4" />
-          العودة للمخزن 📦
-        </button>
-
-        <div className="glass-card p-5 space-y-4 border-2 border-indigo-500/30">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center text-3xl shrink-0 overflow-hidden shadow-md">
-              {viewingProduct.photo_url ? <img src={viewingProduct.photo_url} alt="" className="w-full h-full object-cover rounded-2xl" /> : autoEmoji(viewingProduct.name)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <h2 className="font-black text-xl text-slate-900 leading-tight truncate">{viewingProduct.name}</h2>
-              {viewingProduct.category && (
-                <span className="text-xs bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-md font-bold inline-block mt-1">
-                  قسم: {viewingProduct.category}
-                </span>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 text-center text-xs font-black">
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl">
-              <p className="text-[10px] text-emerald-700 font-bold">المخزون المتوفر</p>
-              <p className="text-xl text-emerald-900 tabnum mt-0.5">{viewingProduct.stock_quantity} حبة</p>
-            </div>
-            <div className="p-3 bg-slate-100 border rounded-2xl">
-              <p className="text-[10px] text-slate-500 font-bold">سعر الشراء (جملة)</p>
-              <p className="text-base text-slate-800 tabnum mt-0.5">{fmt(viewingProduct.cost_price)} د.ج</p>
-            </div>
-            <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-2xl">
-              <p className="text-[10px] text-indigo-700 font-bold">سعر البيع (تجزئة)</p>
-              <p className="text-base text-indigo-900 tabnum mt-0.5">{fmt(viewingProduct.retail_price)} د.ج</p>
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <button onClick={(e) => openEditModal(viewingProduct, e)} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-black text-xs border">
-              تعديل بيانات المنتج ✏️
-            </button>
-            <button onClick={(e) => handleDeleteProduct(viewingProduct.id, e)} className="py-2.5 px-4 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-black text-xs border border-rose-200">
-              حذف المنتج 🗑️
-            </button>
-          </div>
-        </div>
-
-        {/* 📋 سجل المبيعات بالزبائن والتواريخ */}
-        <div className="glass-card p-4 space-y-3">
-          <h3 className="font-black text-sm text-slate-800 flex items-center gap-2">
-            <ArrowUpLeft className="w-4 h-4 text-emerald-600" />
-            سجل المبيعات (الزبائن الذين اشتروا هذا المنتج)
-          </h3>
-          {productSales.length === 0 ? (
-            <p className="text-xs text-slate-400 font-bold p-4 bg-slate-50 rounded-xl text-center">لا توجد مبيعات مدونة لهذا المنتج بعد</p>
-          ) : (
-            <div className="space-y-2">
-              {productSales.map(tx => {
-                const item = tx.items.find(i => i.product_id === viewingProduct.id);
-                return (
-                  <div key={tx.id} className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 flex justify-between items-center text-xs font-bold">
-                    <div>
-                      <p className="text-emerald-950 font-black">الزبون: {tx.contact_name || 'زبون كاش'}</p>
-                      <p className="text-[10px] text-emerald-600">{new Date(tx.created_at).toLocaleString('ar-EG')}</p>
-                    </div>
-                    <div className="text-left">
-                      <span className="badge badge-success text-[10px]">الكمية: {item?.quantity}</span>
-                      <p className="tabnum font-black text-emerald-800 text-xs mt-0.5">{fmt((item?.unit_price || 0) * (item?.quantity || 1))} د.ج</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* 🚚 سجل التوريد بالموردين */}
-        <div className="glass-card p-4 space-y-3">
-          <h3 className="font-black text-sm text-slate-800 flex items-center gap-2">
-            <ArrowDownRight className="w-4 h-4 text-indigo-600" />
-            سجل الشراء والتوريد (الموردون)
-          </h3>
-          {productPurchases.length === 0 ? (
-            <p className="text-xs text-slate-400 font-bold p-4 bg-slate-50 rounded-xl text-center">لا توجد مقتنيات مدونة من الموردين</p>
-          ) : (
-            <div className="space-y-2">
-              {productPurchases.map(tx => {
-                const item = tx.items.find(i => i.product_id === viewingProduct.id);
-                return (
-                  <div key={tx.id} className="p-3 rounded-2xl bg-indigo-50 border border-indigo-200 flex justify-between items-center text-xs font-bold">
-                    <div>
-                      <p className="text-indigo-950 font-black">المورد: {tx.contact_name || 'مورد نقدي'}</p>
-                      <p className="text-[10px] text-indigo-600">{new Date(tx.created_at).toLocaleString('ar-EG')}</p>
-                    </div>
-                    <div className="text-left">
-                      <span className="badge badge-indigo text-[10px]">الكمية: {item?.quantity}</span>
-                      <p className="tabnum font-black text-indigo-800 text-xs mt-0.5">{fmt(tx.total_amount)} د.ج</p>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  /* ══ 📦 القائمة الرئيسية للمخزن ══ */
   return (
     <div className="space-y-4">
+      {viewingProduct ? (
+        <div className="space-y-4">
+          <button
+            onClick={() => setViewingProduct(null)}
+            className="flex items-center gap-2 px-3 py-2 bg-slate-900 text-white rounded-xl text-xs font-black shadow-sm touch-active"
+          >
+            <ArrowRight className="w-4 h-4" />
+            العودة للمخزن 📦
+          </button>
+
+          <div className="glass-card p-5 space-y-4 border-2 border-indigo-500/30">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center text-3xl shrink-0 overflow-hidden shadow-md">
+                {viewingProduct.photo_url ? <img src={viewingProduct.photo_url} alt="" className="w-full h-full object-cover rounded-2xl" /> : autoEmoji(viewingProduct.name)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h2 className="font-black text-xl text-slate-900 leading-tight truncate">{viewingProduct.name}</h2>
+                {viewingProduct.category && (
+                  <span className="text-xs bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-md font-bold inline-block mt-1">
+                    قسم: {viewingProduct.category}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 text-center text-xs font-black">
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl">
+                <p className="text-[10px] text-emerald-700 font-bold">المخزون المتوفر</p>
+                <p className="text-xl text-emerald-900 tabnum mt-0.5">{viewingProduct.stock_quantity} حبة</p>
+              </div>
+              <div className="p-3 bg-slate-100 border rounded-2xl">
+                <p className="text-[10px] text-slate-500 font-bold">سعر الشراء (جملة)</p>
+                <p className="text-base text-slate-800 tabnum mt-0.5">{fmt(viewingProduct.cost_price)} د.ج</p>
+              </div>
+              <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-2xl">
+                <p className="text-[10px] text-indigo-700 font-bold">سعر البيع (تجزئة)</p>
+                <p className="text-base text-indigo-900 tabnum mt-0.5">{fmt(viewingProduct.retail_price)} د.ج</p>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={(e) => openEditModal(viewingProduct, e)} className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black text-xs shadow-md">
+                تعديل بيانات المنتج ✏️
+              </button>
+              <button onClick={(e) => handleDeleteProduct(viewingProduct.id, e)} className="py-2.5 px-4 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-black text-xs border border-rose-200">
+                حذف المنتج 🗑️
+              </button>
+            </div>
+          </div>
+
+          {/* 📋 سجل المبيعات بالزبائن والتواريخ */}
+          <div className="glass-card p-4 space-y-3">
+            <h3 className="font-black text-sm text-slate-800 flex items-center gap-2">
+              <ArrowUpLeft className="w-4 h-4 text-emerald-600" />
+              سجل المبيعات (الزبائن الذين اشتروا هذا المنتج)
+            </h3>
+            {productSales.length === 0 ? (
+              <p className="text-xs text-slate-400 font-bold p-4 bg-slate-50 rounded-xl text-center">لا توجد مبيعات مدونة لهذا المنتج بعد</p>
+            ) : (
+              <div className="space-y-2">
+                {productSales.map(tx => {
+                  const item = tx.items.find(i => i.product_id === viewingProduct.id);
+                  return (
+                    <div key={tx.id} className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 flex justify-between items-center text-xs font-bold">
+                      <div>
+                        <p className="text-emerald-950 font-black">الزبون: {tx.contact_name || 'زبون كاش'}</p>
+                        <p className="text-[10px] text-emerald-600">{new Date(tx.created_at).toLocaleString('ar-EG')}</p>
+                      </div>
+                      <div className="text-left">
+                        <span className="badge badge-success text-[10px]">الكمية: {item?.quantity}</span>
+                        <p className="tabnum font-black text-emerald-800 text-xs mt-0.5">{fmt((item?.unit_price || 0) * (item?.quantity || 1))} د.ج</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* 🚚 سجل التوريد بالموردين */}
+          <div className="glass-card p-4 space-y-3">
+            <h3 className="font-black text-sm text-slate-800 flex items-center gap-2">
+              <ArrowDownRight className="w-4 h-4 text-indigo-600" />
+              سجل الشراء والتوريد (الموردون)
+            </h3>
+            {productPurchases.length === 0 ? (
+              <p className="text-xs text-slate-400 font-bold p-4 bg-slate-50 rounded-xl text-center">لا توجد مقتنيات مدونة من الموردين</p>
+            ) : (
+              <div className="space-y-2">
+                {productPurchases.map(tx => {
+                  const item = tx.items.find(i => i.product_id === viewingProduct.id);
+                  return (
+                    <div key={tx.id} className="p-3 rounded-2xl bg-indigo-50 border border-indigo-200 flex justify-between items-center text-xs font-bold">
+                      <div>
+                        <p className="text-indigo-950 font-black">المورد: {tx.contact_name || 'مورد نقدي'}</p>
+                        <p className="text-[10px] text-indigo-600">{new Date(tx.created_at).toLocaleString('ar-EG')}</p>
+                      </div>
+                      <div className="text-left">
+                        <span className="badge badge-indigo text-[10px]">الكمية: {item?.quantity}</span>
+                        <p className="tabnum font-black text-indigo-800 text-xs mt-0.5">{fmt(tx.total_amount)} د.ج</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
 
       {/* ─── بانر وصل البيع بعد خصم المخزون (اختياري) ─── */}
       {lastSale && (
@@ -474,12 +500,16 @@ export default function InventoryPage() {
         </button>
       </div>
 
-      {/* ── 🏷️ فلاتر الأقسام التلقائية (مواد غذائية / مواد تنظيف فقط) ── */}
+      {/* ── 🏷️ فلاتر الأقسام والفرز التلقائي ── */}
       <div className="flex flex-wrap gap-1.5 items-center">
-        <span className="text-[10px] font-bold text-slate-400 ml-1">الأقسام:</span>
+        <span className="text-[10px] font-bold text-slate-400 ml-1">التصفية:</span>
         <button onClick={() => setFilterCategory('all')}
           className={`px-3 py-1 rounded-xl text-xs font-black ${filterCategory === 'all' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600'}`}>
-          كل الأقسام
+          كل المنتجات (أبجدي أ-ي)
+        </button>
+        <button onClick={() => setFilterCategory('low_stock')}
+          className={`px-3 py-1 rounded-xl text-xs font-black ${filterCategory === 'low_stock' ? 'bg-amber-600 text-white shadow-sm' : 'bg-amber-50 text-amber-800 border border-amber-200'}`}>
+          ⚠️ المخزون المنخفض ({lowCount})
         </button>
         {categories
           .filter(cat => cat === 'مواد غذائية' || cat === 'مواد تنظيف')
@@ -491,15 +521,15 @@ export default function InventoryPage() {
           ))}
       </div>
 
-      {/* ── قائمة المنتجات مرتبة في شبكة متجاوبة مع التابلات والكمبيوتر ── */}
+      {/* ── قائمة المنتجات 10 بالصفحة ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {sorted.length === 0 ? (
+        {paginatedProducts.length === 0 ? (
           <div className="empty-state">
             <Package size={40} className="opacity-25" />
             <p className="font-bold text-sm">{searchQuery ? 'لا يوجد منتج بهذا الاسم' : 'المخزن فارغ — أضف أول منتج!'}</p>
           </div>
         ) : (
-          sorted.map((p) => {
+          paginatedProducts.map((p) => {
             const expiry    = getExpiryStatus(p.expiry_date, p.expiry_alert_days);
             const isLow     = p.stock_quantity <= p.min_stock_alert;
             const cardState = expiry?.cardCls ?? (isLow ? 'low' : 'ok');
@@ -528,11 +558,19 @@ export default function InventoryPage() {
                     </div>
                   </div>
 
-                  <div className="rounded-xl px-3 py-2 text-center shrink-0 bg-emerald-50 border border-emerald-200">
+                  <div className="rounded-xl px-2.5 py-1.5 text-center shrink-0 bg-emerald-50 border border-emerald-200">
                     <p className="text-[10px] font-bold text-slate-500">المخزون</p>
-                    <p className="font-black text-xl tabnum text-emerald-800 leading-tight">
+                    <p className="font-black text-lg tabnum text-emerald-800 leading-tight">
                       {p.stock_quantity}
                     </p>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setZeroingProduct(p); }}
+                      className="mt-1 px-1.5 py-0.5 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded text-[10px] font-black border border-rose-200 block w-full"
+                      title="تصفير الكمية"
+                    >
+                      0️⃣ تصفير
+                    </button>
                   </div>
                 </div>
 
@@ -584,6 +622,33 @@ export default function InventoryPage() {
           })
         )}
       </div>
+
+      {/* ── 📄 أزرار الترقيم بين الصفحات (Pagination) ── */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-4 border-t border-slate-200">
+          <button
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            className="px-4 py-2 bg-slate-100 disabled:opacity-40 text-slate-800 rounded-xl text-xs font-black border"
+          >
+            ← الصفحة السابقة
+          </button>
+
+          <span className="text-xs font-black text-slate-700">
+            صفحة <strong className="text-emerald-700 font-extrabold">{currentPage}</strong> من {totalPages} ({sorted.length} منتج)
+          </span>
+
+          <button
+            disabled={currentPage === totalPages}
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            className="px-4 py-2 bg-slate-100 disabled:opacity-40 text-slate-800 rounded-xl text-xs font-black border"
+          >
+            الصفحة التالية →
+          </button>
+        </div>
+      )}
+      </>
+      )}
 
       {/* ══ Modal إضافة / تعديل منتج ══ */}
       {showAddModal && (
@@ -692,23 +757,17 @@ export default function InventoryPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] font-black text-slate-600 mb-1">سعر الشراء (د.ج) *</label>
-                    <input type="number" required min="0" placeholder="800"
-                      value={costPrice || ''} onChange={e => setCostPrice(+e.target.value)} className="form-input tabnum text-xs" />
+                    <label className="block text-xs font-black text-slate-700 mb-1">سعر الشراء (سعر الحبة الواحدة) *</label>
+                    <input type="number" required min="0" placeholder="0"
+                      value={costPrice || ''} onChange={e => setCostPrice(+e.target.value)} className="form-input tabnum text-xs font-bold" />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-black text-emerald-800 mb-1">سعر تجزئة 1 *</label>
-                    <input type="number" required min="0" placeholder="1,100"
+                    <label className="block text-xs font-black text-emerald-800 mb-1">سعر التجزئة / البيع (سعر الحبة الواحدة) *</label>
+                    <input type="number" required min="0" placeholder="0"
                       value={retailPrice || ''} onChange={e => setRetailPrice(+e.target.value)}
                       className="form-input tabnum text-xs font-black text-emerald-700" />
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-black text-sky-800 mb-1">سعر تجزئة 2 (خاص)</label>
-                    <input type="number" min="0" placeholder="1,050"
-                      value={retailPrice2 || ''} onChange={e => setRetailPrice2(+e.target.value)}
-                      className="form-input tabnum text-xs font-black text-sky-700" />
                   </div>
                 </div>
 
@@ -805,32 +864,70 @@ export default function InventoryPage() {
               </button>
             </div>
 
-            <form onSubmit={executeAdjustStock} className="flex flex-col flex-1 overflow-hidden">
-              <div className="modal-body space-y-4">
-                <div className="p-3 bg-slate-100 rounded-xl text-xs font-bold text-slate-800 flex justify-between">
-                  <span>المنتج: {adjustingProduct.name}</span>
-                  <span>الموجود بالمخزن: {adjustingProduct.stock_quantity} حبة</span>
-                </div>
+            {(() => {
+              const packCap = Number(adjustingProduct.pack_quantity) || 1;
+              const numPacks = Number(adjustPacks) || 0;
+              const numLoose = Number(adjustLoose) || 0;
+              const deltaPieces = adjustingProduct.unit_type === 'pack'
+                ? (numPacks * packCap) + numLoose
+                : numLoose;
+              const curStock = Number(adjustingProduct.stock_quantity) || 0;
+              const newStock = adjustType === 'add'
+                ? (curStock + deltaPieces)
+                : Math.max(0, curStock - deltaPieces);
 
-                {/* اختيار الكمية بالكرتونة + الحبات الفردية */}
-                {adjustingProduct.unit_type === 'pack' ? (
-                  <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-2xl space-y-3">
-                    <p className="text-xs font-black text-indigo-900">📦 سعة الكرتونة الواحدة = {adjustingProduct.pack_quantity || 1} حبة</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-black text-indigo-950 mb-1">📦 عدد الكراتين</label>
-                        <input
-                          type="number"
-                          min="0"
-                          placeholder="0"
-                          value={adjustPacks || ''}
-                          onChange={e => setAdjustPacks(+e.target.value)}
-                          onFocus={e => e.target.select()}
-                          className="form-input text-center font-black text-base tabnum"
-                        />
+              return (
+                <form onSubmit={executeAdjustStock} className="flex flex-col flex-1 overflow-hidden">
+                  <div className="modal-body space-y-4">
+                    <div className="p-3 bg-slate-100 rounded-xl text-xs font-bold text-slate-800 flex justify-between">
+                      <span>المنتج: {adjustingProduct.name}</span>
+                      <span>الموجود بالمخزن: <strong className="text-slate-900">{curStock}</strong> حبة</span>
+                    </div>
+
+                    {/* إشعار المعاينة الحسابية اللحظية */}
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl text-center text-xs font-bold text-emerald-900 space-y-1">
+                      <p>
+                        {adjustType === 'add' ? '➕ التعديل بالإصافة' : '➖ التعديل بالخصم'}: <strong className="text-emerald-800 font-extrabold">{deltaPieces} حبة</strong>
+                      </p>
+                      <p className="text-[11px] text-emerald-700">
+                        سيصبح المخزون النهائي: <strong className="text-slate-900 font-extrabold text-sm">{curStock}</strong> ⬅️ <strong className="text-emerald-800 font-extrabold text-sm">{newStock} حبة</strong>
+                      </p>
+                    </div>
+
+                    {/* اختيار الكمية بالكرتونة + الحبات الفردية */}
+                    {adjustingProduct.unit_type === 'pack' ? (
+                      <div className="p-3 bg-indigo-50/70 border border-indigo-200 rounded-2xl space-y-3">
+                        <p className="text-xs font-black text-indigo-900">📦 سعة الكرتونة الواحدة = {packCap} حبة</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-black text-indigo-950 mb-1">📦 عدد الكراتين</label>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={adjustPacks || ''}
+                              onChange={e => setAdjustPacks(+e.target.value)}
+                              onFocus={e => e.target.select()}
+                              className="form-input text-center font-black text-base tabnum"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-black text-indigo-950 mb-1">🥛 حبات فردية</label>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={adjustLoose || ''}
+                              onChange={e => setAdjustLoose(+e.target.value)}
+                              onFocus={e => e.target.select()}
+                              className="form-input text-center font-black text-base tabnum"
+                            />
+                          </div>
+                        </div>
                       </div>
+                    ) : (
                       <div>
-                        <label className="block text-xs font-black text-indigo-950 mb-1">🥛 حبات إضافية فردية</label>
+                        <label className="block text-xs font-black text-slate-700 mb-1.5">الكمية (بالحبة)</label>
                         <input
                           type="number"
                           min="0"
@@ -838,36 +935,44 @@ export default function InventoryPage() {
                           value={adjustLoose || ''}
                           onChange={e => setAdjustLoose(+e.target.value)}
                           onFocus={e => e.target.select()}
-                          className="form-input text-center font-black text-base tabnum"
+                          className="form-input text-center font-black text-lg tabnum"
                         />
                       </div>
-                    </div>
-                    <p className="text-[11px] font-bold text-indigo-700 text-center">
-                      إجمالي الكمية: {((adjustPacks * (adjustingProduct.pack_quantity || 1)) + adjustLoose)} حبة
-                    </p>
+                    )}
                   </div>
-                ) : (
-                  <div>
-                    <label className="block text-xs font-black text-slate-700 mb-1.5">الكمية (بالحبة)</label>
-                    <input
-                      type="number"
-                      required
-                      min="1"
-                      value={adjustLoose || ''}
-                      onChange={e => setAdjustLoose(+e.target.value)}
-                      onFocus={e => e.target.select()}
-                      className="form-input text-center font-black text-lg tabnum"
-                    />
-                  </div>
-                )}
-              </div>
 
-              <div className="modal-footer">
-                <button type="submit" className="btn btn-primary w-full py-3.5 text-base shadow-md">
-                  تأكيد العملية وتحديث المخزون ✅
+                  <div className="modal-footer">
+                    <button type="submit" className="btn btn-primary w-full py-3.5 text-base shadow-md">
+                      تأكيد العملية وتحديث المخزون ✅
+                    </button>
+                  </div>
+                </form>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* ══ Modal تأكيد تصفير كمية المنتج ══ */}
+      {zeroingProduct && (
+        <div className="modal-overlay" onClick={() => setZeroingProduct(null)}>
+          <div className="modal-sheet" onClick={e => e.stopPropagation()}>
+            <div className="modal-handle" />
+            <div className="modal-body space-y-4 text-center py-4">
+              <div className="text-4xl">⚠️</div>
+              <h3 className="font-black text-slate-900 text-lg">تصفير كمية المنتج</h3>
+              <p className="text-sm text-slate-600">
+                هل أنت متأكد من تصفير كمية المنتج <strong className="text-slate-900">({zeroingProduct.name})</strong> وإرجاعها إلى <strong className="text-rose-600">0</strong> بدلاً من ({zeroingProduct.stock_quantity})؟
+              </p>
+              <div className="grid grid-cols-2 gap-3 mt-4">
+                <button onClick={() => setZeroingProduct(null)} className="py-3 bg-slate-100 text-slate-800 rounded-xl font-black text-sm border">
+                  إلغاء
+                </button>
+                <button onClick={handleExecuteZeroing} className="py-3 bg-rose-600 text-white rounded-xl font-black text-sm">
+                  تأكيد التصفير 0️⃣
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}

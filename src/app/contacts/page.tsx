@@ -6,6 +6,7 @@ import {
   getLocalData, setLocalData, Contact, Transaction, DebtPayment,
   createWhatsAppLink, generateAccountStatementText,
   printThermalReceipt, generateReceiptNumber, Receipt as ReceiptType,
+  deleteReceipt, formatDateLatin,
 } from '@/lib/store';
 import { queueDeletedContact, subscribeToCloudChanges, syncStoreWithVercelCloud } from '@/lib/cloud-sync';
 import { toast } from '@/components/Toast';
@@ -76,6 +77,19 @@ export default function ContactsPage() {
     const unsubscribe = subscribeToCloudChanges(refreshData);
     return () => unsubscribe();
   }, []);
+
+  const handleDeleteReceipt = (txId: string) => {
+    if (!confirm('⚠️ هل أنت متأكد من حذف هذا الوصل؟ سيتم إلغاء تأثيره على المخزون والدين ورصيد الشخص.')) return;
+    deleteReceipt(txId);
+    toast('✅ تم حذف الوصل وإلغاء تأثيره بنجاح', 'success');
+    const freshTransactions: Transaction[] = getLocalData('tajer_smart_transactions_v1', []);
+    const freshContacts: Contact[] = getLocalData('tajer_smart_contacts_v1', []);
+    setTransactions(freshTransactions);
+    setContacts(freshContacts);
+    if (viewingContact) {
+      setViewingContact(freshContacts.find(c => c.id === viewingContact.id) || null);
+    }
+  };
 
   const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -354,24 +368,24 @@ export default function ContactsPage() {
                   return (
                     <div key={tx.id} className="p-3.5 rounded-2xl bg-white border-2 border-slate-200 shadow-sm space-y-2.5">
                       {/* رأس الوصل الحراري */}
-                      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                        <div>
-                          <div className="flex items-center gap-1.5 font-black text-xs">
-                            <span className={tx.tx_type === 'SALE' ? 'text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200' : 'text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200'}>
+                      <div className="flex items-center justify-between gap-2 border-b border-slate-200 pb-2 flex-wrap sm:flex-nowrap">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 font-black text-xs flex-wrap">
+                            <span className={tx.tx_type === 'SALE' ? 'text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 shrink-0' : 'text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200 shrink-0'}>
                               {tx.tx_type === 'SALE' ? '🧾 وصل بيع' : '🧾 وصل شراء'}
                             </span>
-                            <span className="font-mono text-slate-500 text-[11px] font-bold">#{tx.id}</span>
+                            <span className="font-mono text-slate-500 text-[11px] font-bold truncate">#{tx.id.length > 12 ? tx.id.slice(-8) : tx.id}</span>
                           </div>
                           <span className="text-[10px] text-slate-400 font-bold block mt-0.5">
-                            📅 {new Date(tx.created_at).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' })}
+                            📅 {formatDateLatin(tx.created_at)}
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1.5 shrink-0">
                           <button
                             type="button"
                             onClick={() => printThermalReceipt(rObj)}
-                            className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[11px] font-black flex items-center gap-1 shadow-sm transition-all"
+                            className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black flex items-center gap-1 shadow-sm transition-all shrink-0"
                             title="طباعة الوصل الحراري"
                           >
                             <Printer size={13} />
@@ -379,12 +393,12 @@ export default function ContactsPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => setViewingReceiptForModal(rObj)}
-                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[11px] font-black flex items-center gap-1 border transition-all"
-                            title="معاينة الوصل"
+                            onClick={() => handleDeleteReceipt(tx.id)}
+                            className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-black flex items-center gap-1 shadow-sm transition-all shrink-0"
+                            title="حذف الوصل"
                           >
-                            <Eye size={13} />
-                            <span>معاينة 👁️</span>
+                            <Trash2 size={13} />
+                            <span>حذف 🗑️</span>
                           </button>
                         </div>
                       </div>
@@ -778,11 +792,6 @@ export default function ContactsPage() {
             if (updated) setViewingContact(updated);
           }
         }}
-      />
-      {/* ══ مودال معاينة الوصل الحراري ══ */}
-      <ReceiptViewModal
-        receipt={viewingReceiptForModal}
-        onClose={() => setViewingReceiptForModal(null)}
       />
     </div>
   );

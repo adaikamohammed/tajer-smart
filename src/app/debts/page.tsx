@@ -4,14 +4,15 @@ import { useState, useEffect } from 'react';
 import {
   getLocalData, setLocalData, Contact, DebtPayment, Transaction,
   createWhatsAppLink, generateAccountStatementText,
-  printThermalReceipt, generateReceiptNumber,
+  printThermalReceipt, generateReceiptNumber, formatDateLatin, saveReceipt,
 } from '@/lib/store';
 import { toast } from '@/components/Toast';
 import {
   Receipt, ArrowUpRight, ArrowDownLeft,
   MessageCircle, CheckCircle2, DollarSign,
-  Search, X, Megaphone, TrendingDown, Clock, Eye, Printer,
+  Search, X, Megaphone, TrendingDown, Clock, Eye, Printer, Plus, UserPlus,
 } from 'lucide-react';
+import { SearchableSelect } from '@/components/SearchableSelect';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
 
@@ -24,9 +25,18 @@ export default function DebtsPage() {
 
   const [showSettleModal,  setShowSettleModal]  = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showAddDebtModal, setShowAddDebtModal] = useState(false);
   const [selectedContact,  setSelectedContact]  = useState<Contact | null>(null);
-  const [settleAmount,     setSettleAmount]     = useState(0);
+  const [settleAmount,     setSettleAmount]     = useState<string | number>('');
   const [settleNote,       setSettleNote]       = useState('');
+  
+  // حقول إضافة دين جديد مباشر
+  const [newDebtContactId, setNewDebtContactId] = useState('');
+  const [newDebtName,      setNewDebtName]      = useState('');
+  const [newDebtAmount,    setNewDebtAmount]    = useState('');
+  const [newDebtDir,       setNewDebtDir]       = useState<'to_us' | 'we_owe'>('to_us');
+  const [newDebtNote,      setNewDebtNote]      = useState('');
+
   // حالة آخر عملية تسديد للطباعة الفورية
   const [lastPayment,      setLastPayment]      = useState<{ contact: Contact; amount: number; type: 'COLLECTED' | 'PAID_OUT'; note?: string; balanceAfter: number } | null>(null);
 
@@ -66,14 +76,15 @@ export default function DebtsPage() {
 
   const executeSettlement = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedContact || settleAmount <= 0) { toast('يرجى إدخال مبلغ صحيح', 'error'); return; }
+    const numAmount = parseFloat(String(settleAmount).replace(',', '.')) || 0;
+    if (!selectedContact || numAmount <= 0) { toast('يرجى إدخال مبلغ صحيح', 'error'); return; }
     const isCollecting = selectedContact.balance > 0;
 
     const np: DebtPayment = {
       id: 'pay_' + Date.now(),
       contact_id: selectedContact.id,
       contact_name: selectedContact.name,
-      amount: settleAmount,
+      amount: numAmount,
       payment_type: isCollecting ? 'COLLECTED' : 'PAID_OUT',
       note: settleNote.trim() || undefined,
       created_at: new Date().toISOString(),
@@ -82,16 +93,16 @@ export default function DebtsPage() {
     const uc = contacts.map(c => {
       if (c.id === selectedContact.id) {
         const nb = isCollecting
-          ? Math.max(0, c.balance - settleAmount)
-          : Math.min(0, c.balance + settleAmount);
+          ? Math.max(0, c.balance - numAmount)
+          : Math.min(0, c.balance + numAmount);
         return { ...c, balance: nb };
       }
       return c;
     });
 
     const balanceAfter = isCollecting
-      ? Math.max(0, selectedContact.balance - settleAmount)
-      : Math.min(0, selectedContact.balance + settleAmount);
+      ? Math.max(0, selectedContact.balance - numAmount)
+      : Math.min(0, selectedContact.balance + numAmount);
 
     const up = [np, ...payments];
     setContacts(uc); setPayments(up);
@@ -101,7 +112,7 @@ export default function DebtsPage() {
     // حفظ معلومات آخر تسديد لعرض زر الطباعة
     setLastPayment({
       contact: selectedContact,
-      amount: settleAmount,
+      amount: numAmount,
       type: isCollecting ? 'COLLECTED' : 'PAID_OUT',
       note: settleNote.trim() || undefined,
       balanceAfter,
@@ -109,8 +120,8 @@ export default function DebtsPage() {
 
     setShowSettleModal(false);
     toast(isCollecting
-      ? `✅ تم تحصيل ${fmt(settleAmount)} د.ج من ${selectedContact.name}`
-      : `✅ تم سداد ${fmt(settleAmount)} د.ج للمورد`, 'success');
+      ? `✅ تم تحصيل ${fmt(numAmount)} د.ج من ${selectedContact.name}`
+      : `✅ تم سداد ${fmt(numAmount)} د.ج للمورد`, 'success');
   };
 
   const printPaymentReceipt = () => {
@@ -142,6 +153,98 @@ export default function DebtsPage() {
       created_at:    new Date().toISOString(),
     });
     toast('🖨️ جارٍ فتح كشف الحساب الحراري...', 'success');
+  };
+
+  const handleSaveNewDebt = (e: React.FormEvent) => {
+    e.preventDefault();
+    const numAmount = parseFloat(String(newDebtAmount).replace(',', '.')) || 0;
+    if (numAmount <= 0) { toast('يرجى كتابة مبلغ دين صحيح', 'error'); return; }
+
+    let targetContact: Contact | null = null;
+    let updatedContacts = [...contacts];
+
+    if (newDebtContactId) {
+      targetContact = contacts.find(c => c.id === newDebtContactId) || null;
+    } else if (newDebtName.trim()) {
+      const created: Contact = {
+        id: 'c_' + Date.now(),
+        name: newDebtName.trim(),
+        phone: '',
+        type: newDebtDir === 'to_us' ? 'customer' : 'supplier',
+        balance: 0,
+        created_at: new Date().toISOString(),
+      };
+      targetContact = created;
+      updatedContacts = [created, ...updatedContacts];
+    }
+
+    if (!targetContact) {
+      toast('يرجى اختيار شخص أو كتابة اسم جديد', 'error');
+      return;
+    }
+
+    const debtDelta = newDebtDir === 'to_us' ? numAmount : -numAmount;
+    const finalContacts = updatedContacts.map(c => {
+      if (c.id === targetContact!.id) {
+        return { ...c, balance: (Number(c.balance) || 0) + debtDelta };
+      }
+      return c;
+    });
+
+    const newTx: Transaction = {
+      id: 'tx_' + Date.now(),
+      tx_type: newDebtDir === 'to_us' ? 'SALE' : 'PURCHASE',
+      contact_id: targetContact.id,
+      contact_name: targetContact.name,
+      total_amount: numAmount,
+      paid_amount: 0,
+      debt_amount: numAmount,
+      previous_balance: targetContact.balance || 0,
+      final_balance: (targetContact.balance || 0) + debtDelta,
+      status: 'DEBT',
+      notes: newDebtNote.trim() || 'تسجيل دين مباشر',
+      items: [{
+        product_id: 'p_debt',
+        product_name: newDebtNote.trim() || 'دين مباشر',
+        quantity: 1,
+        unit_price: numAmount,
+        cost_price: numAmount,
+      }],
+      created_at: new Date().toISOString(),
+    };
+
+    const newTxList = [newTx, ...transactions];
+
+    // حفظ وصل الدين المباشر في الأرشيف
+    const directReceipt = {
+      id: generateReceiptNumber(),
+      receipt_type: 'DIRECT_DEBT' as const,
+      contact_id: targetContact.id,
+      contact_name: targetContact.name,
+      contact_phone: targetContact.phone,
+      items: newTx.items,
+      total_amount: numAmount,
+      paid_amount: 0,
+      debt_amount: numAmount,
+      previous_balance: targetContact.balance || 0,
+      final_balance: (targetContact.balance || 0) + debtDelta,
+      note: newDebtNote.trim() || 'تسجيل دين مباشر',
+      created_at: newTx.created_at,
+    };
+    saveReceipt(directReceipt);
+
+    // حفظ البيانات محلياً
+    setLocalData('tajer_smart_contacts_v1', finalContacts);
+    setLocalData('tajer_smart_transactions_v1', newTxList);
+
+    // تحديث الحالة من localStorage مباشرة لضمان التحديث الفوري
+    const freshContacts = getLocalData<Contact[]>('tajer_smart_contacts_v1', []);
+    setContacts(freshContacts);
+    setTransactions(newTxList);
+
+    setShowAddDebtModal(false);
+    setNewDebtContactId(''); setNewDebtName(''); setNewDebtAmount(''); setNewDebtNote('');
+    toast('✅ تم تسجيل الدين الجديد بنجاح — سيظهر الآن في القائمة', 'success');
   };
 
   const sendBulkReminder = () => {
@@ -231,13 +334,20 @@ export default function DebtsPage() {
         ))}
       </div>
 
-      {/* ── شريط البحث ── */}
-      <div className="flex gap-2">
-        <div className="relative flex-1">
+      {/* ── شريط البحث وإضافة دين جديد ── */}
+      <div className="flex gap-2 flex-wrap sm:flex-nowrap">
+        <div className="relative flex-1 min-w-[180px]">
           <Search size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
           <input type="text" placeholder="ابحث بالاسم..."
             value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="form-input pr-9" />
         </div>
+        <button
+          onClick={() => setShowAddDebtModal(true)}
+          className="btn btn-primary px-3.5 py-2.5 text-xs font-black shrink-0 flex items-center gap-1 shadow-sm"
+        >
+          <Plus size={16} />
+          <span>تسجيل دين جديد ➕</span>
+        </button>
         {activeTab === 'to_us' && debtorCount > 0 && (
           <button onClick={sendBulkReminder} className="shrink-0 px-3.5 py-2.5 rounded-xl font-black text-xs flex items-center gap-1.5 bg-amber-50 text-amber-800 border border-amber-200">
             <Megaphone size={16} />
@@ -346,16 +456,17 @@ export default function DebtsPage() {
               <div>
                 <label className="block text-xs font-black text-slate-700 mb-1.5">💵 المبلغ المسدد الآن (د.ج) *</label>
                 <input
-                  type="number" required min="1" max={Math.abs(selectedContact.balance)}
-                  value={settleAmount || ''} onChange={e => setSettleAmount(+e.target.value)}
+                  type="number" step="any" required min="0.01" max={Math.abs(selectedContact.balance)}
+                  value={settleAmount} onChange={e => setSettleAmount(e.target.value)}
+                  placeholder="0.00"
                   className="form-input font-black text-2xl tabnum text-center text-emerald-700"
                 />
               </div>
 
-              {settleAmount > 0 && settleAmount < Math.abs(selectedContact.balance) && (
+              {(parseFloat(String(settleAmount).replace(',', '.')) || 0) > 0 && (parseFloat(String(settleAmount).replace(',', '.')) || 0) < Math.abs(selectedContact.balance) && (
                 <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-xs font-bold text-blue-800 flex items-center gap-2">
                   <TrendingDown size={14} className="shrink-0 text-blue-600" />
-                  <span>المتبقي بعد هذا التسديد: <strong className="tabnum">{fmt(Math.abs(selectedContact.balance) - settleAmount)}</strong> د.ج</span>
+                  <span>المتبقي بعد هذا التسديد: <strong className="tabnum">{fmt(Math.abs(selectedContact.balance) - (parseFloat(String(settleAmount).replace(',', '.')) || 0))}</strong> د.ج</span>
                 </div>
               )}
 
@@ -401,7 +512,7 @@ export default function DebtsPage() {
                       <div key={pay.id} className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 flex justify-between text-xs font-bold">
                         <div>
                           <p className="text-emerald-900">{pay.note || 'تسديد دين'}</p>
-                          <p className="text-[10px] text-emerald-600">{new Date(pay.created_at).toLocaleString('ar-EG')}</p>
+                          <p className="text-[10px] text-emerald-600">{formatDateLatin(pay.created_at)}</p>
                         </div>
                         <span className="tabnum text-emerald-800 font-black text-sm">+{fmt(pay.amount)} د.ج</span>
                       </div>
@@ -423,7 +534,7 @@ export default function DebtsPage() {
                       <div key={tx.id} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex justify-between text-xs font-bold">
                         <div>
                           <p className="text-slate-800">{tx.tx_type === 'SALE' ? 'بيع' : 'شراء'}: {tx.items[0]?.product_name}</p>
-                          <p className="text-[10px] text-slate-400">{new Date(tx.created_at).toLocaleString('ar-EG')}</p>
+                          <p className="text-[10px] text-slate-400">{formatDateLatin(tx.created_at)}</p>
                         </div>
                         <span className="tabnum text-slate-900 font-black">{fmt(tx.total_amount)} د.ج</span>
                       </div>
@@ -432,6 +543,113 @@ export default function DebtsPage() {
                 )}
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ Modal تسجيل دين جديد مباشر ══ */}
+      {showAddDebtModal && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowAddDebtModal(false); }}>
+          <div className="modal-sheet">
+            <div className="modal-handle" />
+            <div className="modal-header">
+              <div>
+                <h3 className="font-black text-slate-800 text-base">تسجيل دين جديد ➕</h3>
+                <p className="text-xs text-slate-400 font-semibold">إضافة دين جديد مباشر على زبون أو مورد</p>
+              </div>
+              <button onClick={() => setShowAddDebtModal(false)} className="btn btn-ghost p-2 rounded-xl">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveNewDebt} className="modal-body space-y-4">
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-1.5">اختيار الشخص *</label>
+                <SearchableSelect
+                  options={contacts.map(c => ({
+                    id: c.id,
+                    label: c.name,
+                    sublabel: c.phone || 'بدون هاتف',
+                    badge: c.balance > 0 ? `دين: ${fmt(c.balance)}` : c.balance < 0 ? `دائن: ${fmt(Math.abs(c.balance))}` : 'متوازن',
+                  }))}
+                  value={newDebtContactId}
+                  onChange={id => { setNewDebtContactId(id); setNewDebtName(''); }}
+                  placeholder="اختر زبون أو مورد موجود..."
+                  searchPlaceholder="ابحث بالاسم أو اكتب اسم جديد..."
+                  icon="user"
+                />
+              </div>
+
+              {!newDebtContactId && (
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1.5">أو كتابة اسم شخص جديد ✍️</label>
+                  <input
+                    type="text"
+                    placeholder="اسم الشخص الجديد..."
+                    value={newDebtName}
+                    onChange={e => setNewDebtName(e.target.value)}
+                    className="form-input text-xs font-bold"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-1.5">نوع الدين *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewDebtDir('to_us')}
+                    className={`py-2 px-3 rounded-xl text-xs font-black border transition-all ${
+                      newDebtDir === 'to_us'
+                        ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                        : 'bg-slate-100 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    📥 نطالبه بمبلغ (دين عليه)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewDebtDir('we_owe')}
+                    className={`py-2 px-3 rounded-xl text-xs font-black border transition-all ${
+                      newDebtDir === 'we_owe'
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                        : 'bg-slate-100 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    📤 يطالبنا بمبلغ (دين علينا)
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-1.5">💵 قيمة الدين الجديد (د.ج) *</label>
+                <input
+                  type="number"
+                  step="any"
+                  required
+                  min="0.01"
+                  placeholder="0.00"
+                  value={newDebtAmount}
+                  onChange={e => setNewDebtAmount(e.target.value)}
+                  className="form-input font-black text-2xl tabnum text-center text-rose-700 bg-rose-50/40"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-600 mb-1.5">📝 السبب / ملاحظة</label>
+                <input
+                  type="text"
+                  placeholder="مثال: باقي طلبية سابقة، سلفة..."
+                  value={newDebtNote}
+                  onChange={e => setNewDebtNote(e.target.value)}
+                  className="form-input text-xs font-bold"
+                />
+              </div>
+
+              <button type="submit" className="btn btn-primary w-full py-3.5 text-sm font-black shadow-md">
+                حفظ الدين الجديد 💾
+              </button>
+            </form>
           </div>
         </div>
       )}

@@ -1,18 +1,23 @@
 import { neon } from '@neondatabase/serverless';
 
 export function getDbConnectionString(): string | null {
-  if (process.env.POSTGRES_URL) return process.env.POSTGRES_URL;
-  if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
-  if (process.env.POSTGRES_PRISMA_URL) return process.env.POSTGRES_PRISMA_URL;
-  if (process.env.POSTGRES_URL_NON_POOLING) return process.env.POSTGRES_URL_NON_POOLING;
-  if (process.env.STORAGE_URL) return process.env.STORAGE_URL;
-  if (process.env.STORAGE_POSTGRES_URL) return process.env.STORAGE_POSTGRES_URL;
+  const isValidUrl = (val?: string): val is string =>
+    Boolean(val && (val.startsWith('postgres://') || val.startsWith('postgresql://')));
+
+  if (isValidUrl(process.env.TAJER_POSTGRES_POSTGRES_URL)) return process.env.TAJER_POSTGRES_POSTGRES_URL;
+  if (isValidUrl(process.env.TAJER_POSTGRES_DATABASE_URL)) return process.env.TAJER_POSTGRES_DATABASE_URL;
+  if (isValidUrl(process.env.POSTGRES_URL)) return process.env.POSTGRES_URL;
+  if (isValidUrl(process.env.DATABASE_URL)) return process.env.DATABASE_URL;
+  if (isValidUrl(process.env.POSTGRES_PRISMA_URL)) return process.env.POSTGRES_PRISMA_URL;
+  if (isValidUrl(process.env.POSTGRES_URL_NON_POOLING)) return process.env.POSTGRES_URL_NON_POOLING;
+  if (isValidUrl(process.env.STORAGE_URL)) return process.env.STORAGE_URL;
+  if (isValidUrl(process.env.STORAGE_POSTGRES_URL)) return process.env.STORAGE_POSTGRES_URL;
 
   if (typeof process !== 'undefined' && process.env) {
     for (const key of Object.keys(process.env)) {
       if ((key.includes('POSTGRES') || key.includes('DATABASE') || key.includes('NEON') || key.includes('STORAGE')) && key.endsWith('_URL')) {
         const val = process.env[key];
-        if (val && (val.startsWith('postgres://') || val.startsWith('postgresql://'))) {
+        if (isValidUrl(val)) {
           return val;
         }
       }

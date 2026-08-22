@@ -116,6 +116,9 @@ export default function HomePage() {
     return txDate === selectedDate;
   });
 
+  // قائمة آخر 5 عمليات المعروضة دائماً في الرئيسية
+  const recentTxList = (dateFilterMode === 'custom' ? filteredTx : (filteredTx.length > 0 ? filteredTx : transactions)).slice(0, 5);
+
   const activeSales = filteredTx.filter(tx => tx.tx_type === 'SALE' && tx.status !== 'CANCELLED');
   const periodSales  = activeSales.length;
   const periodProfit = activeSales
@@ -421,35 +424,27 @@ export default function HomePage() {
         </Link>
       )}
 
-      {/* ══ آخر العمليات منظم كطلبيات وفواتير موحدة ══ */}
+      {/* ══ آخر العمليات منظم كطلبيات وفواتير موحدة (دائماً يُظهر آخر 5 عمليات) ══ */}
       <div className="glass-card p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="font-black text-slate-800 text-sm flex items-center gap-2">
             <Clock3 size={16} className="text-emerald-600" strokeWidth={2.5} />
-            آخر العمليات والطلبيات ({filteredTx.length})
+            آخر العمليات والطلبيات ({recentTxList.length})
           </h2>
           <Link href="/stats" className="text-xs font-bold text-emerald-600 hover:underline">
             عرض الإحصائيات الكاملة ←
           </Link>
         </div>
 
-        {filteredTx.length === 0 ? (
+        {recentTxList.length === 0 ? (
           <div className="empty-state py-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 space-y-2">
             <TrendingUp size={36} className="mx-auto text-slate-300 mb-1" />
-            <p className="font-bold text-sm text-slate-600">لا توجد عمليات في هذا التاريخ المختار</p>
-            {dateFilterMode !== 'all' && (
-              <button
-                onClick={() => setDateFilterMode('all')}
-                className="text-xs font-black text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-xl transition-all touch-active"
-              >
-                عرض جميع العمليات السابقة (بدون تحديد تاريخ) ♾️
-              </button>
-            )}
+            <p className="font-bold text-sm text-slate-600">لا توجد عمليات مسجلة حالياً</p>
             <p className="text-xs text-slate-400">اضغط بيع سريع أو شراء للبدء!</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {filteredTx.slice(0, 5).map((tx) => {
+            {recentTxList.map((tx) => {
               const isSale  = tx.tx_type === 'SALE';
               const contact = contacts.find(c => c.id === tx.contact_id);
               const txDate  = new Date(tx.created_at);
@@ -470,7 +465,7 @@ export default function HomePage() {
                       </div>
                       <div className="min-w-0">
                         <p className="font-black text-xs text-slate-900 truncate">
-                          {isSale ? 'طلب/بيع لـ ' : 'شراء من '}: <span className="text-emerald-700">{tx.contact_name}</span>
+                          {isSale ? 'طلب/بيع لـ ' : 'شراء من '}: <span className="text-emerald-700">{tx.contact_name || 'عميل عام'}</span>
                         </p>
                         <p className="text-[10px] font-bold text-slate-400 tabnum">{dateStr}</p>
                       </div>
@@ -508,7 +503,7 @@ export default function HomePage() {
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => {
-                            setSelectedReceipt({
+                            printThermalReceipt({
                               id: tx.id,
                               receipt_type: tx.tx_type,
                               contact_id: tx.contact_id,
@@ -525,7 +520,7 @@ export default function HomePage() {
                           className="py-1.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[11px] font-black flex items-center gap-1.5 touch-active"
                         >
                           <Printer size={13} />
-                          معاينة وطباعة الوصل 🖨️
+                          طباعة الوصل 🖨️
                         </button>
 
                         <button
@@ -946,11 +941,6 @@ export default function HomePage() {
           setProducts(getLocalData('tajer_smart_products_v1', []));
           setTransactions(getLocalData('tajer_smart_transactions_v1', []));
         }}
-      />
-      {/* ══ مودال معاينة وطباعة الوصل الحراري الموحد ══ */}
-      <ReceiptViewModal
-        receipt={selectedReceipt}
-        onClose={() => setSelectedReceipt(null)}
       />
     </div>
   );

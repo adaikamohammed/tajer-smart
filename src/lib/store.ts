@@ -72,6 +72,8 @@ export interface Transaction {
   total_amount: number;
   paid_amount: number;
   debt_amount: number;
+  previous_balance?: number;
+  final_balance?: number;
   status: 'PAID' | 'PARTIAL' | 'DEBT' | 'CANCELLED';
   notes?: string;
   items: TransactionItem[];
@@ -89,7 +91,7 @@ export interface DebtPayment {
 }
 
 // ─── نوع الوصل المحفوظ في الأرشيف ────────────────────────────────────────
-export type ReceiptType = 'SALE' | 'PURCHASE' | 'DEBT_PAYMENT' | 'ACCOUNT_STATEMENT';
+export type ReceiptType = 'SALE' | 'PURCHASE' | 'DEBT_PAYMENT' | 'ACCOUNT_STATEMENT' | 'DIRECT_DEBT';
 
 export interface Receipt {
   id: string;
@@ -101,12 +103,36 @@ export interface Receipt {
   total_amount?: number;
   paid_amount?: number;
   debt_amount?: number;
+  previous_balance?: number;
+  final_balance?: number;
   payment_amount?: number;
   payment_type?: 'COLLECTED' | 'PAID_OUT';
   balance_after?: number;
   note?: string;
   html_snapshot?: string;
   created_at: string;
+}
+
+/** تحويل أي أرقام مشرقية إلى أرقام لاتينية غريبة 0123456789 */
+export function toLatinDigits(str: string): string {
+  if (!str) return '';
+  return String(str).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+}
+
+/** توحيد صيغة التاريخ والوقت بالأرقام اللاتينية 0123456789 */
+export function formatDateLatin(dateInput: Date | string | number): string {
+  const d = typeof dateInput === 'object' ? dateInput : new Date(dateInput);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const year = d.getFullYear();
+  const month = pad(d.getMonth() + 1);
+  const day = pad(d.getDate());
+  let hours = d.getHours();
+  const minutes = pad(d.getMinutes());
+  const ampm = hours >= 12 ? 'م' : 'ص';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  return `${year}/${month}/${day} ${pad(hours)}:${minutes} ${ampm}`;
 }
 
 // ─── ثوابت بيانات المتجر ────────────────────────────────────────────────
@@ -237,6 +263,11 @@ export function saveReceipt(receipt: Receipt): void {
 export function deleteReceipt(id: string): void {
   const existing = getReceipts();
   setLocalData(STORAGE_KEYS.RECEIPTS, existing.filter(r => r.id !== id));
+  cancelTransaction(id);
+  import('./cloud-sync').then(cs => {
+    cs.queueDeletedTransaction(id);
+    cs.syncStoreWithVercelCloud();
+  });
 }
 
 /** توليد رقم وصل فريد بالتاريخ والوقت والميلي ثانية */
@@ -251,10 +282,8 @@ export function generateReceiptNumber(): string {
 
 // ─── محرك الطباعة الحرارية 80mm (XP-P323B) ────────────────────────────────
 export function buildThermalReceiptHTML(receipt: Receipt): string {
-  const fmt = (n: number) => (Number(n) || 0).toLocaleString('en-US');
-  const now = new Date(receipt.created_at);
-  const dateStr = now.toLocaleDateString('ar-DZ') + '  ' +
-                  now.toLocaleTimeString('ar-DZ', { hour: '2-digit', minute: '2-digit' });
+  const fmt = (n: number) => (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const dateStr = formatDateLatin(receipt.created_at);
   const m = MERCHANT_INFO;
 
   const typeLabels: Record<ReceiptType, string> = {
@@ -262,57 +291,136 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
     PURCHASE:          'وصل شراء',
     DEBT_PAYMENT:      'وصل تسديد دين',
     ACCOUNT_STATEMENT: 'كشف حساب',
+    DIRECT_DEBT:       'وصل دين مباشر',
   };
-  const typeLabel = typeLabels[receipt.receipt_type];
+  // إذا كانت العملية دين مباشر (product_id = p_debt أو receipt_type = DIRECT_DEBT)
+  const isDirectDebt = receipt.receipt_type === 'DIRECT_DEBT' || (receipt.items && receipt.items.length === 1 && receipt.items[0].product_id === 'p_debt');
+  const typeLabel = isDirectDebt ? 'وصل دين مباشر' : (typeLabels[receipt.receipt_type] || 'وصل');
 
-  // ─ جدول المنتجات ─
+  // ─ وصل دين مباشر (بدون جدول بضاعة) ─
+  let directDebtHTML = '';
+  if (isDirectDebt && receipt.items && receipt.items.length > 0) {
+    const debtItem = receipt.items[0];
+    const debtAmt  = Number(debtItem.unit_price) || 0;
+    const prevBal  = Number(receipt.previous_balance) || 0;
+    const finalBal = receipt.final_balance !== undefined ? receipt.final_balance : prevBal + debtAmt;
+    const note     = debtItem.product_name && debtItem.product_name !== 'دين مباشر' ? debtItem.product_name : '';
+
+    let prevLabel = 'الرصيد السابق:';
+    if (prevBal < 0) prevLabel = 'الرصيد السابق للزبون:';
+
+    let finalLabel = 'الرصيد الكلي الجديد:';
+    if (finalBal < 0) finalLabel = 'الرصيد المتبقي للزبون:';
+    else if (finalBal === 0) finalLabel = 'الرصيد الكلي: مصفى بالكامل ✅';
+
+    directDebtHTML = `
+    <div class="debt-direct-box">
+      <div class="debt-label">📌 مبلغ الدين المسجَّل</div>
+      <div class="debt-amount">${fmt(debtAmt)} د.ج</div>
+      ${note ? `<div class="debt-note">📝 ${note}</div>` : ''}
+    </div>
+    <div class="summary-box">
+      ${prevBal !== 0 ? `<div class="summary-row"><span class="label">${prevLabel}</span><span class="val">${fmt(Math.abs(prevBal))} د.ج</span></div>` : ''}
+      <div class="summary-row total-balance-row"><span class="label">${finalLabel}</span><span class="val">${fmt(Math.abs(finalBal))} د.ج</span></div>
+    </div>`;
+  }
+
+  // ─ جدول المنتجات (للبيع والشراء فقط — وليس للدين المباشر) ─
   let itemsHTML = '';
-  if (receipt.items && receipt.items.length > 0) {
+  if (!isDirectDebt && receipt.items && receipt.items.length > 0) {
+    const storedProds: Product[] = getLocalData<Product[]>('tajer_smart_products_v1', []);
     const rows = receipt.items.map(i => {
-      const isPackUnit = i.unit_type === 'pack' || (i.pack_quantity && i.pack_quantity > 1);
-      const packCap = i.pack_quantity || 1;
-      const packs = i.packs_count !== undefined
-        ? i.packs_count
-        : isPackUnit ? Math.floor((Number(i.quantity) || 0) / packCap) : 0;
-      const loose = i.loose_count !== undefined
-        ? i.loose_count
-        : isPackUnit ? ((Number(i.quantity) || 0) % packCap) : (Number(i.quantity) || 0);
+      const prodMatch = storedProds.find((p: Product) => p.id === i.product_id || p.name.trim() === i.product_name?.trim());
+      const realCap = Number(i.pack_quantity || prodMatch?.pack_quantity) || 1;
+      const isPackUnit = i.unit_type === 'pack' || (prodMatch && prodMatch.unit_type === 'pack') || realCap > 1 || (i.packs_count !== undefined && i.packs_count > 0);
 
-      const packsDisplay = isPackUnit ? `${packs}` : '-';
-      const looseDisplay = `${loose}`;
-      const lineTotal = (Number(i.quantity) || 0) * (Number(i.unit_price) || 0);
+      let packs = 0;
+      let loose = 0;
+      if (i.packs_count !== undefined && i.loose_count !== undefined) {
+        packs = Number(i.packs_count) || 0;
+        loose = Number(i.loose_count) || 0;
+      } else if (isPackUnit) {
+        packs = Math.floor((Number(i.quantity) || 0) / realCap);
+        loose = (Number(i.quantity) || 0) % realCap;
+      } else {
+        packs = 0;
+        loose = (Number(i.quantity) || 0) % realCap;
+      }
+
+      const capDisplay   = `${realCap}`;
+      const packsDisplay = isPackUnit ? (packs > 0 ? `${packs}` : '-') : '-';
+      const looseDisplay = loose > 0 ? `${loose}` : (!isPackUnit ? `${loose}` : '-');
+      const lineTotal    = (Number(i.quantity) || 0) * (Number(i.unit_price) || 0);
 
       return `
     <tr>
-      <td class="name-cell">${i.product_name}</td>
-      <td style="text-align: center;">${packsDisplay}</td>
-      <td style="text-align: center;">${looseDisplay}</td>
-      <td style="text-align: center;">${fmt(i.unit_price)}</td>
-      <td style="text-align: left; font-weight: 900;">${fmt(lineTotal)}</td>
+      <td class="col-name">${i.product_name}</td>
+      <td class="col-pack">${packsDisplay}</td>
+      <td class="col-cap">${capDisplay}</td>
+      <td class="col-loose">${looseDisplay}</td>
+      <td class="col-price">${fmt(i.unit_price)}</td>
+      <td class="col-total">${fmt(lineTotal)}</td>
     </tr>`;
     }).join('');
 
+    const currentGoods = receipt.total_amount ?? 0;
+    let prevBal = receipt.previous_balance;
+    let finalBal = receipt.final_balance;
+
+    if (prevBal === undefined && receipt.contact_id) {
+      const storedContacts: Contact[] = getLocalData<Contact[]>('tajer_smart_contacts_v1', []);
+      const match = storedContacts.find(c => c.id === receipt.contact_id || c.name.trim() === receipt.contact_name?.trim());
+      if (match) {
+        prevBal = Number(match.balance) || 0;
+      }
+    }
+    if (prevBal === undefined) prevBal = 0;
+
+    const totalDue  = currentGoods + prevBal;
+    const paidToday = receipt.paid_amount ?? 0;
+    if (finalBal === undefined) {
+      finalBal = totalDue - paidToday;
+    }
+
+    // صياغة أنيقة، معبرة ومختصرة مخصصة للتسليم للزبون:
+    let prevBalLabel = 'الدين السابق:';
+    if (prevBal < 0) {
+      prevBalLabel = receipt.receipt_type === 'PURCHASE' ? 'رصيد سابق للمورد:' : 'الرصيد السابق للزبون:';
+    }
+
+    let totalDueLabel = 'إجمالي المستحق:';
+    if (totalDue < 0) {
+      totalDueLabel = receipt.receipt_type === 'PURCHASE' ? 'إجمالي المستحق للمورد:' : 'إجمالي المتبقي للزبون:';
+    }
+
+    let finalBalLabel = 'الرصيد المتبقي:';
+    if (finalBal < 0) {
+      finalBalLabel = receipt.receipt_type === 'PURCHASE' ? 'الرصيد المتبقي للمورد:' : 'الرصيد المتبقي للزبون:';
+    } else if (finalBal === 0) {
+      finalBalLabel = 'الرصيد النهائي: مصفى بالكامل ✅';
+    }
+
     itemsHTML = `
-    <div class="section-title">── تفاصيل البضاعة ──</div>
     <table class="items-table">
       <thead>
         <tr>
-          <th style="text-align: right;">المنتج</th>
-          <th style="text-align: center;">كرتونة</th>
-          <th style="text-align: center;">حبة</th>
-          <th style="text-align: center;">السعر</th>
-          <th style="text-align: left;">المجموع</th>
+          <th class="col-name">المنتج</th>
+          <th class="col-pack">كرتونة</th>
+          <th class="col-cap">السعة</th>
+          <th class="col-loose">حبة</th>
+          <th class="col-price">السعر</th>
+          <th class="col-total">المجموع</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>
-    <div class="divider"></div>
-    <div class="total-box">الإجمالي: ${fmt(receipt.total_amount ?? 0)} د.ج</div>
-    <div class="row"><span class="label">المدفوع نقداً:</span><span class="value">${fmt(receipt.paid_amount ?? 0)} د.ج</span></div>
-    ${(receipt.debt_amount ?? 0) > 0
-      ? `<div class="row debt-row"><span class="label">⚠️ الدين المتبقي:</span><span class="value">${fmt(receipt.debt_amount ?? 0)} د.ج</span></div>`
-      : `<div class="paid-row">✅ تم الدفع بالكامل</div>`
-    }`;
+    <div class="summary-box">
+      <div class="summary-row"><span class="label">البضاعة الحالية:</span><span class="val">${fmt(currentGoods)} د.ج</span></div>
+      ${prevBal !== 0 ? `<div class="summary-row"><span class="label">${prevBalLabel}</span><span class="val">${fmt(Math.abs(prevBal))} د.ج</span></div>` : ''}
+      ${prevBal !== 0 ? `<div class="summary-row highlight"><span class="label">${totalDueLabel}</span><span class="val">${fmt(Math.abs(totalDue))} د.ج</span></div>` : ''}
+      <div class="summary-row"><span class="label">المدفوع اليوم:</span><span class="val">${fmt(paidToday)} د.ج</span></div>
+      <div class="summary-row total-balance-row"><span class="label">${finalBalLabel}</span><span class="val">${fmt(Math.abs(finalBal))} د.ج</span></div>
+    </div>`;
   }
 
   // ─ وصل تسديد دين ─
@@ -365,15 +473,16 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
     max-width: 80mm;
     margin: 0 auto;
     padding: 3mm 2mm;
-    font-size: 13px;
-    font-weight: 700;
+    font-size: 15px;
+    font-weight: 800;
     box-shadow: 0 0 10px rgba(0,0,0,0.1);
   }
   @media print {
-    html { background: #fff; width: 80mm !important; }
+    @page { size: 80mm auto; margin: 0mm !important; }
+    html { background: #fff !important; width: 100% !important; }
     body {
-      width: 80mm !important;
-      max-width: 80mm !important;
+      width: 100% !important;
+      max-width: 100% !important;
       padding: 0mm 1mm !important;
       margin: 0 !important;
       box-shadow: none !important;
@@ -385,142 +494,207 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
   /* ── ترويسة المتجر ── */
   .header {
     text-align: center;
-    border-bottom: 3px dashed #000;
+    border-bottom: 1px solid #ddd;
     padding-bottom: 5px;
     margin-bottom: 6px;
   }
-  .merchant-name  { font-size: 20px; font-weight: 900; line-height: 1.2; }
-  .merchant-owner { font-size: 15px; font-weight: 900; margin-top: 2px; }
-  .merchant-sub   { font-size: 11px; font-weight: 700; margin-top: 2px; color: #111; }
+  .merchant-name  { font-size: 23px; font-weight: 900; line-height: 1.2; }
+  .merchant-owner { font-size: 17px; font-weight: 900; margin-top: 2px; }
+  .merchant-sub   { font-size: 13px; font-weight: 800; margin-top: 2px; color: #111; }
 
   /* ── نوع الوصل ── */
   .receipt-type {
     text-align: center;
-    font-size: 17px;
+    font-size: 19px;
     font-weight: 900;
     background: #000;
     color: #fff;
-    padding: 5px 0;
-    margin: 5px 0;
+    padding: 6px 0;
+    margin: 6px 0;
     letter-spacing: 1px;
   }
   .receipt-id {
     text-align: center;
-    font-size: 10px;
-    font-weight: 700;
-    color: #333;
-    margin-bottom: 3px;
+    font-size: 11px;
+    font-weight: 800;
+    color: #222;
+    margin-bottom: 2px;
     word-break: break-all;
+  }
+  .receipt-date {
+    text-align: center;
+    font-size: 17px;
+    font-weight: 900;
+    color: #000;
+    margin-bottom: 5px;
   }
 
   /* ── عناصر مشتركة ── */
-  .divider { border-top: 2px dashed #000; margin: 5px 0; }
+  .divider { border-top: 1px solid #ddd; margin: 4px 0; }
   .row {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 5px;
-    font-size: 13px;
+    font-size: 15px;
   }
-  .label { font-weight: 700; color: #111; }
-  .value { font-weight: 900; font-size: 14px; }
+  .label { font-weight: 800; color: #111; }
+  .value { font-weight: 900; font-size: 16px; }
 
   /* ── صندوق الإجمالي ── */
   .total-box {
     text-align: center;
     border: 3px double #000;
-    padding: 5px;
-    margin: 5px 0;
-    font-size: 18px;
+    padding: 6px 4px;
+    margin: 6px 0;
+    font-size: 21px;
     font-weight: 900;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
   }
 
   /* ── جدول المنتجات ── */
   .section-title {
     text-align: center;
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 900;
-    margin: 6px 0 4px;
+    margin: 7px 0 5px;
   }
   .items-table {
     width: 100%;
     border-collapse: collapse;
     font-size: 12px;
-    margin: 3px 0;
+    margin: 5px 0;
+    table-layout: fixed;
   }
   .items-table th {
-    background: #000;
-    color: #fff;
-    padding: 3px 2px;
-    text-align: right;
-    font-weight: 900;
-    font-size: 12px;
+    background: #000 !important;
+    color: #ffffff !important;
+    padding: 4px 0.5px;
+    font-weight: 900 !important;
+    font-size: 12px !important;
+    letter-spacing: -0.3px;
+    white-space: nowrap;
+    overflow: visible !important;
   }
   .items-table td {
-    padding: 4px 2px;
+    padding: 4px 0.5px;
     border-bottom: 1px dashed #555;
-    text-align: right;
-    font-weight: 700;
-    font-size: 12px;
-  }
-  .items-table .name-cell {
     font-weight: 900;
-    max-width: 38mm;
-    word-break: break-word;
+    font-size: 12px;
+    color: #000;
   }
+  .items-table .col-name { width: 28%; text-align: right; word-break: normal; white-space: normal; line-height: 1.15; font-weight: 900; font-size: 12px; }
+  .items-table .col-pack { width: 13%; text-align: center; font-size: 12px; font-weight: 900; }
+  .items-table .col-cap  { width: 13%; text-align: center; font-size: 12px; font-weight: 900; }
+  .items-table td.col-cap{ color: #1e293b; }
+  .items-table .col-loose{ width: 10%; text-align: center; font-size: 12px; font-weight: 900; }
+  .items-table .col-price{ width: 18%; text-align: center; font-size: 12px; font-weight: 900; }
+  .items-table .col-total{ width: 18%; text-align: center; font-size: 12px; font-weight: 900; }
   .items-table tr:nth-child(even) td { background: #f0f0f0; }
 
-  /* ── الديون والتسديد ── */
-  .debt-row .value { color: #c00; font-size: 16px; }
-  .paid-row {
+  /* ── صندوق الدين المباشر ── */
+  .debt-direct-box {
     text-align: center;
-    color: #050;
+    border: 2px solid #000;
+    border-radius: 8px;
+    padding: 10px 6px;
+    margin: 8px 0;
+    background: #fff;
+  }
+  .debt-label {
+    font-size: 13px;
+    font-weight: 800;
+    color: #444;
+    margin-bottom: 4px;
+  }
+  .debt-amount {
+    font-size: 24px;
     font-weight: 900;
-    font-size: 15px;
-    margin: 5px 0;
+    color: #000;
+    letter-spacing: 0.5px;
+  }
+  .debt-note {
+    font-size: 12px;
+    font-weight: 800;
+    color: #555;
+    margin-top: 6px;
+    padding-top: 4px;
+    border-top: 1px solid #eee;
+  }
+
+  /* ── ملخص الفاتورة والدين ── */
+  .summary-box {
+    margin-top: 6px;
+    border: 2px solid #000;
+    border-radius: 6px;
+    padding: 5px 6px;
+    background: #fff;
+  }
+  .summary-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 800;
+    padding: 3px 0;
+    border-bottom: 1px dashed #ccc;
+    color: #000;
+  }
+  .summary-row:last-child {
+    border-bottom: none;
+  }
+  .summary-row.highlight {
+    background: #f1f5f9;
+    padding: 3px 4px;
+    border-radius: 4px;
+    font-size: 12.5px;
+    font-weight: 900;
+  }
+  .summary-row.total-balance-row {
+    background: #000 !important;
+    padding: 5px 6px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 900;
+    margin-top: 4px;
+  }
+  .summary-row.total-balance-row,
+  .summary-row.total-balance-row .label,
+  .summary-row.total-balance-row .val {
+    color: #ffffff !important;
   }
   .status-box {
     text-align: center;
     border: 3px solid #000;
-    padding: 6px;
-    font-size: 15px;
+    padding: 7px;
+    font-size: 17px;
     font-weight: 900;
-    margin: 5px 0;
+    margin: 6px 0;
   }
 
   /* ── الذيل ── */
   .footer {
     margin-top: 8px;
-    border-top: 3px dashed #000;
+    border-top: 1px solid #ddd;
     padding-top: 5px;
     text-align: center;
-    font-size: 12px;
-    font-weight: 700;
-  }
-  .seal {
-    display: inline-block;
-    border: 2px solid #000;
-    padding: 2px 12px;
-    border-radius: 3px;
-    font-size: 12px;
-    font-weight: 900;
-    margin-bottom: 4px;
+    font-size: 13px;
+    font-weight: 800;
   }
   .legal-notice {
-    font-size: 10px;
-    font-weight: 700;
-    line-height: 1.4;
-    border: 1px solid #000;
-    padding: 5px;
-    margin: 6px 0;
-    text-align: justify;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.35;
+    border: 1px solid #ddd;
+    padding: 4px 5px;
+    margin: 5px 0;
+    text-align: center;
     background: #fafafa;
   }
   .thanks-msg {
-    font-size: 13px;
+    font-size: 15px;
     font-weight: 900;
-    margin-top: 4px;
+    margin-top: 3px;
   }
 
   /* ── أزرار التحكم في الطباعة ── */
@@ -581,7 +755,6 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
       const htmlStr = clonedDoc.documentElement.outerHTML;
       const b64 = btoa(unescape(encodeURIComponent(htmlStr)));
       
-      // Package ID الصحيح لتطبيق RawBT على Google Play هو ru.a402d.rawbtprinter
       const intentUrl = 'intent:base64,' + b64 + '#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;';
       window.location.href = intentUrl;
     } catch(e) {
@@ -600,7 +773,7 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
 
   <div class="receipt-type">${typeLabel}</div>
   <div class="receipt-id">${receipt.id}</div>
-  <div class="receipt-id">${dateStr}</div>
+  <div class="receipt-date">📅 ${dateStr}</div>
 
   <div class="divider"></div>
 
@@ -609,35 +782,23 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
     <span class="label">${receipt.receipt_type === 'PURCHASE' ? '🚚 المورد:' : '👤 الزبون:'}</span>
     <span class="value">${receipt.contact_name}</span>
   </div>
-  ${receipt.contact_phone ? `<div class="row"><span class="label">📞 الهاتف:</span><span class="value">${receipt.contact_phone}</span></div>` : ''}
   <div class="divider"></div>
   ` : ''}
 
+  ${directDebtHTML}
   ${itemsHTML}
   ${paymentHTML}
   ${statementHTML}
 
   <div class="footer">
-    <div class="seal">✅ معتمد ومسجل</div>
     <div class="legal-notice">
-      📌 <b>تنبيه قانوني هام:</b> يرجى مراجعة وتفقد البضاعة والوصل خلال 24 ساعة من تاريخ عملية الشراء. لا يُقبل أي اعتراض أو استرجاع بعد انقضاء المهلة.
+      📌 <b>تنبيه:</b> يُرجى تفقد البضاعة خلال 24 ساعة من تاريخ الشراء، ولا يُقبل الاسترجاع بعد انقضاء المهلة.
     </div>
     <div class="thanks-msg">شكراً لتعاملكم معنا 🌹</div>
   </div>
 
   <div class="actions-container no-print">
-    <button class="print-btn rawbt-btn" onclick="printRawBT('80');">📱 طباعة مباشرة RawBT (عرض 80mm)</button>
-    <button class="print-btn rawbt-btn-alt" onclick="printRawBT('58');">📱 طباعة مباشرة RawBT (عرض 58mm)</button>
-    <button class="print-btn" onclick="window.print();">🖨️ طباعة متصفح (PC / هاتف)</button>
-
-    <div class="help-box">
-      💡 <b>تنبيه لتعديل عرض الطباعة لطابعة XP-P323B:</b><br/>
-      إذا كانت الطابعة تطبع 57mm فقط وتترك هامشاً يميناً:<br/>
-      1. افتح تطبيق <b>RawBT</b> في هاتفك 📱<br/>
-      2. اذهب إلى <b>الإعدادات ⚙️ ➔ عرض الورق (Paper Width)</b><br/>
-      3. غيّر الخيار من <b>58mm (384 dots)</b> إلى <b>80mm (576 dots)</b>.<br/>
-      4. اضغط <b>حفظ</b> واطبع مجدداً.
-    </div>
+    <button class="print-btn" onclick="window.print();">🖨️ طباعة الوصل</button>
   </div>
 </body>
 </html>`;
@@ -762,5 +923,64 @@ export function cancelTransaction(txId: string): boolean {
   setLocalData('tajer_smart_transactions_v1', updatedTx);
   setLocalData('tajer_smart_receipts_v1', updatedReceipts);
 
+  // 5. تسجيل الحذف السحابي بـ Tombstone لمنع عودة العملية عند التحديث
+  import('./cloud-sync').then(cs => {
+    cs.queueDeletedTransaction(txId);
+    cs.syncStoreWithVercelCloud();
+  });
+
   return true;
+}
+
+// ─── خوارزمية البحث الذكية والمطابقة العربية ──────────────────────────────
+/**
+ * توحيد وتنظيف النصوص العربية لتجاوز أخطاء الهمزات، المسافات، والتشكيل
+ */
+export function normalizeArabicText(text: string): string {
+  if (!text) return '';
+  return text
+    .toLowerCase()
+    // إزالة التشكيل (الحركات والتنوين والشدة)
+    .replace(/[\u064B-\u0652]/g, '')
+    // توحيد جميع صور الألف والهمزات (أ، إ، آ، ٱ -> ا)
+    .replace(/[أإآٱ]/g, 'ا')
+    // توحيد التاء المربوطة والهاء (ة -> ه)
+    .replace(/ة/g, 'ه')
+    // توحيد الألف المقصورة والياء (ى -> ي)
+    .replace(/ى/g, 'ي')
+    .trim();
+}
+
+/**
+ * دالة مطابقة ذكية تقارن النص المعطى مع الاستعلام مع مراعاة:
+ * 1. المطابقة بدون مسافات (جافيل === جا فيل)
+ * 2. المطابقة بتوحيد الهمزات والرموز (أوان === اوان)
+ * 3. المطابقة التفكيكية بالكلمات (Token-based match)
+ */
+export function smartMatchText(targetText: string, query: string): boolean {
+  if (!query || !query.trim()) return true;
+  if (!targetText) return false;
+
+  const normTarget = normalizeArabicText(targetText);
+  const normQuery  = normalizeArabicText(query);
+
+  // 1. مطابقة مباشرة بعد التوحيد
+  if (normTarget.includes(normQuery)) return true;
+
+  // 2. مطابقة بدون مسافات (Space-insensitive)
+  const noSpaceTarget = normTarget.replace(/[\s\-_./\\,]/g, '');
+  const noSpaceQuery  = normQuery.replace(/[\s\-_./\\,]/g, '');
+  if (noSpaceTarget.includes(noSpaceQuery)) return true;
+
+  // 3. مطابقة بالكلمات التفكيكية (كل كلمة في الاستعلام يجب أن تنتمي للهدف)
+  const queryTokens = normQuery.split(/\s+/).filter(Boolean);
+  if (queryTokens.length > 1) {
+    const allTokensFound = queryTokens.every(token => {
+      const cleanToken = token.replace(/[\s\-_./\\,]/g, '');
+      return noSpaceTarget.includes(cleanToken);
+    });
+    if (allTokensFound) return true;
+  }
+
+  return false;
 }

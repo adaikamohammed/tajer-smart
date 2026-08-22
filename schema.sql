@@ -71,3 +71,11 @@ CREATE TABLE IF NOT EXISTS debt_payments (
   note TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- 6. سجل الـ Tombstone (المحذوفات الدائمة — لمزامنة الحذف بين الأجهزة)
+CREATE TABLE IF NOT EXISTS deleted_items (
+  id TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  deleted_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (id, entity_type)
+);

@@ -48,7 +48,7 @@ function notifySubs() {
   subs.forEach(cb => { try { cb(); } catch (_) {} });
 }
 
-// ─── حلقة مزامنة واحدة في المرة (لا تعارض) ─────────────────────────────
+// ─── حلقة مزامنة واحدة في المرة (Vercel Postgres Sync) ─────────────────
 let syncInProgress = false;
 
 export async function syncStoreWithVercelCloud(): Promise<{
@@ -80,7 +80,7 @@ export async function syncStoreWithVercelCloud(): Promise<{
     const deletedTransactions: string[] = getLocalData(DELETED_KEYS.TRANSACTIONS, []);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
 
     let res: Response;
     try {
@@ -122,11 +122,9 @@ export async function syncStoreWithVercelCloud(): Promise<{
     // ─── 1. الدمج الثنائي الذكي للمنتجات (Smart Union Merge) ───
     if (Array.isArray(data.products)) {
       const mergedProductsMap = new Map<string, Product>();
-      // إضافة عناصر السيرفر أولاً
       data.products.forEach((p: Product) => {
         if (!deletedProducts.includes(p.id)) mergedProductsMap.set(p.id, p);
       });
-      // دمج العناصر المحلية ومنع مسح أي منتج محلي مضاف حديثاً
       localProducts.forEach((p: Product) => {
         if (!deletedProducts.includes(p.id)) {
           const existing = mergedProductsMap.get(p.id);
@@ -161,14 +159,28 @@ export async function syncStoreWithVercelCloud(): Promise<{
 
     // ─── 3. الدمج الثنائي الذكي للمعاملات والعمليات ───
     if (Array.isArray(data.transactions)) {
+      const cleanTxItems = (items: any[]) => {
+        if (!Array.isArray(items)) return [];
+        const seen = new Set<string>();
+        return items.filter(it => {
+          const key = `${it.product_id || ''}_${it.product_name || ''}_${it.quantity}_${it.unit_price}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      };
+
       const mergedTxMap = new Map<string, Transaction>();
       data.transactions.forEach((t: Transaction) => {
-        if (!deletedTransactions.includes(t.id)) mergedTxMap.set(t.id, t);
+        if (!deletedTransactions.includes(t.id)) {
+          mergedTxMap.set(t.id, { ...t, items: cleanTxItems(t.items) });
+        }
       });
       localTx.forEach((t: Transaction) => {
         if (!deletedTransactions.includes(t.id)) {
           const existing = mergedTxMap.get(t.id);
-          mergedTxMap.set(t.id, existing ? { ...existing, ...t } : t);
+          const cleanItems = cleanTxItems(t.items || existing?.items || []);
+          mergedTxMap.set(t.id, existing ? { ...existing, ...t, items: cleanItems } : { ...t, items: cleanItems });
         }
       });
       const mergedTx = Array.from(mergedTxMap.values());
@@ -227,17 +239,17 @@ export function initAutoSyncEngine() {
   if (typeof window === 'undefined' || isEngineStarted) return;
   isEngineStarted = true;
 
-  // 1. مزامنة أصلية هادئة واحدة عند فتح التطبيق لأول مرة
+  // 1. مزامنة عند فتح التطبيق
   syncStoreWithVercelCloud();
 
-  // 2. مزامنة عند العودة للتبويب فقط إن كان متصلاً بالنت
+  // 2. مزامنة عند العودة للتبويب
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && navigator.onLine) {
       syncStoreWithVercelCloud();
     }
   });
 
-  // 3. استماع لتغيرات شبكة الهاتف/الكمبيوتر
+  // 3. مزامنة عند عودة الإنترنت
   window.addEventListener('online', async () => {
     const res = await syncStoreWithVercelCloud();
     if (res && res.success) {

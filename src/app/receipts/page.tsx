@@ -20,8 +20,16 @@ const fmt = (n: number) => n.toLocaleString('en-US');
 const RECEIPT_TYPE_LABELS: Record<ReceiptType, { label: string; emoji: string; color: string; bg: string }> = {
   SALE:              { label: 'وصل بيع',          emoji: '🛒', color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
   PURCHASE:          { label: 'وصل شراء',          emoji: '📦', color: 'text-indigo-700',  bg: 'bg-indigo-50  border-indigo-200'  },
+  DIRECT_DEBT:       { label: 'وصل دين مباشر',     emoji: '📌', color: 'text-rose-700',    bg: 'bg-rose-50    border-rose-200'    },
   DEBT_PAYMENT:      { label: 'وصل تسديد دين',     emoji: '💵', color: 'text-amber-700',   bg: 'bg-amber-50   border-amber-200'   },
   ACCOUNT_STATEMENT: { label: 'كشف حساب',          emoji: '📜', color: 'text-slate-700',   bg: 'bg-slate-50   border-slate-200'   },
+};
+
+const getActualReceiptType = (r: Receipt): ReceiptType => {
+  if (r.receipt_type === 'DIRECT_DEBT' || (r.items && r.items.length === 1 && r.items[0].product_id === 'p_debt')) {
+    return 'DIRECT_DEBT';
+  }
+  return r.receipt_type || 'SALE';
 };
 
 export default function ReceiptsPage() {
@@ -70,10 +78,12 @@ export default function ReceiptsPage() {
 
   const handleDeleteAll = () => {
     if (confirm('⚠️ هل تريد حذف جميع الأوصال من الأرشيف؟ هذا الإجراء لا يمكن التراجع عنه!')) {
+      const all = getReceipts();
+      all.forEach(r => deleteReceipt(r.id));
       setLocalData('tajer_smart_receipts_v1', []);
       setReceipts([]);
       setShowDeleteAll(false);
-      toast('تم حذف كافة الأوصال من الأرشيف', 'warning');
+      toast('تم حذف كافة الأوصال من الأرشيف ومن السحابة بنجاح', 'warning');
     }
   };
 
@@ -102,7 +112,8 @@ export default function ReceiptsPage() {
 
   const filtered = useMemo(() => {
     return receipts.filter(r => {
-      const matchType = filterType === 'all' || r.receipt_type === filterType;
+      const actualType = getActualReceiptType(r);
+      const matchType = filterType === 'all' || actualType === filterType;
       
       let matchDate = true;
       if (r.created_at) {
@@ -126,10 +137,10 @@ export default function ReceiptsPage() {
   }, [receipts, filterType, fromDate, toDate, filterContactId, searchQuery]);
 
   // ─── إحصائيات سريعة ─────────────────────────────────────────────
-  const totalSales    = receipts.filter(r => r.receipt_type === 'SALE').reduce((a, r) => a + (r.total_amount ?? 0), 0);
+  const totalSales    = receipts.filter(r => getActualReceiptType(r) === 'SALE').reduce((a, r) => a + (r.total_amount ?? 0), 0);
   const countByType   = Object.fromEntries(
-    (['SALE','PURCHASE','DEBT_PAYMENT','ACCOUNT_STATEMENT'] as ReceiptType[]).map(t => [
-      t, receipts.filter(r => r.receipt_type === t).length
+    (['SALE','PURCHASE','DIRECT_DEBT','DEBT_PAYMENT','ACCOUNT_STATEMENT'] as ReceiptType[]).map(t => [
+      t, receipts.filter(r => getActualReceiptType(r) === t).length
     ])
   );
 
@@ -274,7 +285,8 @@ export default function ReceiptsPage() {
       ) : (
         <div className="space-y-2">
           {filtered.map((receipt, index) => {
-            const meta      = RECEIPT_TYPE_LABELS[receipt.receipt_type];
+            const actualType = getActualReceiptType(receipt);
+            const meta       = RECEIPT_TYPE_LABELS[actualType] || RECEIPT_TYPE_LABELS.SALE;
             const isExpanded = expandedId === receipt.id;
 
             return (
@@ -365,6 +377,32 @@ export default function ReceiptsPage() {
                       </div>
                     )}
 
+                    {/* وصل دين مباشر */}
+                    {actualType === 'DIRECT_DEBT' && (
+                      <div className="bg-rose-50 rounded-xl p-3 text-xs space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-slate-600">📌 نوع العملية:</span>
+                          <span className="font-bold text-rose-800">تسجيل دين مباشر</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-600">المبلغ المسجَّل:</span>
+                          <span className="font-black tabnum text-rose-900">{fmt(receipt.debt_amount ?? receipt.total_amount ?? 0)} د.ج</span>
+                        </div>
+                        {receipt.final_balance !== undefined && (
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">الرصيد الكلي الجديد:</span>
+                            <span className="font-black tabnum">{fmt(Math.abs(receipt.final_balance))} د.ج</span>
+                          </div>
+                        )}
+                        {receipt.note && (
+                          <div className="flex justify-between">
+                            <span className="text-slate-600">ملاحظة:</span>
+                            <span className="font-bold">{receipt.note}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* وصل تسديد */}
                     {receipt.receipt_type === 'DEBT_PAYMENT' && receipt.payment_amount && (
                       <div className="bg-amber-50 rounded-xl p-3 text-xs space-y-1">
@@ -394,7 +432,7 @@ export default function ReceiptsPage() {
                     {/* أزرار الإجراءات */}
                     <div className="flex gap-2 pt-1">
                       <button
-                        onClick={(e) => { e.stopPropagation(); setSelectedReceipt(receipt); }}
+                        onClick={(e) => { e.stopPropagation(); printThermalReceipt(receipt); }}
                         className="flex-1 py-2.5 bg-slate-900 text-white rounded-xl font-black text-xs flex items-center justify-center gap-1.5"
                       >
                         <Printer size={14} />
@@ -437,8 +475,6 @@ export default function ReceiptsPage() {
           </div>
         </div>
       )}
-      {/* Modal معاينة الوصل الحراري الموحد */}
-      <ReceiptViewModal receipt={selectedReceipt} onClose={() => setSelectedReceipt(null)} />
     </div>
   );
 }

@@ -147,6 +147,8 @@ export async function POST(req: Request) {
             notes        = EXCLUDED.notes;
         `;
         if (tx.items?.length > 0) {
+          // 1. مسح أي سجلات قديمة للمعاملة في القاعدة قبل إعادة الإدخال النظيف لمنع التكرار
+          await query`DELETE FROM transaction_items WHERE transaction_id = ${tx.id};`;
           await Promise.all((tx.items as any[]).map((item: any) => query`
             INSERT INTO transaction_items (transaction_id, product_id, product_name, quantity, unit_price, cost_price)
             VALUES (${tx.id}, ${item.product_id || null}, ${item.product_name || null},
@@ -156,7 +158,7 @@ export async function POST(req: Request) {
       }));
     }
 
-    // ─── 4. إرجاع البيانات المفلترة — مع حذف أي محذوف نهائياً من الرد ───
+    // ─── 4. إرجاع البيانات المفلترة — مع تنقية الأوصال ومنع التكرار ───
     const [cloudContacts, cloudProducts, cloudTx, cloudItems] = await Promise.all([
       query`SELECT * FROM contacts  WHERE id NOT IN (SELECT id FROM deleted_items WHERE entity_type='contact')    ORDER BY created_at DESC;`,
       query`SELECT * FROM products  WHERE id NOT IN (SELECT id FROM deleted_items WHERE entity_type='product')    ORDER BY created_at DESC;`,
@@ -164,10 +166,20 @@ export async function POST(req: Request) {
       query`SELECT * FROM transaction_items;`,
     ]);
 
-    const fullTransactions = (cloudTx as any[]).map((tx: any) => ({
-      ...tx,
-      items: (cloudItems as any[]).filter((it: any) => it.transaction_id === tx.id),
-    }));
+    const fullTransactions = (cloudTx as any[]).map((tx: any) => {
+      const rawItems = (cloudItems as any[]).filter((it: any) => it.transaction_id === tx.id);
+      const seen = new Set<string>();
+      const cleanItems = rawItems.filter((it: any) => {
+        const key = `${it.product_id || ''}_${it.product_name || ''}_${it.quantity}_${it.unit_price}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+      return {
+        ...tx,
+        items: cleanItems,
+      };
+    });
 
     return NextResponse.json({
       success: true,

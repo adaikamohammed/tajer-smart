@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
   getLocalData, setLocalData, Product, Contact, Transaction, TransactionItem,
-  printThermalReceipt, generateReceiptNumber, saveReceipt,
+  printThermalReceipt, generateReceiptNumber, saveReceipt, smartMatchText,
 } from '@/lib/store';
 import { SearchableSelect } from '@/components/SearchableSelect';
 import { toast } from '@/components/Toast';
@@ -40,11 +40,13 @@ function QuickSaleContent() {
   const [newCustPhone,       setNewCustPhone]       = useState('');
 
   // سلة المنتجات والبحث
-  const [productSearch, setProductSearch] = useState('');
-  const [cart,          setCart]          = useState<CartItem[]>([]);
-  const [paidAmount,    setPaidAmount]    = useState<number>(0);
-  const [note,          setNote]          = useState<string>('');
-  const [isSubmitting,  setIsSubmitting]  = useState(false);
+  const [productSearch,     setProductSearch]     = useState('');
+  const [cart,              setCart]              = useState<CartItem[]>([]);
+  const [paidCurrentGoods,  setPaidCurrentGoods]  = useState<number>(0);
+  const [paidPrevDebt,      setPaidPrevDebt]      = useState<number>(0);
+  const [customPrevBalance, setCustomPrevBalance] = useState<number>(0);
+  const [note,              setNote]              = useState<string>('');
+  const [isSubmitting,      setIsSubmitting]      = useState(false);
 
   useEffect(() => {
     const rawContacts: Contact[] = getLocalData('tajer_smart_contacts_v1', []);
@@ -67,34 +69,54 @@ function QuickSaleContent() {
     return contacts.find(c => c.id === selectedCustomerId) || null;
   }, [contacts, selectedCustomerId]);
 
-  // المنتجات المفلترة بالبحث
+  useEffect(() => {
+    if (selectedContact) {
+      setCustomPrevBalance(Number(selectedContact.balance) || 0);
+    } else {
+      setCustomPrevBalance(0);
+    }
+  }, [selectedContact]);
+
+  // المنتجات المفلترة بالبحث الذكي (تتجاهل الهمزات، المسافات، والرموز)
   const filteredProducts = useMemo(() => {
-    if (!productSearch.trim()) return products.slice(0, 10);
-    const q = productSearch.toLowerCase().trim();
+    if (!productSearch.trim()) return products;
+    const q = productSearch.trim();
     return products.filter(
-      p => p.name.toLowerCase().includes(q) || (p.category && p.category.toLowerCase().includes(q))
+      p => smartMatchText(p.name, q)
+        || (p.category && smartMatchText(p.category, q))
+        || (p.barcode && smartMatchText(p.barcode, q))
     );
   }, [products, productSearch]);
 
   // إجمالي الفاتورة مع مراعاة بيع الكراتين والحبات الفردية
   const totalAmount = useMemo(() => {
-    return cart.reduce((sum, item) => {
-      const p = item.product;
-      if (p.unit_type === 'pack') {
-        const cap = p.pack_quantity || 1;
-        const packs = item.packsCount ?? Math.floor(item.quantity / cap);
-        const loose = item.looseCount ?? (item.quantity % cap);
-        const loosePrice = item.unitPrice / cap;
-        return sum + (packs * item.unitPrice) + (loose * loosePrice);
-      }
-      return sum + (item.quantity * item.unitPrice);
-    }, 0);
+    return cart.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
   }, [cart]);
 
-  // تحديث المدفوع تلقائياً بالكامل
+  // تحديث المدفوع كاش للبضاعة تلقائياً عند تغيير السلة
   useEffect(() => {
-    setPaidAmount(totalAmount);
+    setPaidCurrentGoods(totalAmount);
   }, [totalAmount]);
+
+  // الحصيلة الكلية المتبقية كدين في حساب الزبون
+  const totalRemainingBalance = useMemo(() => {
+    const unpaidGoods = Math.max(0, totalAmount - paidCurrentGoods);
+    if (customPrevBalance >= 0) {
+      // الزبون عليه دين سابق
+      return unpaidGoods + (customPrevBalance - paidPrevDebt);
+    } else {
+      // الزبون له رصيد مسبق عندنا (customPrevBalance بالسالب)
+      const prevCredit = Math.abs(customPrevBalance);
+      // سداد كاش للزبون (paidPrevDebt) يقلل رصيده السابق، وغير المدفوع من البضاعة يقتطع من رصيده
+      const remainingCredit = (prevCredit - paidPrevDebt) - unpaidGoods;
+      return -remainingCredit;
+    }
+  }, [totalAmount, paidCurrentGoods, customPrevBalance, paidPrevDebt]);
+
+  // إجمالي المدفوع كاش اليوم
+  const totalCashToday = useMemo(() => {
+    return paidCurrentGoods + paidPrevDebt;
+  }, [paidCurrentGoods, paidPrevDebt]);
 
   // إضافة منتج للسلة
   const addToCart = (product: Product) => {
@@ -191,28 +213,42 @@ function QuickSaleContent() {
     toast(`✅ تم إضافة الزبون "${newC.name}" بنجاح!`);
   };
 
-  // تنفيذ عملية البيع
-  const handleExecuteSale = (shouldPrint: boolean) => {
+  // تنفيذ عملية البيع وتحديث البيانات
+  const handleExecuteSale = (printAfter: boolean = false) => {
     if (!selectedContact) {
       toast('يرجى اختيار الزبون أولاً', 'error');
       return;
     }
     if (cart.length === 0) {
-      toast('السلة فارغة! اضف منتجات أولاً', 'warning');
+      toast('السلة فارغة، أضف منتجات للبيع', 'error');
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const debtAmount = Math.max(0, totalAmount - paidAmount);
-      const txItems: TransactionItem[] = cart.map(ci => ({
-        product_id: ci.product.id,
-        product_name: ci.product.name,
-        quantity: ci.quantity,
-        unit_price: ci.unitPrice,
-        cost_price: ci.product.cost_price,
-      }));
+      // تجهيز عناصر الفاتورة مع فحص الكراتين والحبات
+      const txItems: TransactionItem[] = cart.map(ci => {
+        const cap = ci.product.pack_quantity || 1;
+        const packsCount = ci.packsCount !== undefined ? ci.packsCount : Math.floor(ci.quantity / cap);
+        const looseCount = ci.looseCount !== undefined ? ci.looseCount : (ci.quantity % cap);
+
+        return {
+          product_id: ci.product.id,
+          product_name: ci.product.name,
+          quantity: ci.quantity,
+          packs_count: packsCount,
+          loose_count: looseCount,
+          pack_quantity: cap,
+          unit_type: ci.product.unit_type || 'piece',
+          unit_price: ci.unitPrice,
+          cost_price: ci.product.cost_price,
+        };
+      });
+
+      const debtAmount = Math.max(0, totalAmount - paidCurrentGoods);
+      const previousBalance = customPrevBalance;
+      const finalBalance = totalRemainingBalance;
 
       // المعاملة
       const newTx: Transaction = {
@@ -221,9 +257,11 @@ function QuickSaleContent() {
         contact_id: selectedContact.id,
         contact_name: selectedContact.name,
         total_amount: totalAmount,
-        paid_amount: paidAmount,
+        paid_amount: totalCashToday,
         debt_amount: debtAmount,
-        status: debtAmount > 0 ? (paidAmount > 0 ? 'PARTIAL' : 'DEBT') : 'PAID',
+        previous_balance: previousBalance,
+        final_balance: finalBalance,
+        status: debtAmount > 0 ? (totalCashToday > 0 ? 'PARTIAL' : 'DEBT') : 'PAID',
         items: txItems,
         notes: note.trim() || undefined,
         created_at: new Date().toISOString(),
@@ -242,12 +280,12 @@ function QuickSaleContent() {
         return p;
       });
 
-      // تحديث ديون الزبون
+      // تحديث ديون الزبون برصيد الحصيلة الجديد
       const updatedContacts = contacts.map(c => {
         if (c.id === selectedContact.id) {
           return {
             ...c,
-            balance: c.balance + debtAmount,
+            balance: finalBalance,
           };
         }
         return c;
@@ -267,15 +305,17 @@ function QuickSaleContent() {
         contact_phone: selectedContact.phone,
         items: txItems,
         total_amount: totalAmount,
-        paid_amount: paidAmount,
+        paid_amount: totalCashToday,
         debt_amount: debtAmount,
+        previous_balance: previousBalance,
+        final_balance: finalBalance,
         note: note.trim() || undefined,
         created_at: newTx.created_at,
       };
 
       saveReceipt(receipt);
 
-      if (shouldPrint) {
+      if (printAfter) {
         printThermalReceipt(receipt);
       }
 
@@ -370,6 +410,36 @@ function QuickSaleContent() {
           />
         )}
       </div>
+
+      {/* ── 🔴 بانر الدين/المستحقات السابقة للزبون ── */}
+      {selectedContact && Number(selectedContact.balance) !== 0 && (
+        <div className={`p-3.5 rounded-2xl border-2 ${
+          Number(selectedContact.balance) > 0
+            ? 'bg-rose-50 border-rose-300 text-rose-900'
+            : 'bg-blue-50 border-blue-300 text-blue-900'
+        }`}>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">{Number(selectedContact.balance) > 0 ? '⚠️' : '💙'}</span>
+              <div>
+                <p className="font-black text-sm">
+                  {Number(selectedContact.balance) > 0
+                    ? `على ${selectedContact.name} دين سابق:`
+                    : `لـ ${selectedContact.name} مستحقات علينا:`}
+                </p>
+                <p className="text-xs font-bold opacity-70">
+                  {Number(selectedContact.balance) > 0
+                    ? 'سيُضاف للوصل — سيعرف الزبون إجمالي ما عليه'
+                    : 'مبلغ ندين به لهذا العميل'}
+                </p>
+              </div>
+            </div>
+            <span className="font-black text-2xl tabnum">
+              {fmt(Math.abs(Number(selectedContact.balance)))} <span className="text-sm">د.ج</span>
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* ── 🔍 2. البحث عن المنتجات وفحص المخزون ── */}
       <div className="glass-card p-4 space-y-3 bg-white relative z-10">
@@ -473,7 +543,8 @@ function QuickSaleContent() {
               <thead>
                 <tr className="border-b border-slate-200 text-[11px] font-black text-slate-400">
                   <th className="pb-2">المنتج</th>
-                  <th className="pb-2 text-center">الكمية</th>
+                  <th className="pb-2 text-center">السعة</th>
+                  <th className="pb-2 text-center">الكمية (كراتين وحبات)</th>
                   <th className="pb-2 text-center">سعر التجزئة</th>
                   <th className="pb-2 text-left">الإجمالي</th>
                   <th className="pb-2"></th>
@@ -497,78 +568,86 @@ function QuickSaleContent() {
                         )}
                       </td>
 
-                      <td className="py-2.5 text-center">
+                      <td className="py-2.5 text-center min-w-[65px]">
+                        <span className="text-xs font-extrabold text-indigo-950 bg-indigo-50 border border-indigo-200 px-2 py-1 rounded-xl inline-block tabnum">
+                          {p.pack_quantity || 1}
+                        </span>
+                      </td>
+
+                      <td className="py-2.5 text-center min-w-[220px]">
                         {p.unit_type === 'pack' ? (() => {
                           const curPacks = ci.packsCount ?? Math.floor(ci.quantity / (p.pack_quantity || 1));
                           const curLoose = ci.looseCount ?? (ci.quantity % (p.pack_quantity || 1));
                           return (
-                            <div className="flex items-center justify-center gap-1.5 bg-indigo-50/80 p-1.5 rounded-xl border border-indigo-200">
-                              <div className="text-center">
-                                <span className="block text-[9px] font-black text-indigo-900 mb-0.5">📦 كرتونة</span>
-                                <div className="inline-flex items-center gap-0.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => updatePackLooseQty(p.id, Math.max(0, curPacks - 1), curLoose)}
-                                    className="w-5 h-5 rounded bg-white text-indigo-900 border border-indigo-200 font-black text-xs flex items-center justify-center hover:bg-rose-100 hover:text-rose-700"
-                                  >
-                                    -
-                                  </button>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    value={curPacks}
-                                    onChange={e => updatePackLooseQty(p.id, +e.target.value, curLoose)}
-                                    onFocus={e => e.target.select()}
-                                    className="w-9 text-center form-input py-0.5 px-0.5 font-black text-xs text-indigo-950 tabnum bg-white border-indigo-300"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => updatePackLooseQty(p.id, curPacks + 1, curLoose)}
-                                    className="w-5 h-5 rounded bg-indigo-600 text-white font-black text-xs flex items-center justify-center hover:bg-indigo-700"
-                                  >
-                                    +
-                                  </button>
+                            <div className="w-full bg-white p-2 rounded-2xl border border-indigo-200 shadow-sm">
+                              <div className="grid grid-cols-2 gap-2 w-full">
+                                {/* قسم الكرتونة 50% */}
+                                <div className="flex flex-col items-center bg-indigo-50/80 p-1.5 rounded-xl border border-indigo-200/60">
+                                  <span className="block text-[11px] font-black text-indigo-950 mb-1">📦 عدد الكراتين</span>
+                                  <div className="flex items-center justify-between w-full gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => updatePackLooseQty(p.id, Math.max(0, curPacks - 1), curLoose)}
+                                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white text-indigo-900 border border-indigo-200 font-black text-base flex items-center justify-center shadow-sm touch-active hover:bg-rose-100 hover:text-rose-700 shrink-0"
+                                    >
+                                      -
+                                    </button>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={curPacks}
+                                      onChange={e => updatePackLooseQty(p.id, +e.target.value, curLoose)}
+                                      onFocus={e => e.target.select()}
+                                      className="flex-1 min-w-0 text-center form-input py-0.5 px-0.5 font-black text-xs sm:text-sm text-indigo-950 tabnum bg-white border-indigo-300 shadow-inner"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => updatePackLooseQty(p.id, curPacks + 1, curLoose)}
+                                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-indigo-600 text-white font-black text-base flex items-center justify-center shadow-sm touch-active hover:bg-indigo-700 shrink-0"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
                                 </div>
-                              </div>
 
-                              <span className="text-xs font-black text-indigo-300 self-end mb-1">+</span>
-
-                              <div className="text-center">
-                                <span className="block text-[9px] font-black text-indigo-900 mb-0.5">🥛 حبة</span>
-                                <div className="inline-flex items-center gap-0.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => updatePackLooseQty(p.id, curPacks, Math.max(0, curLoose - 1))}
-                                    className="w-5 h-5 rounded bg-white text-indigo-900 border border-indigo-200 font-black text-xs flex items-center justify-center hover:bg-rose-100 hover:text-rose-700"
-                                  >
-                                    -
-                                  </button>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    value={curLoose}
-                                    onChange={e => updatePackLooseQty(p.id, curPacks, +e.target.value)}
-                                    onFocus={e => e.target.select()}
-                                    className="w-9 text-center form-input py-0.5 px-0.5 font-black text-xs text-indigo-950 tabnum bg-white border-indigo-300"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => updatePackLooseQty(p.id, curPacks, curLoose + 1)}
-                                    className="w-5 h-5 rounded bg-emerald-600 text-white font-black text-xs flex items-center justify-center hover:bg-emerald-700"
-                                  >
-                                    +
-                                  </button>
+                                {/* قسم الحبة 50% */}
+                                <div className="flex flex-col items-center bg-emerald-50/80 p-1.5 rounded-xl border border-emerald-200/60">
+                                  <span className="block text-[11px] font-black text-emerald-950 mb-1">🥛 حبات إضافية</span>
+                                  <div className="flex items-center justify-between w-full gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => updatePackLooseQty(p.id, curPacks, Math.max(0, curLoose - 1))}
+                                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-white text-emerald-900 border border-emerald-200 font-black text-base flex items-center justify-center shadow-sm touch-active hover:bg-rose-100 hover:text-rose-700 shrink-0"
+                                    >
+                                      -
+                                    </button>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={curLoose}
+                                      onChange={e => updatePackLooseQty(p.id, curPacks, +e.target.value)}
+                                      onFocus={e => e.target.select()}
+                                      className="flex-1 min-w-0 text-center form-input py-0.5 px-0.5 font-black text-xs sm:text-sm text-emerald-950 tabnum bg-white border-emerald-300 shadow-inner"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => updatePackLooseQty(p.id, curPacks, curLoose + 1)}
+                                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-emerald-600 text-white font-black text-base flex items-center justify-center shadow-sm touch-active hover:bg-emerald-700 shrink-0"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             </div>
                           );
                         })() : (
-                          <div className="inline-flex items-center gap-1">
+                          <div className="inline-flex items-center gap-1.5 bg-white p-1.5 rounded-xl border border-slate-200">
                             <button
                               onClick={() => updateCartQty(p.id, -1)}
-                              className="w-6 h-6 rounded bg-slate-100 text-slate-700 font-black flex items-center justify-center hover:bg-rose-100 hover:text-rose-700"
+                              className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 font-black flex items-center justify-center hover:bg-rose-100 hover:text-rose-700"
                             >
-                              <Minus size={12} />
+                              <Minus size={14} />
                             </button>
                             <input
                               type="number"
@@ -576,65 +655,36 @@ function QuickSaleContent() {
                               value={ci.quantity}
                               onChange={e => setCartQtyDirect(p.id, +e.target.value)}
                               onFocus={e => e.target.select()}
-                              className="w-10 text-center form-input py-0.5 px-0 text-xs font-black tabnum"
+                              className="w-12 text-center form-input py-0.5 px-0 text-xs font-black tabnum"
                             />
                             <button
                               onClick={() => updateCartQty(p.id, 1)}
-                              className="w-6 h-6 rounded bg-emerald-100 text-emerald-800 font-black flex items-center justify-center hover:bg-emerald-200"
+                              className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 font-black flex items-center justify-center hover:bg-emerald-200"
                             >
-                              <Plus size={12} />
+                              <Plus size={14} />
                             </button>
                           </div>
                         )}
                       </td>
 
-                      <td className="py-2.5 text-center min-w-[120px]">
+                      <td className="py-2.5 text-center min-w-[110px]">
                         <div className="flex flex-col items-center gap-1">
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => updateCartPrice(p.id, p.retail_price)}
-                              className={`px-1.5 py-0.5 rounded text-[10px] font-black border transition-all ${
-                                ci.unitPrice === p.retail_price ? 'bg-emerald-600 text-white border-transparent' : 'bg-slate-100 text-slate-700 border-slate-200'
-                              }`}
-                            >
-                              تجزئة 1 ({p.retail_price})
-                            </button>
-                            {(p.retail_price_2 || 0) > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => updateCartPrice(p.id, p.retail_price_2 || p.retail_price)}
-                                className={`px-1.5 py-0.5 rounded text-[10px] font-black border transition-all ${
-                                  ci.unitPrice === p.retail_price_2 ? 'bg-sky-600 text-white border-transparent' : 'bg-slate-100 text-slate-700 border-slate-200'
-                                }`}
-                              >
-                                تجزئة 2 ({p.retail_price_2})
-                              </button>
-                            )}
-                          </div>
+                          <span className="text-[10px] font-black text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60">
+                            سعر التجزئة (حبة)
+                          </span>
                           <input
                             type="number"
                             min="0"
                             value={ci.unitPrice}
                             onChange={e => updateCartPrice(p.id, +e.target.value)}
-                            className="w-20 form-input py-0.5 px-1 text-xs font-black text-emerald-700 tabnum bg-emerald-50/60 text-center"
+                            onFocus={e => e.target.select()}
+                            className="w-20 form-input py-0.5 px-1 text-xs font-black text-emerald-700 tabnum bg-white border-emerald-300 text-center shadow-inner"
                           />
                         </div>
                       </td>
 
                       <td className="py-2.5 text-left font-black text-xs text-slate-900 tabnum min-w-[70px]">
-                        {p.unit_type === 'pack' ? (
-                          (() => {
-                            const cap = p.pack_quantity || 1;
-                            const packs = ci.packsCount ?? Math.floor(ci.quantity / cap);
-                            const loose = ci.looseCount ?? (ci.quantity % cap);
-                            const loosePrice = ci.unitPrice / cap;
-                            const itemTotal = (packs * ci.unitPrice) + (loose * loosePrice);
-                            return `${fmt(itemTotal)} د.ج`;
-                          })()
-                        ) : (
-                          `${fmt(ci.quantity * ci.unitPrice)} د.ج`
-                        )}
+                        {fmt(ci.quantity * ci.unitPrice)} د.ج
                       </td>
 
                       <td className="py-2.5 text-left">
@@ -654,31 +704,98 @@ function QuickSaleContent() {
       {/* ── 💵 4. ملخص الفاتورة والدفع ── */}
       {cart.length > 0 && (
         <div className="bg-slate-900 text-white p-5 rounded-2xl space-y-4 shadow-xl">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <span className="font-bold text-slate-300 text-sm">إجمالي الفاتورة الكلي:</span>
-            <span className="font-black text-3xl text-emerald-400 tabnum">{fmt(totalAmount)} <span className="text-sm">د.ج</span></span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1">💵 المدفوع كاش الآن (د.ج):</label>
-              <input
-                type="number"
-                min="0"
-                max={totalAmount}
-                value={paidAmount}
-                onChange={e => setPaidAmount(+e.target.value)}
-                className="form-input text-lg font-black text-center text-emerald-400 bg-slate-800 border-slate-700 tabnum py-2"
-              />
+          {/* قسم الشقين: البضاعة الحالية والدين السابق */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* 📦 1. البضاعة الحالية والمدفوع منها */}
+            <div className="bg-slate-800/80 p-3.5 rounded-2xl border border-slate-700 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-extrabold text-slate-300 text-xs">📦 سعر البضاعة الحالية بالسلة:</span>
+                <span className="font-black text-xl text-emerald-400 tabnum">{fmt(totalAmount)} <span className="text-xs">د.ج</span></span>
+              </div>
+              <div className="pt-2 border-t border-slate-700/80">
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">💵 كم دفع للبضاعة كاش الآن:</label>
+                <input
+                  type="number"
+                  min="0"
+                  max={totalAmount}
+                  value={paidCurrentGoods}
+                  onChange={e => setPaidCurrentGoods(+e.target.value)}
+                  className="form-input text-base font-black text-center text-emerald-400 bg-slate-900 border-slate-700 tabnum py-1.5"
+                />
+              </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1">📋 المتبقي كدين:</label>
-              <div className={`p-2 rounded-xl text-center font-black text-lg tabnum border ${
-                totalAmount - paidAmount > 0 ? 'bg-rose-950 text-rose-300 border-rose-800' : 'bg-emerald-950 text-emerald-300 border-emerald-800'
-              }`}>
-                {fmt(Math.max(0, totalAmount - paidAmount))} د.ج
+            {/* 📋 2. الدين السابق أو الرصيد المسبق والتسديد منه */}
+            <div className={`p-3.5 rounded-2xl border space-y-2 ${
+              customPrevBalance < 0 ? 'bg-indigo-950/40 border-indigo-700/80' : 'bg-slate-800/80 border-slate-700'
+            }`}>
+              <div className="flex items-center justify-between">
+                <span className="font-extrabold text-xs flex items-center gap-1">
+                  {customPrevBalance < 0 ? (
+                    <span className="text-indigo-300">💙 رصيد سابق للزبون (له عندنا):</span>
+                  ) : customPrevBalance > 0 ? (
+                    <span className="text-amber-300">📋 دين سابق على الزبون (نطالبه):</span>
+                  ) : (
+                    <span className="text-slate-300">📋 دين سابق على الزبون:</span>
+                  )}
+                </span>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    step="any"
+                    value={customPrevBalance < 0 ? Math.abs(customPrevBalance) : customPrevBalance}
+                    onChange={e => {
+                      const val = parseFloat(e.target.value) || 0;
+                      setCustomPrevBalance(customPrevBalance < 0 ? -val : val);
+                    }}
+                    className={`w-28 form-input text-sm font-black text-center bg-slate-900 border-slate-700 tabnum py-1 px-1 ${
+                      customPrevBalance < 0 ? 'text-indigo-300' : 'text-amber-400'
+                    }`}
+                  />
+                  <span className="text-xs font-bold text-slate-400">د.ج</span>
+                </div>
               </div>
+
+              <div className="pt-2 border-t border-slate-700/80">
+                <label className="block text-[11px] font-bold text-slate-300 mb-1">
+                  {customPrevBalance < 0
+                    ? '💸 سداد كاش للزبون من رصيده السابق الآن:'
+                    : '💸 تم تحصيل مبلغ كاش من الدين السابق الآن:'}
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={paidPrevDebt}
+                  onChange={e => setPaidPrevDebt(+e.target.value)}
+                  placeholder="0 (أو جزء أو كل الدين)"
+                  className="form-input text-base font-black text-center text-amber-400 bg-slate-900 border-slate-700 tabnum py-1.5"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* 📊 3. الحصيلة كدين متبقي إجمالي */}
+          <div className="bg-slate-800/90 p-4 rounded-2xl border border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div>
+              <span className="block text-xs font-black text-slate-200">
+                {totalRemainingBalance > 0
+                  ? '🔴 الحصيلة: الرصيد المتبقي في ذمته (دين عليه):'
+                  : totalRemainingBalance < 0
+                  ? '🔵 الحصيلة: الرصيد المتبقي لصالح الزبون (له عندنا):'
+                  : '✅ الحصيلة: الحساب مصفى بالكامل:'}
+              </span>
+              <span className="text-[10px] text-slate-400 font-bold block mt-0.5">
+                (مجموع البضاعة - المدفوع منها) + (الدين السابق - المسدد منه)
+              </span>
+            </div>
+            <div className={`px-5 py-2.5 rounded-xl font-black text-xl tabnum border shadow-md ${
+              totalRemainingBalance > 0
+                ? 'bg-rose-950 text-rose-300 border-rose-800'
+                : totalRemainingBalance < 0
+                ? 'bg-indigo-950 text-indigo-200 border-indigo-700'
+                : 'bg-emerald-950 text-emerald-300 border-emerald-800'
+            }`}>
+              {fmt(Math.abs(totalRemainingBalance))} د.ج
             </div>
           </div>
 

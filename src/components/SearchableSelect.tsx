@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Search, ChevronDown, Check, Plus, User, Package, X } from 'lucide-react';
+import { smartMatchText } from '@/lib/store';
 
 export interface SelectOption {
   id: string;
@@ -48,10 +49,10 @@ export function SearchableSelect({
   // تصفية الخيارات حسب كتابة المستخدم
   const filteredOptions = useMemo(() => {
     if (!searchQuery.trim()) return options;
-    const q = searchQuery.toLowerCase().trim();
+    const q = searchQuery.trim();
     return options.filter(o =>
-      o.label.toLowerCase().includes(q) ||
-      (o.sublabel && o.sublabel.toLowerCase().includes(q))
+      smartMatchText(o.label, q) ||
+      (o.sublabel && smartMatchText(o.sublabel, q))
     );
   }, [options, searchQuery]);
 
