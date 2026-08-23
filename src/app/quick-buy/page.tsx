@@ -155,8 +155,8 @@ export default function QuickBuyPage() {
         ...prev,
         {
           product,
-          quantity: 0,
-          packsCount: product.unit_type === 'pack' ? 0 : undefined,
+          quantity: product.unit_type === 'pack' ? (product.pack_quantity || 1) : 1,
+          packsCount: product.unit_type === 'pack' ? 1 : undefined,
           looseCount: product.unit_type === 'pack' ? 0 : undefined,
           unitPrice: product.cost_price,
         },
@@ -268,16 +268,18 @@ export default function QuickBuyPage() {
       toast('⚠️ يرجى اختيار المورد أولاً', 'error');
       return;
     }
-    if (cart.length === 0) {
-      toast('⚠️ السلة فارغة! أضف منتجات أولاً', 'warning');
+    const validCart = cart.filter(ci => ci.quantity > 0);
+    if (validCart.length === 0) {
+      toast('⚠️ السلة فارغة أو تحتوي فقط على منتجات بكمية 0! أضف كميات أولاً', 'warning');
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const debtAmount = Math.max(0, totalAmount - paidCurrentGoods);
-      const txItems: TransactionItem[] = cart.map(ci => ({
+      const validTotalAmount = validCart.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+      const debtAmount = Math.max(0, validTotalAmount - paidCurrentGoods);
+      const txItems: TransactionItem[] = validCart.map(ci => ({
         product_id: ci.product.id,
         product_name: ci.product.name,
         quantity: ci.quantity,
@@ -298,7 +300,7 @@ export default function QuickBuyPage() {
         tx_type: 'PURCHASE',
         contact_id: selectedContact.id,
         contact_name: selectedContact.name,
-        total_amount: totalAmount,
+        total_amount: validTotalAmount,
         paid_amount: totalCashToday,
         debt_amount: debtAmount,
         previous_balance: previousBalance,
@@ -312,7 +314,7 @@ export default function QuickBuyPage() {
       // 2. زيادة كميات المخزون وتحديث سعر الجملة
       const allProducts: Product[] = getLocalData('tajer_smart_products_v1', []);
       const updatedProducts = allProducts.map(p => {
-        const cartMatch = cart.find(ci => ci.product.id === p.id);
+        const cartMatch = validCart.find(ci => ci.product.id === p.id);
         if (cartMatch) {
           return {
             ...p,
@@ -345,7 +347,7 @@ export default function QuickBuyPage() {
         contact_name: selectedContact.name,
         contact_phone: selectedContact.phone,
         items: txItems,
-        total_amount: totalAmount,
+        total_amount: validTotalAmount,
         paid_amount: totalCashToday,
         debt_amount: debtAmount,
         previous_balance: previousBalance,

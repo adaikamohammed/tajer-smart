@@ -325,8 +325,9 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
   // ─ جدول المنتجات (للبيع والشراء فقط — وليس للدين المباشر) ─
   let itemsHTML = '';
   if (!isDirectDebt && receipt.items && receipt.items.length > 0) {
+    const validItems = receipt.items.filter(i => (Number(i.quantity) || 0) > 0);
     const storedProds: Product[] = getLocalData<Product[]>('tajer_smart_products_v1', []);
-    const rows = receipt.items.map(i => {
+    const rows = validItems.map(i => {
       const prodMatch = storedProds.find((p: Product) => p.id === i.product_id || p.name.trim() === i.product_name?.trim());
       const realCap = Number(i.pack_quantity || prodMatch?.pack_quantity) || 1;
       const isPackUnit = i.unit_type === 'pack' || (prodMatch && prodMatch.unit_type === 'pack') || realCap > 1 || (i.packs_count !== undefined && i.packs_count > 0);

@@ -219,16 +219,18 @@ function QuickSaleContent() {
       toast('يرجى اختيار الزبون أولاً', 'error');
       return;
     }
-    if (cart.length === 0) {
-      toast('السلة فارغة، أضف منتجات للبيع', 'error');
+    const validCart = cart.filter(ci => ci.quantity > 0);
+    if (validCart.length === 0) {
+      toast('السلة فارغة أو لا تحتوي على منتجات بكمية أكبر من 0', 'error');
       return;
     }
 
     setIsSubmitting(true);
 
     try {
+      const validTotalAmount = validCart.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
       // تجهيز عناصر الفاتورة مع فحص الكراتين والحبات
-      const txItems: TransactionItem[] = cart.map(ci => {
+      const txItems: TransactionItem[] = validCart.map(ci => {
         const cap = ci.product.pack_quantity || 1;
         const packsCount = ci.packsCount !== undefined ? ci.packsCount : Math.floor(ci.quantity / cap);
         const looseCount = ci.looseCount !== undefined ? ci.looseCount : (ci.quantity % cap);
@@ -246,7 +248,7 @@ function QuickSaleContent() {
         };
       });
 
-      const debtAmount = Math.max(0, totalAmount - paidCurrentGoods);
+      const debtAmount = Math.max(0, validTotalAmount - paidCurrentGoods);
       const previousBalance = customPrevBalance;
       const finalBalance = totalRemainingBalance;
 
@@ -256,7 +258,7 @@ function QuickSaleContent() {
         tx_type: 'SALE',
         contact_id: selectedContact.id,
         contact_name: selectedContact.name,
-        total_amount: totalAmount,
+        total_amount: validTotalAmount,
         paid_amount: totalCashToday,
         debt_amount: debtAmount,
         previous_balance: previousBalance,
@@ -269,7 +271,7 @@ function QuickSaleContent() {
 
       // تحديث المخزون (يسمح بالسالب في حالة البيع الزائد لحين الشراء)
       const updatedProducts = products.map(p => {
-        const cartMatch = cart.find(ci => ci.product.id === p.id);
+        const cartMatch = validCart.find(ci => ci.product.id === p.id);
         if (cartMatch) {
           return {
             ...p,
@@ -304,7 +306,7 @@ function QuickSaleContent() {
         contact_name: selectedContact.name,
         contact_phone: selectedContact.phone,
         items: txItems,
-        total_amount: totalAmount,
+        total_amount: validTotalAmount,
         paid_amount: totalCashToday,
         debt_amount: debtAmount,
         previous_balance: previousBalance,
