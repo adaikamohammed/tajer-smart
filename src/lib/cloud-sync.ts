@@ -71,9 +71,20 @@ export async function syncStoreWithVercelCloud(): Promise<{
   updateStatus('syncing');
 
   try {
-    const localContacts:  Contact[]     = getLocalData('tajer_smart_contacts_v1', []);
-    const localProducts:  Product[]     = getLocalData('tajer_smart_products_v1', []);
-    const localTx:        Transaction[] = getLocalData('tajer_smart_transactions_v1', []);
+    const isSeed = (id: string) => !id || String(id).includes('_seed_') || String(id).includes('SEED');
+
+    const rawContacts: Contact[]     = getLocalData('tajer_smart_contacts_v1', []);
+    const rawProducts: Product[]     = getLocalData('tajer_smart_products_v1', []);
+    const rawTx:       Transaction[] = getLocalData('tajer_smart_transactions_v1', []);
+
+    // تطهير التخزين المحلي من أي بيانات وهمية بذرة قديمة
+    const localContacts = rawContacts.filter(c => !isSeed(c.id));
+    const localProducts = rawProducts.filter(p => !isSeed(p.id));
+    const localTx       = rawTx.filter(t => !isSeed(t.id));
+
+    if (localProducts.length !== rawProducts.length) setLocalData('tajer_smart_products_v1', localProducts);
+    if (localContacts.length !== rawContacts.length) setLocalData('tajer_smart_contacts_v1', localContacts);
+    if (localTx.length !== rawTx.length)             setLocalData('tajer_smart_transactions_v1', localTx);
 
     const deletedContacts:     string[] = getLocalData(DELETED_KEYS.CONTACTS, []);
     const deletedProducts:     string[] = getLocalData(DELETED_KEYS.PRODUCTS, []);
@@ -123,16 +134,16 @@ export async function syncStoreWithVercelCloud(): Promise<{
     if (Array.isArray(data.products)) {
       const mergedProductsMap = new Map<string, Product>();
       data.products.forEach((p: Product) => {
-        if (!deletedProducts.includes(p.id)) mergedProductsMap.set(p.id, p);
+        if (!deletedProducts.includes(p.id) && !isSeed(p.id)) mergedProductsMap.set(p.id, p);
       });
       localProducts.forEach((p: Product) => {
-        if (!deletedProducts.includes(p.id)) {
+        if (!deletedProducts.includes(p.id) && !isSeed(p.id)) {
           const existing = mergedProductsMap.get(p.id);
           mergedProductsMap.set(p.id, existing ? { ...existing, ...p } : p);
         }
       });
       const mergedProducts = Array.from(mergedProductsMap.values());
-      if (JSON.stringify(mergedProducts) !== JSON.stringify(localProducts)) {
+      if (JSON.stringify(mergedProducts) !== JSON.stringify(rawProducts)) {
         setLocalData('tajer_smart_products_v1', mergedProducts);
         changed = true;
       }
@@ -142,16 +153,16 @@ export async function syncStoreWithVercelCloud(): Promise<{
     if (Array.isArray(data.contacts)) {
       const mergedContactsMap = new Map<string, Contact>();
       data.contacts.forEach((c: Contact) => {
-        if (!deletedContacts.includes(c.id)) mergedContactsMap.set(c.id, c);
+        if (!deletedContacts.includes(c.id) && !isSeed(c.id)) mergedContactsMap.set(c.id, c);
       });
       localContacts.forEach((c: Contact) => {
-        if (!deletedContacts.includes(c.id)) {
+        if (!deletedContacts.includes(c.id) && !isSeed(c.id)) {
           const existing = mergedContactsMap.get(c.id);
           mergedContactsMap.set(c.id, existing ? { ...existing, ...c } : c);
         }
       });
       const mergedContacts = Array.from(mergedContactsMap.values());
-      if (JSON.stringify(mergedContacts) !== JSON.stringify(localContacts)) {
+      if (JSON.stringify(mergedContacts) !== JSON.stringify(rawContacts)) {
         setLocalData('tajer_smart_contacts_v1', mergedContacts);
         changed = true;
       }
@@ -172,19 +183,19 @@ export async function syncStoreWithVercelCloud(): Promise<{
 
       const mergedTxMap = new Map<string, Transaction>();
       data.transactions.forEach((t: Transaction) => {
-        if (!deletedTransactions.includes(t.id)) {
+        if (!deletedTransactions.includes(t.id) && !isSeed(t.id)) {
           mergedTxMap.set(t.id, { ...t, items: cleanTxItems(t.items) });
         }
       });
       localTx.forEach((t: Transaction) => {
-        if (!deletedTransactions.includes(t.id)) {
+        if (!deletedTransactions.includes(t.id) && !isSeed(t.id)) {
           const existing = mergedTxMap.get(t.id);
           const cleanItems = cleanTxItems(t.items || existing?.items || []);
           mergedTxMap.set(t.id, existing ? { ...existing, ...t, items: cleanItems } : { ...t, items: cleanItems });
         }
       });
       const mergedTx = Array.from(mergedTxMap.values());
-      if (JSON.stringify(mergedTx) !== JSON.stringify(localTx)) {
+      if (JSON.stringify(mergedTx) !== JSON.stringify(rawTx)) {
         setLocalData('tajer_smart_transactions_v1', mergedTx);
         changed = true;
       }

@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { getLocalData, setLocalData } from '@/lib/store';
 import { toast } from '@/components/Toast';
 import { Download, LogOut, ShieldCheck, X, RefreshCw, CheckCircle2, WifiOff } from 'lucide-react';
-import { initAutoSyncEngine, subscribeToSyncStatus, SyncStatus } from '@/lib/cloud-sync';
+import { initAutoSyncEngine, subscribeToSyncStatus, syncStoreWithVercelCloud, SyncStatus } from '@/lib/cloud-sync';
 
 export default function AppHeader() {
   const pathname = usePathname();
@@ -102,26 +102,39 @@ export default function AppHeader() {
         {/* 🟢 مؤشر المزامنة المصغر وسريع في سطر واحد */}
         <div className="flex items-center gap-1.5 shrink-0">
 
-          <div className="flex items-center gap-1 px-2 py-0.5 bg-black/25 border border-white/15 rounded-lg text-[10px] font-black text-white shrink-0">
+          <button
+            type="button"
+            onClick={async () => {
+              toast('🔄 جارٍ توحيد قاعدة البيانات والمزامنة الفورية...', 'info');
+              const res = await syncStoreWithVercelCloud();
+              if (res.success) {
+                toast('✅ تم تحديث وتوحيد البيانات مع السحاب بنجاح!', 'success');
+              } else {
+                toast('⚠️ تعذر المزامنة: ' + (res.errorDetails || 'تأكد من الاتصال'), 'error');
+              }
+            }}
+            className="flex items-center gap-1 px-2 py-1 bg-black/30 hover:bg-black/50 border border-white/20 rounded-lg text-[10px] font-black text-white shrink-0 touch-active cursor-pointer transition-all"
+            title="انقر هنا لإجراء مزامنة فورية وتحديث قاعدة البيانات السحابية"
+          >
             {syncStatus === 'syncing' && (
               <>
                 <RefreshCw className="w-3 h-3 animate-spin text-amber-300 shrink-0" />
-                <span className="text-amber-200">حفظ...</span>
+                <span className="text-amber-200">مزامنة...</span>
               </>
             )}
             {syncStatus === 'synced' && (
               <>
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0"></span>
-                <span className="text-emerald-200">☁️ مزامن</span>
+                <span className="text-emerald-200">☁️ مزامن (اضغط للتحديث)</span>
               </>
             )}
             {(syncStatus === 'offline' || syncStatus === 'error') && (
               <>
-                <ShieldCheck className="w-3 h-3 text-emerald-300 shrink-0" />
-                <span className="text-emerald-200">🔒 محلي</span>
+                <ShieldCheck className="w-3 h-3 text-amber-300 shrink-0" />
+                <span className="text-amber-200">🔄 مـزامـنـة</span>
               </>
             )}
-          </div>
+          </button>
 
           {!isInstalledOrDismissed && (
             <div className="flex items-center bg-white/15 rounded-lg border border-white/20 shrink-0">
