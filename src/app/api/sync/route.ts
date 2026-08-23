@@ -80,10 +80,11 @@ export async function POST(req: Request) {
     const deadProducts  = new Set(tombstones.filter((r: any) => r.entity_type === 'product').map((r: any) => r.id));
     const deadTx        = new Set(tombstones.filter((r: any) => r.entity_type === 'transaction').map((r: any) => r.id));
 
-    // ─── 3. Upsert بالتوازي — مع تجاهل أي عنصر محذوف ───
-    const validContacts     = (contacts     as any[]).filter(c => c.id && c.name && !deadContacts.has(c.id));
-    const validProducts     = (products     as any[]).filter(p => p.id && p.name && !deadProducts.has(p.id));
-    const validTransactions = (transactions as any[]).filter(t => t.id           && !deadTx.has(t.id));
+    // ─── 3. Upsert بالتوازي — مع تجاهل أي عنصر محذوف أو وهمي ───
+    const isSeed = (id: string) => !id || String(id).includes('_seed_') || String(id).toLowerCase().includes('seed');
+    const validContacts     = (contacts     as any[]).filter(c => c.id && c.name && !deadContacts.has(c.id) && !isSeed(c.id));
+    const validProducts     = (products     as any[]).filter(p => p.id && p.name && !deadProducts.has(p.id) && !isSeed(p.id));
+    const validTransactions = (transactions as any[]).filter(t => t.id           && !deadTx.has(t.id)        && !isSeed(t.id));
 
     if (validContacts.length > 0) {
       await Promise.all(validContacts.map((c: any) => query`

@@ -71,27 +71,25 @@ export async function syncStoreWithVercelCloud(): Promise<{
   updateStatus('syncing');
 
   try {
-    const isSeed = (id: string) => !id || String(id).includes('_seed_') || String(id).includes('SEED');
+    const isSeed = (id: string) => !id || String(id).includes('_seed_') || String(id).toLowerCase().includes('seed');
 
+    // ─── 1. جمع وتنظيف البيانات المحلية الجديدة المُراد رفعها ───────────────
     const rawContacts: Contact[]     = getLocalData('tajer_smart_contacts_v1', []);
     const rawProducts: Product[]     = getLocalData('tajer_smart_products_v1', []);
     const rawTx:       Transaction[] = getLocalData('tajer_smart_transactions_v1', []);
 
-    // تطهير التخزين المحلي من أي بيانات وهمية بذرة قديمة
+    // تطهير البيانات الوهمية من المحلي قبل الإرسال
     const localContacts = rawContacts.filter(c => !isSeed(c.id));
     const localProducts = rawProducts.filter(p => !isSeed(p.id));
     const localTx       = rawTx.filter(t => !isSeed(t.id));
-
-    if (localProducts.length !== rawProducts.length) setLocalData('tajer_smart_products_v1', localProducts);
-    if (localContacts.length !== rawContacts.length) setLocalData('tajer_smart_contacts_v1', localContacts);
-    if (localTx.length !== rawTx.length)             setLocalData('tajer_smart_transactions_v1', localTx);
 
     const deletedContacts:     string[] = getLocalData(DELETED_KEYS.CONTACTS, []);
     const deletedProducts:     string[] = getLocalData(DELETED_KEYS.PRODUCTS, []);
     const deletedTransactions: string[] = getLocalData(DELETED_KEYS.TRANSACTIONS, []);
 
+    // ─── 2. إرسال البيانات المحلية للسيرفر (PUSH) ────────────────────────
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     let res: Response;
     try {
@@ -123,52 +121,36 @@ export async function syncStoreWithVercelCloud(): Promise<{
       };
     }
 
-    // تفريغ طوابير الحذف عند النجاح
+    // تفريغ طوابير الحذف بعد تأكيد السيرفر
     if (deletedContacts.length     > 0) setLocalData(DELETED_KEYS.CONTACTS, []);
     if (deletedProducts.length     > 0) setLocalData(DELETED_KEYS.PRODUCTS, []);
     if (deletedTransactions.length > 0) setLocalData(DELETED_KEYS.TRANSACTIONS, []);
 
+    // ─── 3. نموذج "السحاب حاكم" — استبدال المحلي بما رجعه السيرفر بالكامل ─
+    // السيرفر هو مصدر الحقيقة الوحيد. بعد رفع البيانات الجديدة، نستبدل المحلي
+    // بالكامل بما أعاده السيرفر. هذا يضمن تطابق جميع الأجهزة مع قاعدة البيانات.
+
     let changed = false;
 
-    // ─── 1. الدمج الثنائي الذكي للمنتجات (Smart Union Merge) ───
     if (Array.isArray(data.products)) {
-      const mergedProductsMap = new Map<string, Product>();
-      data.products.forEach((p: Product) => {
-        if (!deletedProducts.includes(p.id) && !isSeed(p.id)) mergedProductsMap.set(p.id, p);
-      });
-      localProducts.forEach((p: Product) => {
-        if (!deletedProducts.includes(p.id) && !isSeed(p.id)) {
-          const existing = mergedProductsMap.get(p.id);
-          mergedProductsMap.set(p.id, existing ? { ...existing, ...p } : p);
-        }
-      });
-      const mergedProducts = Array.from(mergedProductsMap.values());
-      if (JSON.stringify(mergedProducts) !== JSON.stringify(rawProducts)) {
-        setLocalData('tajer_smart_products_v1', mergedProducts);
+      // السيرفر يرجع فقط البيانات النظيفة الصحيحة — نحفظها مباشرة
+      const authoritative = (data.products as Product[])
+        .filter(p => p.id && !isSeed(p.id));
+      if (JSON.stringify(authoritative) !== JSON.stringify(rawProducts)) {
+        setLocalData('tajer_smart_products_v1', authoritative);
         changed = true;
       }
     }
 
-    // ─── 2. الدمج الثنائي الذكي للأشخاص والزبائن والموردين ───
     if (Array.isArray(data.contacts)) {
-      const mergedContactsMap = new Map<string, Contact>();
-      data.contacts.forEach((c: Contact) => {
-        if (!deletedContacts.includes(c.id) && !isSeed(c.id)) mergedContactsMap.set(c.id, c);
-      });
-      localContacts.forEach((c: Contact) => {
-        if (!deletedContacts.includes(c.id) && !isSeed(c.id)) {
-          const existing = mergedContactsMap.get(c.id);
-          mergedContactsMap.set(c.id, existing ? { ...existing, ...c } : c);
-        }
-      });
-      const mergedContacts = Array.from(mergedContactsMap.values());
-      if (JSON.stringify(mergedContacts) !== JSON.stringify(rawContacts)) {
-        setLocalData('tajer_smart_contacts_v1', mergedContacts);
+      const authoritative = (data.contacts as Contact[])
+        .filter(c => c.id && !isSeed(c.id));
+      if (JSON.stringify(authoritative) !== JSON.stringify(rawContacts)) {
+        setLocalData('tajer_smart_contacts_v1', authoritative);
         changed = true;
       }
     }
 
-    // ─── 3. الدمج الثنائي الذكي للمعاملات والعمليات ───
     if (Array.isArray(data.transactions)) {
       const cleanTxItems = (items: any[]) => {
         if (!Array.isArray(items)) return [];
@@ -180,23 +162,11 @@ export async function syncStoreWithVercelCloud(): Promise<{
           return true;
         });
       };
-
-      const mergedTxMap = new Map<string, Transaction>();
-      data.transactions.forEach((t: Transaction) => {
-        if (!deletedTransactions.includes(t.id) && !isSeed(t.id)) {
-          mergedTxMap.set(t.id, { ...t, items: cleanTxItems(t.items) });
-        }
-      });
-      localTx.forEach((t: Transaction) => {
-        if (!deletedTransactions.includes(t.id) && !isSeed(t.id)) {
-          const existing = mergedTxMap.get(t.id);
-          const cleanItems = cleanTxItems(t.items || existing?.items || []);
-          mergedTxMap.set(t.id, existing ? { ...existing, ...t, items: cleanItems } : { ...t, items: cleanItems });
-        }
-      });
-      const mergedTx = Array.from(mergedTxMap.values());
-      if (JSON.stringify(mergedTx) !== JSON.stringify(rawTx)) {
-        setLocalData('tajer_smart_transactions_v1', mergedTx);
+      const authoritative = (data.transactions as Transaction[])
+        .filter(t => t.id && !isSeed(t.id))
+        .map(t => ({ ...t, items: cleanTxItems(t.items) }));
+      if (JSON.stringify(authoritative) !== JSON.stringify(rawTx)) {
+        setLocalData('tajer_smart_transactions_v1', authoritative);
         changed = true;
       }
     }
