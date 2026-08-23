@@ -930,6 +930,137 @@ export function cancelTransaction(txId: string): boolean {
   return true;
 }
 
+/**
+ * تعديل معاملة/وصل محفوظ مع تصحيح كامل لـ:
+ * المخزون — الديون — الأوصال المؤرشفة
+ * المبدأ: عكس التأثير القديم ← تطبيق التأثير الجديد
+ */
+export function updateTransaction(
+  txId: string,
+  newItems: TransactionItem[],
+  newPaidAmount: number
+): { success: boolean; error?: string } {
+  const transactions: Transaction[] = getLocalData('tajer_smart_transactions_v1', []);
+  const txIndex = transactions.findIndex(t => t.id === txId);
+  if (txIndex === -1) return { success: false, error: 'العملية غير موجودة' };
+
+  const oldTx = transactions[txIndex];
+  if (oldTx.status === 'CANCELLED')
+    return { success: false, error: 'لا يمكن تعديل عملية ملغاة' };
+  if (newItems.length === 0)
+    return { success: false, error: 'يجب أن يحتوي الوصل على منتج واحد على الأقل' };
+
+  const products: Product[] = getLocalData('tajer_smart_products_v1', []);
+  const contacts: Contact[] = getLocalData('tajer_smart_contacts_v1', []);
+
+  // ── بناء خريطة المخزون بعد عكس التأثير القديم ──────────────────────────
+  const stockMap = new Map<string, number>();
+  products.forEach(p => stockMap.set(p.id, p.stock_quantity));
+
+  // عكس التأثير القديم على المخزون
+  oldTx.items.forEach(item => {
+    const cur = stockMap.get(item.product_id) ?? 0;
+    if (oldTx.tx_type === 'SALE') {
+      stockMap.set(item.product_id, cur + item.quantity); // إرجاع ما بيع
+    } else {
+      stockMap.set(item.product_id, Math.max(0, cur - item.quantity)); // إلغاء ما اشترينا
+    }
+  });
+
+  // ── التحقق من كفاية المخزون للمنتجات الجديدة (للبيع فقط) ────────────────
+  if (oldTx.tx_type === 'SALE') {
+    for (const item of newItems) {
+      if (item.quantity <= 0) continue;
+      const available = stockMap.get(item.product_id) ?? 0;
+      if (item.quantity > available) {
+        const prod = products.find(p => p.id === item.product_id);
+        return {
+          success: false,
+          error: `⚠️ كمية "${prod?.name || item.product_name}" غير كافية. المتوفر بعد التصحيح: ${available} حبة`,
+        };
+      }
+    }
+  }
+
+  // تطبيق التأثير الجديد على المخزون
+  newItems.forEach(item => {
+    if (item.quantity <= 0) return;
+    const cur = stockMap.get(item.product_id) ?? 0;
+    if (oldTx.tx_type === 'SALE') {
+      stockMap.set(item.product_id, cur - item.quantity);
+    } else {
+      stockMap.set(item.product_id, cur + item.quantity);
+    }
+  });
+
+  // تحديث قائمة المنتجات
+  const updatedProducts = products.map(p => {
+    const newQty = stockMap.get(p.id);
+    return newQty !== undefined && newQty !== p.stock_quantity
+      ? { ...p, stock_quantity: Math.max(0, newQty) }
+      : p;
+  });
+
+  // ── حساب القيم الجديدة ─────────────────────────────────────────────────
+  const validItems = newItems.filter(i => i.quantity > 0);
+  const newTotal = validItems.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
+  const newDebt  = Math.max(0, newTotal - newPaidAmount);
+  const newStatus: Transaction['status'] =
+    newDebt === 0 ? 'PAID' : newPaidAmount > 0 ? 'PARTIAL' : 'DEBT';
+
+  // ── تصحيح رصيد الشخص بالفارق فقط (Delta) ─────────────────────────────
+  // الفارق = الدين الجديد - الدين القديم
+  // موجب: الدين زاد → نزيد الرصيد بنفس المقدار
+  // سالب: الدين قل  → ننقص الرصيد بنفس المقدار
+  const debtDelta = newDebt - (oldTx.debt_amount || 0);
+  const updatedContacts = contacts.map(c => {
+    if (!oldTx.contact_id || c.id !== oldTx.contact_id || debtDelta === 0) return c;
+    if (oldTx.tx_type === 'SALE') {
+      // زبون: رصيد موجب = يديننا
+      return { ...c, balance: c.balance + debtDelta };
+    } else {
+      // مورد: رصيد سالب = نديننا
+      return { ...c, balance: c.balance - debtDelta };
+    }
+  });
+
+  // ── تحديث المعاملة ─────────────────────────────────────────────────────
+  const updatedTx: Transaction = {
+    ...oldTx,
+    items: validItems,
+    total_amount: newTotal,
+    paid_amount: newPaidAmount,
+    debt_amount: newDebt,
+    status: newStatus,
+  };
+  const updatedTransactions = transactions.map(t => t.id === txId ? updatedTx : t);
+
+  // ── تحديث أرشيف الأوصال بنفس الـ id ────────────────────────────────────
+  const receipts: Receipt[] = getLocalData('tajer_smart_receipts_v1', []);
+  const updatedReceipts = receipts.map(r => {
+    if (r.id !== txId) return r;
+    return {
+      ...r,
+      items: validItems,
+      total_amount: newTotal,
+      paid_amount: newPaidAmount,
+      debt_amount: newDebt,
+    };
+  });
+
+  // ── الحفظ ───────────────────────────────────────────────────────────────
+  setLocalData('tajer_smart_products_v1', updatedProducts);
+  setLocalData('tajer_smart_contacts_v1', updatedContacts);
+  setLocalData('tajer_smart_transactions_v1', updatedTransactions);
+  setLocalData('tajer_smart_receipts_v1', updatedReceipts);
+
+  // مزامنة سحابية في الخلفية
+  import('./cloud-sync').then(cs => cs.syncStoreWithVercelCloud()).catch(() => {});
+
+  return { success: true };
+}
+
+
 // ─── خوارزمية البحث الذكية والمطابقة العربية ──────────────────────────────
 /**
  * توحيد وتنظيف النصوص العربية لتجاوز أخطاء الهمزات، المسافات، والتشكيل

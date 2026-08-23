@@ -22,10 +22,11 @@ import {
   ArrowUpRight, ArrowDownLeft, X,
   ShoppingCart, ShoppingBag, Sparkles,
   ChevronLeft, Clock3, CheckCircle,
-  Banknote, Package, Calendar, Filter, Zap, Printer
+  Banknote, Package, Calendar, Filter, Zap, Printer, Pencil
 } from 'lucide-react';
 import QuickSaleModal from '@/components/QuickSaleModal';
 import ReceiptViewModal from '@/components/ReceiptViewModal';
+import EditTransactionModal from '@/components/EditTransactionModal';
 import { Receipt } from '@/lib/store';
 
 function getGreeting() {
@@ -44,7 +45,8 @@ export default function HomePage() {
   const [products,     setProducts]     = useState<Product[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
-  const [mounted,      setMounted]      = useState(false);
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   // فلترة بالتقويم والتاريخ
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -520,7 +522,14 @@ export default function HomePage() {
                           className="py-1.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[11px] font-black flex items-center gap-1.5 touch-active"
                         >
                           <Printer size={13} />
-                          طباعة الوصل 🖨️
+                          طباعة 🖨️
+                        </button>
+
+                        <button
+                          onClick={() => setEditingTx(tx)}
+                          className="py-1.5 px-2.5 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-xl text-[11px] font-black flex items-center gap-1 touch-active"
+                        >
+                          <Pencil size={13} /> تعديل ✏️
                         </button>
 
                         <button
@@ -942,6 +951,20 @@ export default function HomePage() {
           setTransactions(getLocalData('tajer_smart_transactions_v1', []));
         }}
       />
+
+      {/* ══ مودال تعديل الوصل ══ */}
+      {editingTx && (
+        <EditTransactionModal
+          transaction={editingTx}
+          products={products}
+          onClose={() => setEditingTx(null)}
+          onSaved={() => {
+            setProducts(getLocalData('tajer_smart_products_v1', []));
+            setContacts(getLocalData('tajer_smart_contacts_v1', []));
+            setTransactions(getLocalData('tajer_smart_transactions_v1', []));
+          }}
+        />
+      )}
     </div>
   );
 }
