@@ -134,6 +134,7 @@ export default function DebtsPage() {
       contact_phone:  lastPayment.contact.phone,
       payment_amount: lastPayment.amount,
       payment_type:   lastPayment.type,
+      previous_balance: lastPayment.contact.balance,
       balance_after:  lastPayment.balanceAfter,
       note:           lastPayment.note,
       created_at:     new Date().toISOString(),

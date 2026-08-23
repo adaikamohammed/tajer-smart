@@ -306,12 +306,9 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
     const finalBal = receipt.final_balance !== undefined ? receipt.final_balance : prevBal + debtAmt;
     const note     = debtItem.product_name && debtItem.product_name !== 'دين مباشر' ? debtItem.product_name : '';
 
-    let prevLabel = 'الرصيد السابق:';
-    if (prevBal < 0) prevLabel = 'الرصيد السابق للزبون:';
-
-    let finalLabel = 'الرصيد الكلي الجديد:';
-    if (finalBal < 0) finalLabel = 'الرصيد المتبقي للزبون:';
-    else if (finalBal === 0) finalLabel = 'الرصيد الكلي: مصفى بالكامل ✅';
+    let prevLabel = 'الدين القديم:';
+    let finalLabel = 'الدين الجديد:';
+    if (finalBal === 0) finalLabel = 'الدين الجديد: مصفى بالكامل ✅';
 
     directDebtHTML = `
     <div class="debt-direct-box">
@@ -382,22 +379,11 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
       finalBal = totalDue - paidToday;
     }
 
-    // صياغة أنيقة، معبرة ومختصرة مخصصة للتسليم للزبون:
-    let prevBalLabel = 'الدين السابق:';
-    if (prevBal < 0) {
-      prevBalLabel = receipt.receipt_type === 'PURCHASE' ? 'رصيد سابق للمورد:' : 'الرصيد السابق للزبون:';
-    }
-
-    let totalDueLabel = 'إجمالي المستحق:';
-    if (totalDue < 0) {
-      totalDueLabel = receipt.receipt_type === 'PURCHASE' ? 'إجمالي المستحق للمورد:' : 'إجمالي المتبقي للزبون:';
-    }
-
-    let finalBalLabel = 'الرصيد المتبقي:';
-    if (finalBal < 0) {
-      finalBalLabel = receipt.receipt_type === 'PURCHASE' ? 'الرصيد المتبقي للمورد:' : 'الرصيد المتبقي للزبون:';
-    } else if (finalBal === 0) {
-      finalBalLabel = 'الرصيد النهائي: مصفى بالكامل ✅';
+    let prevBalLabel = 'الدين القديم:';
+    let paidLabel = 'المبلغ المدفوع:';
+    let finalBalLabel = 'الدين الجديد:';
+    if (finalBal === 0) {
+      finalBalLabel = 'الدين الجديد: مصفى بالكامل ✅';
     }
 
     itemsHTML = `
@@ -417,8 +403,7 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
     <div class="summary-box">
       <div class="summary-row"><span class="label">البضاعة الحالية:</span><span class="val">${fmt(currentGoods)} د.ج</span></div>
       ${prevBal !== 0 ? `<div class="summary-row"><span class="label">${prevBalLabel}</span><span class="val">${fmt(Math.abs(prevBal))} د.ج</span></div>` : ''}
-      ${prevBal !== 0 ? `<div class="summary-row highlight"><span class="label">${totalDueLabel}</span><span class="val">${fmt(Math.abs(totalDue))} د.ج</span></div>` : ''}
-      <div class="summary-row"><span class="label">المدفوع اليوم:</span><span class="val">${fmt(paidToday)} د.ج</span></div>
+      <div class="summary-row"><span class="label">${paidLabel}</span><span class="val">${fmt(paidToday)} د.ج</span></div>
       <div class="summary-row total-balance-row"><span class="label">${finalBalLabel}</span><span class="val">${fmt(Math.abs(finalBal))} د.ج</span></div>
     </div>`;
   }
@@ -427,14 +412,26 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
   let paymentHTML = '';
   if (receipt.receipt_type === 'DEBT_PAYMENT' && receipt.payment_amount) {
     const action = receipt.payment_type === 'COLLECTED' ? 'تحصيل من الزبون' : 'سداد للمورد';
+    const paidAmt = receipt.payment_amount;
+    const finalBal = receipt.balance_after !== undefined ? receipt.balance_after : receipt.final_balance;
+    const prevBal = receipt.previous_balance !== undefined 
+      ? receipt.previous_balance 
+      : (finalBal !== undefined 
+          ? (receipt.payment_type === 'COLLECTED' ? finalBal + paidAmt : finalBal - paidAmt) 
+          : 0);
+
+    let finalBalLabel = 'الدين الجديد:';
+    if (finalBal === 0) finalBalLabel = 'الدين الجديد: مصفى بالكامل ✅';
+
     paymentHTML = `
     <div class="section-title">── تفاصيل التسديد ──</div>
     <div class="row"><span class="label">نوع العملية:</span><span class="value">${action}</span></div>
-    <div class="total-box">${fmt(receipt.payment_amount)} د.ج</div>
-    ${receipt.balance_after !== undefined
-      ? `<div class="row"><span class="label">الرصيد المتبقي:</span><span class="value">${fmt(Math.abs(receipt.balance_after))} د.ج</span></div>`
-      : ''}
-    ${receipt.note ? `<div class="row"><span class="label">ملاحظة:</span><span class="value">${receipt.note}</span></div>` : ''}`;
+    ${receipt.note ? `<div class="row"><span class="label">ملاحظة:</span><span class="value">${receipt.note}</span></div>` : ''}
+    <div class="summary-box" style="margin-top: 10px;">
+      <div class="summary-row"><span class="label">الدين القديم:</span><span class="val">${fmt(Math.abs(prevBal))} د.ج</span></div>
+      <div class="summary-row"><span class="label">المبلغ المدفوع:</span><span class="val">${fmt(paidAmt)} د.ج</span></div>
+      ${finalBal !== undefined ? `<div class="summary-row total-balance-row"><span class="label">${finalBalLabel}</span><span class="val">${fmt(Math.abs(finalBal))} د.ج</span></div>` : ''}
+    </div>`;
   }
 
   // ─ كشف حساب ─
