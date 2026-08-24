@@ -171,13 +171,19 @@ export function sanitizeProduct(p: any): Product {
   if (cleanExpiry && typeof cleanExpiry === 'string' && cleanExpiry.includes('T')) {
     cleanExpiry = cleanExpiry.split('T')[0];
   }
+  const packQty = p.pack_quantity !== undefined && p.pack_quantity !== null
+    ? (Number(p.pack_quantity) || 1)
+    : (p.unit_type === 'pack' ? 1 : undefined);
+
   return {
     ...p,
     cost_price: Number(p.cost_price) || 0,
     retail_price: Number(p.retail_price) || 0,
-    retail_price_2: p.retail_price_2 !== undefined ? (Number(p.retail_price_2) || 0) : undefined,
+    retail_price_2: p.retail_price_2 !== undefined && p.retail_price_2 !== null
+      ? (Number(p.retail_price_2) || 0)
+      : undefined,
     stock_quantity: Number(p.stock_quantity) || 0,
-    pack_quantity: p.pack_quantity ? (Number(p.pack_quantity) || 1) : undefined,
+    pack_quantity: packQty,
     min_stock_alert: Number(p.min_stock_alert) || 5,
     expiry_alert_days: Number(p.expiry_alert_days) || 30,
     expiry_date: cleanExpiry,
@@ -190,11 +196,17 @@ export function sanitizeTransaction(t: any): Transaction {
     total_amount: Number(t.total_amount) || 0,
     paid_amount: Number(t.paid_amount) || 0,
     debt_amount: Number(t.debt_amount) || 0,
+    previous_balance: t.previous_balance !== undefined ? Number(t.previous_balance) : undefined,
+    final_balance: t.final_balance !== undefined ? Number(t.final_balance) : undefined,
     items: Array.isArray(t.items) ? t.items.map((i: any) => ({
       ...i,
       quantity: Number(i.quantity) || 0,
       unit_price: Number(i.unit_price) || 0,
       cost_price: Number(i.cost_price) || 0,
+      packs_count: i.packs_count !== undefined ? Number(i.packs_count) : undefined,
+      loose_count: i.loose_count !== undefined ? Number(i.loose_count) : undefined,
+      pack_quantity: i.pack_quantity !== undefined ? (Number(i.pack_quantity) || 1) : undefined,
+      unit_type: i.unit_type || undefined,
     })) : [],
   };
 }

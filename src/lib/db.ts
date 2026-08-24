@@ -72,9 +72,11 @@ export async function initTablesIfMissing() {
         barcode TEXT,
         photo_url TEXT,
         category TEXT,
-        unit_type TEXT,
+        unit_type TEXT DEFAULT 'piece',
+        pack_quantity NUMERIC DEFAULT 1,
         cost_price NUMERIC DEFAULT 0,
         retail_price NUMERIC DEFAULT 0,
+        retail_price_2 NUMERIC DEFAULT 0,
         stock_quantity NUMERIC DEFAULT 0,
         min_stock_alert NUMERIC DEFAULT 5,
         expiry_date DATE,
@@ -93,6 +95,8 @@ export async function initTablesIfMissing() {
         total_amount NUMERIC NOT NULL,
         paid_amount NUMERIC DEFAULT 0,
         debt_amount NUMERIC DEFAULT 0,
+        previous_balance NUMERIC DEFAULT 0,
+        final_balance NUMERIC DEFAULT 0,
         status TEXT DEFAULT 'PAID',
         notes TEXT,
         created_at TIMESTAMPTZ DEFAULT NOW()
@@ -105,6 +109,10 @@ export async function initTablesIfMissing() {
         product_id TEXT,
         product_name TEXT,
         quantity NUMERIC NOT NULL,
+        packs_count NUMERIC,
+        loose_count NUMERIC,
+        pack_quantity NUMERIC DEFAULT 1,
+        unit_type TEXT,
         unit_price NUMERIC NOT NULL,
         cost_price NUMERIC NOT NULL,
         created_at TIMESTAMPTZ DEFAULT NOW()
@@ -119,9 +127,20 @@ export async function initTablesIfMissing() {
         PRIMARY KEY (id, entity_type)
       );
     `;
+
+    // ─── Migrations: تحديث الأعمدة للجداول المنشأة مسبقاً ───
+    await query`ALTER TABLE products ADD COLUMN IF NOT EXISTS pack_quantity NUMERIC DEFAULT 1;`;
+    await query`ALTER TABLE products ADD COLUMN IF NOT EXISTS retail_price_2 NUMERIC DEFAULT 0;`;
+    await query`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS previous_balance NUMERIC DEFAULT 0;`;
+    await query`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS final_balance NUMERIC DEFAULT 0;`;
+    await query`ALTER TABLE transaction_items ADD COLUMN IF NOT EXISTS packs_count NUMERIC;`;
+    await query`ALTER TABLE transaction_items ADD COLUMN IF NOT EXISTS loose_count NUMERIC;`;
+    await query`ALTER TABLE transaction_items ADD COLUMN IF NOT EXISTS pack_quantity NUMERIC DEFAULT 1;`;
+    await query`ALTER TABLE transaction_items ADD COLUMN IF NOT EXISTS unit_type TEXT;`;
+
     return true;
   } catch (err) {
-    console.error('Error initializing tables:', err);
+    console.error('Error initializing tables / running migrations:', err);
     return false;
   }
 }

@@ -1,4 +1,8 @@
-import { Contact, Product, Transaction, getLocalData, setLocalData, clearLocalDataCache } from './store';
+import {
+  Contact, Product, Transaction,
+  getLocalData, setLocalData, clearLocalDataCache,
+  sanitizeProduct, sanitizeContact, sanitizeTransaction
+} from './store';
 
 const DELETED_KEYS = {
   CONTACTS:     'tajer_deleted_contacts_v1',
@@ -133,9 +137,10 @@ export async function syncStoreWithVercelCloud(): Promise<{
     let changed = false;
 
     if (Array.isArray(data.products)) {
-      // السيرفر يرجع فقط البيانات النظيفة الصحيحة — نحفظها مباشرة
-      const authoritative = (data.products as Product[])
-        .filter(p => p.id && !isSeed(p.id));
+      // السيرفر يرجع فقط البيانات النظيفة الصحيحة — نحفظها مباشرة بعد التطبيع
+      const authoritative = (data.products as any[])
+        .filter(p => p.id && !isSeed(p.id))
+        .map(sanitizeProduct);
       if (JSON.stringify(authoritative) !== JSON.stringify(rawProducts)) {
         setLocalData('tajer_smart_products_v1', authoritative);
         changed = true;
@@ -143,8 +148,9 @@ export async function syncStoreWithVercelCloud(): Promise<{
     }
 
     if (Array.isArray(data.contacts)) {
-      const authoritative = (data.contacts as Contact[])
-        .filter(c => c.id && !isSeed(c.id));
+      const authoritative = (data.contacts as any[])
+        .filter(c => c.id && !isSeed(c.id))
+        .map(sanitizeContact);
       if (JSON.stringify(authoritative) !== JSON.stringify(rawContacts)) {
         setLocalData('tajer_smart_contacts_v1', authoritative);
         changed = true;
@@ -162,9 +168,9 @@ export async function syncStoreWithVercelCloud(): Promise<{
           return true;
         });
       };
-      const authoritative = (data.transactions as Transaction[])
+      const authoritative = (data.transactions as any[])
         .filter(t => t.id && !isSeed(t.id))
-        .map(t => ({ ...t, items: cleanTxItems(t.items) }));
+        .map(t => sanitizeTransaction({ ...t, items: cleanTxItems(t.items) }));
       if (JSON.stringify(authoritative) !== JSON.stringify(rawTx)) {
         setLocalData('tajer_smart_transactions_v1', authoritative);
         changed = true;

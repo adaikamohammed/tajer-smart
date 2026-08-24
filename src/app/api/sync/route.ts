@@ -107,24 +107,26 @@ export async function POST(req: Request) {
 
     if (validProducts.length > 0) {
       await Promise.all(validProducts.map((p: any) => query`
-        INSERT INTO products (id, name, barcode, photo_url, category, unit_type,
-                              cost_price, retail_price, stock_quantity, min_stock_alert,
+        INSERT INTO products (id, name, barcode, photo_url, category, unit_type, pack_quantity,
+                              cost_price, retail_price, retail_price_2, stock_quantity, min_stock_alert,
                               expiry_date, expiry_alert_days)
         VALUES (${p.id}, ${p.name}, ${p.barcode || null}, ${p.photo_url || null},
-                ${p.category || null}, ${p.unit_type || null},
-                ${p.cost_price || 0}, ${p.retail_price || 0}, ${p.stock_quantity || 0},
+                ${p.category || null}, ${p.unit_type || 'piece'}, ${p.pack_quantity ? (Number(p.pack_quantity) || 1) : 1},
+                ${p.cost_price || 0}, ${p.retail_price || 0}, ${p.retail_price_2 || 0}, ${p.stock_quantity || 0},
                 ${p.min_stock_alert || 5}, ${p.expiry_date || null}, ${p.expiry_alert_days || 30})
         ON CONFLICT (id) DO UPDATE SET
-          name           = EXCLUDED.name,
-          barcode        = EXCLUDED.barcode,
-          photo_url      = EXCLUDED.photo_url,
-          category       = EXCLUDED.category,
-          unit_type      = EXCLUDED.unit_type,
-          cost_price     = EXCLUDED.cost_price,
-          retail_price   = EXCLUDED.retail_price,
-          stock_quantity = EXCLUDED.stock_quantity,
-          min_stock_alert= EXCLUDED.min_stock_alert,
-          expiry_date    = EXCLUDED.expiry_date,
+          name              = EXCLUDED.name,
+          barcode           = EXCLUDED.barcode,
+          photo_url         = EXCLUDED.photo_url,
+          category          = EXCLUDED.category,
+          unit_type         = EXCLUDED.unit_type,
+          pack_quantity     = EXCLUDED.pack_quantity,
+          cost_price        = EXCLUDED.cost_price,
+          retail_price      = EXCLUDED.retail_price,
+          retail_price_2    = EXCLUDED.retail_price_2,
+          stock_quantity    = EXCLUDED.stock_quantity,
+          min_stock_alert   = EXCLUDED.min_stock_alert,
+          expiry_date       = EXCLUDED.expiry_date,
           expiry_alert_days = EXCLUDED.expiry_alert_days;
       `));
     }
@@ -133,27 +135,34 @@ export async function POST(req: Request) {
       await Promise.all(validTransactions.map(async (tx: any) => {
         await query`
           INSERT INTO transactions (id, tx_type, contact_id, contact_name,
-                                    total_amount, paid_amount, debt_amount, status, notes)
+                                    total_amount, paid_amount, debt_amount,
+                                    previous_balance, final_balance,
+                                    status, notes)
           VALUES (${tx.id}, ${tx.tx_type}, ${tx.contact_id || null}, ${tx.contact_name || null},
                   ${tx.total_amount || 0}, ${tx.paid_amount || 0}, ${tx.debt_amount || 0},
+                  ${tx.previous_balance || 0}, ${tx.final_balance || 0},
                   ${tx.status || 'PAID'}, ${tx.notes || null})
           ON CONFLICT (id) DO UPDATE SET
-            tx_type      = EXCLUDED.tx_type,
-            contact_id   = EXCLUDED.contact_id,
-            contact_name = EXCLUDED.contact_name,
-            total_amount = EXCLUDED.total_amount,
-            paid_amount  = EXCLUDED.paid_amount,
-            debt_amount  = EXCLUDED.debt_amount,
-            status       = EXCLUDED.status,
-            notes        = EXCLUDED.notes;
+            tx_type          = EXCLUDED.tx_type,
+            contact_id       = EXCLUDED.contact_id,
+            contact_name     = EXCLUDED.contact_name,
+            total_amount     = EXCLUDED.total_amount,
+            paid_amount      = EXCLUDED.paid_amount,
+            debt_amount      = EXCLUDED.debt_amount,
+            previous_balance = EXCLUDED.previous_balance,
+            final_balance    = EXCLUDED.final_balance,
+            status           = EXCLUDED.status,
+            notes            = EXCLUDED.notes;
         `;
         if (tx.items?.length > 0) {
           // 1. مسح أي سجلات قديمة للمعاملة في القاعدة قبل إعادة الإدخال النظيف لمنع التكرار
           await query`DELETE FROM transaction_items WHERE transaction_id = ${tx.id};`;
           await Promise.all((tx.items as any[]).map((item: any) => query`
-            INSERT INTO transaction_items (transaction_id, product_id, product_name, quantity, unit_price, cost_price)
+            INSERT INTO transaction_items (transaction_id, product_id, product_name, quantity, packs_count, loose_count, pack_quantity, unit_type, unit_price, cost_price)
             VALUES (${tx.id}, ${item.product_id || null}, ${item.product_name || null},
-                    ${item.quantity || 0}, ${item.unit_price || 0}, ${item.cost_price || 0});
+                    ${item.quantity || 0}, ${item.packs_count || null}, ${item.loose_count || null},
+                    ${item.pack_quantity ? (Number(item.pack_quantity) || 1) : 1}, ${item.unit_type || null},
+                    ${item.unit_price || 0}, ${item.cost_price || 0});
           `));
         }
       }));

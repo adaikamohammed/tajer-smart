@@ -746,7 +746,8 @@ export default function InventoryPage() {
                         min="1"
                         placeholder="مثال: 30 حبة للكرتونة"
                         value={packQuantity || ''}
-                        onChange={e => setPackQuantity(+e.target.value)}
+                        onChange={e => setPackQuantity(Math.max(1, Number(e.target.value)))}
+                        onFocus={e => e.target.select()}
                         className="form-input font-black tabnum text-indigo-900"
                       />
                     </div>
