@@ -41,11 +41,20 @@ function getGreeting() {
 const fmt = (n: number) => n.toLocaleString('en-US');
 
 export default function HomePage() {
-  const [contacts,     setContacts]     = useState<Contact[]>([]);
-  const [products,     setProducts]     = useState<Product[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  // ✅ نقرأ البيانات مباشرة — لا انتظار، لا skeleton
+  // البيانات المحلية فورية لأنها من localStorage + in-memory cache
+  const [contacts,     setContacts]     = useState<Contact[]>(() =>
+    typeof window !== 'undefined' ? getLocalData('tajer_smart_contacts_v1', []) : []
+  );
+  const [products,     setProducts]     = useState<Product[]>(() =>
+    typeof window !== 'undefined' ? getLocalData('tajer_smart_products_v1', []) : []
+  );
+  const [transactions, setTransactions] = useState<Transaction[]>(() =>
+    typeof window !== 'undefined' ? getLocalData('tajer_smart_transactions_v1', []) : []
+  );
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  // mounted الآن للمزامنة السحابية فقط — البيانات موجودة دائماً من البداية
   const [mounted, setMounted] = useState(false);
 
   // فلترة بالتقويم والتاريخ
@@ -81,24 +90,12 @@ export default function HomePage() {
 
   useEffect(() => {
     initStorageIfEmpty();
+    // نعيد القراءة للتأكد من أن البيانات محدثة بعد init
     setContacts(getLocalData('tajer_smart_contacts_v1', []));
     setProducts(getLocalData('tajer_smart_products_v1', []));
     setTransactions(getLocalData('tajer_smart_transactions_v1', []));
     setMounted(true);
   }, []);
-
-  if (!mounted) {
-    return (
-      <div className="space-y-4">
-        <div className="skeleton h-28 rounded-2xl" />
-        <div className="grid grid-cols-2 gap-3">
-          <div className="skeleton h-24 rounded-2xl" />
-          <div className="skeleton h-24 rounded-2xl" />
-        </div>
-        <div className="skeleton h-40 rounded-2xl" />
-      </div>
-    );
-  }
 
   /* ── حسابات الديون والملخص ── */
   const customersDebt = contacts

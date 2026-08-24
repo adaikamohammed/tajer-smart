@@ -43,10 +43,18 @@ function autoEmoji(name: string) {
 }
 
 export default function InventoryPage() {
-  const [products,     setProducts]     = useState<Product[]>([]);
-  const [contacts,     setContacts]     = useState<Contact[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [categories,   setCategories]   = useState<string[]>([]);
+  const [products,     setProducts]     = useState<Product[]>(() =>
+    typeof window !== 'undefined' ? getLocalData('tajer_smart_products_v1', []) : []
+  );
+  const [contacts,     setContacts]     = useState<Contact[]>(() =>
+    typeof window !== 'undefined' ? getLocalData('tajer_smart_contacts_v1', []) : []
+  );
+  const [transactions, setTransactions] = useState<Transaction[]>(() =>
+    typeof window !== 'undefined' ? getLocalData('tajer_smart_transactions_v1', []) : []
+  );
+  const [categories,   setCategories]   = useState<string[]>(() =>
+    typeof window !== 'undefined' ? getLocalData('tajer_smart_product_categories_v1', ['مواد غذائية', 'مواد تنظيف', 'أخرى']) : []
+  );
 
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [searchQuery,    setSearchQuery]    = useState('');

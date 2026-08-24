@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   getLocalData, setLocalData, Product, Contact, Transaction,
@@ -24,7 +24,7 @@ interface CartItem {
 
 const fmt = (n: number) => n.toLocaleString('en-US');
 
-export default function QuickBuyPage() {
+function QuickBuyPage() {
   const searchParams = useSearchParams();
   const initialSupplierId = searchParams.get('supplierId');
 
@@ -970,5 +970,14 @@ export default function QuickBuyPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ✅ Suspense wrapper مطلوب لأن useSearchParams() يحتاجه في Next.js 15
+export default function QuickBuyPageWrapper() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" /></div>}>
+      <QuickBuyPage />
+    </Suspense>
   );
 }

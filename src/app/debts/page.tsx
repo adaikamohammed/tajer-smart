@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   getLocalData, setLocalData, Contact, DebtPayment, Transaction,
   createWhatsAppLink, generateAccountStatementText,
   printThermalReceipt, generateReceiptNumber, formatDateLatin, saveReceipt,
 } from '@/lib/store';
+import { subscribeToCloudChanges } from '@/lib/cloud-sync';
 import { toast } from '@/components/Toast';
 import {
   Receipt, ArrowUpRight, ArrowDownLeft,
@@ -17,9 +18,15 @@ import { SearchableSelect } from '@/components/SearchableSelect';
 const fmt = (n: number) => n.toLocaleString('en-US');
 
 export default function DebtsPage() {
-  const [contacts,     setContacts]     = useState<Contact[]>([]);
-  const [payments,     setPayments]     = useState<DebtPayment[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [contacts,     setContacts]     = useState<Contact[]>(() =>
+    typeof window !== 'undefined' ? getLocalData('tajer_smart_contacts_v1', []) : []
+  );
+  const [payments,     setPayments]     = useState<DebtPayment[]>(() =>
+    typeof window !== 'undefined' ? getLocalData('tajer_smart_payments_v1', []) : []
+  );
+  const [transactions, setTransactions] = useState<Transaction[]>(() =>
+    typeof window !== 'undefined' ? getLocalData('tajer_smart_transactions_v1', []) : []
+  );
   const [activeTab,    setActiveTab]    = useState<'to_us' | 'we_owe'>('to_us');
   const [searchQuery,  setSearchQuery]  = useState('');
 
@@ -40,11 +47,18 @@ export default function DebtsPage() {
   // حالة آخر عملية تسديد للطباعة الفورية
   const [lastPayment,      setLastPayment]      = useState<{ contact: Contact; amount: number; type: 'COLLECTED' | 'PAID_OUT'; note?: string; balanceAfter: number } | null>(null);
 
-  useEffect(() => {
+  const loadData = useCallback(() => {
     setContacts(getLocalData('tajer_smart_contacts_v1', []));
     setPayments(getLocalData('tajer_smart_payments_v1', []));
     setTransactions(getLocalData('tajer_smart_transactions_v1', []));
   }, []);
+
+  useEffect(() => {
+    loadData();
+    // ✅ تحديث تلقائي عند وصول بيانات من السحابة
+    const unsub = subscribeToCloudChanges(loadData);
+    return unsub;
+  }, [loadData]);
 
   const filtered = contacts
     .filter(c => {

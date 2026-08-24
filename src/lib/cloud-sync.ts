@@ -1,4 +1,4 @@
-import { Contact, Product, Transaction, getLocalData, setLocalData } from './store';
+import { Contact, Product, Transaction, getLocalData, setLocalData, clearLocalDataCache } from './store';
 
 const DELETED_KEYS = {
   CONTACTS:     'tajer_deleted_contacts_v1',
@@ -171,7 +171,11 @@ export async function syncStoreWithVercelCloud(): Promise<{
       }
     }
 
-    if (changed) notifySubs();
+    if (changed) {
+      // مسح الكاش لإجبار الصفحات على قراءة البيانات الجديدة فور وصولها من السحابة
+      clearLocalDataCache();
+      notifySubs();
+    }
     updateStatus('synced');
 
     return {

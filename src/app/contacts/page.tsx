@@ -33,9 +33,15 @@ const avatarGrad = (name: string) => AVATAR_COLORS[name.charCodeAt(0) % AVATAR_C
 const QUICK_CATEGORIES = ['مواد غذائية', 'مواد تنظيف', 'أخرى'];
 
 export default function ContactsPage() {
-  const [contacts,     setContacts]     = useState<Contact[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [payments,     setPayments]     = useState<DebtPayment[]>([]);
+  const [contacts,     setContacts]     = useState<Contact[]>(() =>
+    typeof window !== 'undefined' ? getLocalData('tajer_smart_contacts_v1', []) : []
+  );
+  const [transactions, setTransactions] = useState<Transaction[]>(() =>
+    typeof window !== 'undefined' ? getLocalData('tajer_smart_transactions_v1', []) : []
+  );
+  const [payments,     setPayments]     = useState<DebtPayment[]>(() =>
+    typeof window !== 'undefined' ? getLocalData('tajer_smart_payments_v1', []) : []
+  );
 
   const [filterType,     setFilterType]     = useState<'all' | 'customer' | 'supplier'>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');

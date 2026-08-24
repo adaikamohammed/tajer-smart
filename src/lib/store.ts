@@ -199,25 +199,56 @@ export function sanitizeTransaction(t: any): Transaction {
   };
 }
 
+// ─── In-Memory Cache — تسريع القراءة المتكررة ────────────────────────────────
+// نخزّن النتيجة بعد أول قراءة/فك تشفير ونعيدها مباشرةً في الاستدعاءات التالية.
+// يُمسح الكاش تلقائياً عند أي setLocalData حتى تظل البيانات متسقة.
+const _memCache = new Map<string, { data: unknown; ts: number }>();
+const _CACHE_TTL = 30_000; // 30 ثانية كحد أقصى قبل إجبار القراءة من localStorage
+
+function _cacheGet<T>(key: string): T | undefined {
+  const entry = _memCache.get(key);
+  if (entry && Date.now() - entry.ts < _CACHE_TTL) return entry.data as T;
+  return undefined;
+}
+function _cacheSet(key: string, data: unknown) {
+  _memCache.set(key, { data, ts: Date.now() });
+}
+// يُصدَّر ليستخدمه cloud-sync عند استلام بيانات السحابة
+export function clearLocalDataCache(key?: string) {
+  if (key) _memCache.delete(key);
+  else _memCache.clear();
+}
+
 // ─── دوال التخزين العامة (المشفرة أمنياً بدقة) ──────────────────────────────
 export function getLocalData<T>(key: string, defaultValue: T): T {
   if (typeof window === 'undefined') return defaultValue;
+
+  // ✅ إعادة من الكاش إذا كانت البيانات حديثة
+  const cached = _cacheGet<T>(key);
+  if (cached !== undefined) return cached;
+
   try {
     const parsed = getEncryptedLocalData<T>(key, defaultValue);
 
+    let result: T;
     if (Array.isArray(parsed)) {
       const cleanArray = parsed.filter((item: any) => !item.id || !String(item.id).includes('_seed_'));
       if (key === STORAGE_KEYS.CONTACTS) {
-        return cleanArray.map(sanitizeContact) as unknown as T;
+        result = cleanArray.map(sanitizeContact) as unknown as T;
+      } else if (key === STORAGE_KEYS.PRODUCTS) {
+        result = cleanArray.map(sanitizeProduct) as unknown as T;
+      } else if (key === STORAGE_KEYS.TRANSACTIONS) {
+        result = cleanArray.map(sanitizeTransaction) as unknown as T;
+      } else {
+        result = cleanArray as unknown as T;
       }
-      if (key === STORAGE_KEYS.PRODUCTS) {
-        return cleanArray.map(sanitizeProduct) as unknown as T;
-      }
-      if (key === STORAGE_KEYS.TRANSACTIONS) {
-        return cleanArray.map(sanitizeTransaction) as unknown as T;
-      }
+    } else {
+      result = parsed;
     }
-    return parsed;
+
+    // تخزين في الكاش لتجنب إعادة فك التشفير
+    _cacheSet(key, result);
+    return result;
   } catch (e) {
     console.error('Error reading encrypted local storage:', e);
     return defaultValue;
@@ -227,6 +258,8 @@ export function getLocalData<T>(key: string, defaultValue: T): T {
 export function setLocalData<T>(key: string, value: T): void {
   if (typeof window === 'undefined') return;
   try {
+    // تحديث الكاش فوراً حتى تقرأ الصفحات البيانات الجديدة مباشرة بدون localStorage
+    _cacheSet(key, value);
     // حفظ مشفر في التخزين المحلي بدون استدعاء لانهائي للمزامنة
     setEncryptedLocalData<T>(key, value);
   } catch (e) {
