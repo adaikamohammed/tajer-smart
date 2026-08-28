@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
-  getLocalData, setLocalData, Contact, Transaction, DebtPayment,
+  getLocalData, setLocalData, Contact, Product, Transaction, DebtPayment,
   createWhatsAppLink, generateAccountStatementText,
   printThermalReceipt, generateReceiptNumber, Receipt as ReceiptType,
   deleteReceipt, formatDateLatin,
@@ -13,10 +13,11 @@ import { toast } from '@/components/Toast';
 import {
   Users, UserPlus, Phone, MessageCircle,
   Search, X, Camera, MapPin, Tag, AlertTriangle,
-  Edit2, Trash2, Receipt, Copy, Check, ArrowRight, Zap, Printer, Eye
+  Edit2, Trash2, Receipt, Copy, Check, ArrowRight, Zap, Printer, Eye, Pencil
 } from 'lucide-react';
 import QuickSaleModal from '@/components/QuickSaleModal';
 import ReceiptViewModal from '@/components/ReceiptViewModal';
+import EditTransactionModal from '@/components/EditTransactionModal';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
 
@@ -36,6 +37,9 @@ export default function ContactsPage() {
   const [contacts,     setContacts]     = useState<Contact[]>(() =>
     typeof window !== 'undefined' ? getLocalData('tajer_smart_contacts_v1', []) : []
   );
+  const [products,     setProducts]     = useState<Product[]>(() =>
+    typeof window !== 'undefined' ? getLocalData('tajer_smart_products_v1', []) : []
+  );
   const [transactions, setTransactions] = useState<Transaction[]>(() =>
     typeof window !== 'undefined' ? getLocalData('tajer_smart_transactions_v1', []) : []
   );
@@ -53,6 +57,7 @@ export default function ContactsPage() {
   const [editingContact,     setEditingContact]     = useState<Contact | null>(null);
   const [viewingContact,     setViewingContact]     = useState<Contact | null>(null);
   const [statementContact,   setStatementContact]   = useState<Contact | null>(null);
+  const [editingTx,          setEditingTx]          = useState<Transaction | null>(null);
 
   // البيع السريع لزبون محدد ومعاينة الأوصال
   const [showQuickSale,          setShowQuickSale]          = useState(false);
@@ -76,6 +81,7 @@ export default function ContactsPage() {
   useEffect(() => {
     const refreshData = () => {
       setContacts(getLocalData('tajer_smart_contacts_v1', []));
+      setProducts(getLocalData('tajer_smart_products_v1', []));
       setTransactions(getLocalData('tajer_smart_transactions_v1', []));
       setPayments(getLocalData('tajer_smart_payments_v1', []));
     };
@@ -396,6 +402,15 @@ export default function ContactsPage() {
                           >
                             <Printer size={13} />
                             <span>طباعة 🖨️</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingTx(tx)}
+                            className="px-2.5 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-xl text-xs font-black flex items-center gap-1 shadow-sm transition-all shrink-0"
+                            title="تعديل الوصل"
+                          >
+                            <Pencil size={13} />
+                            <span>تعديل ✏️</span>
                           </button>
                           <button
                             type="button"
@@ -799,6 +814,27 @@ export default function ContactsPage() {
           }
         }}
       />
+
+      {/* ══ مودال تعديل الوصل ══ */}
+      {editingTx && (
+        <EditTransactionModal
+          transaction={editingTx}
+          products={products}
+          onClose={() => setEditingTx(null)}
+          onSaved={() => {
+            const freshProducts: Product[] = getLocalData('tajer_smart_products_v1', []);
+            const freshContacts: Contact[] = getLocalData('tajer_smart_contacts_v1', []);
+            const freshTx: Transaction[]   = getLocalData('tajer_smart_transactions_v1', []);
+            setProducts(freshProducts);
+            setContacts(freshContacts);
+            setTransactions(freshTx);
+            if (viewingContact) {
+              const updated = freshContacts.find(x => x.id === viewingContact.id);
+              if (updated) setViewingContact(updated);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

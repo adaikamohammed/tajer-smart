@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   getLocalData, setLocalData, deleteReceipt, getReceipts,
-  printThermalReceipt, generateReceiptNumber, Contact,
+  printThermalReceipt, generateReceiptNumber, Contact, Product, Transaction,
   Receipt, ReceiptType, MERCHANT_INFO,
 } from '@/lib/store';
 import { toast } from '@/components/Toast';
@@ -11,9 +11,10 @@ import {
   Receipt as ReceiptIcon, Search, Trash2, Printer,
   ShoppingCart, Package, DollarSign, FileText,
   ChevronDown, ChevronRight, Calendar, Phone,
-  X, Filter, RefreshCw, Eye, User
+  X, Filter, RefreshCw, Eye, User, Pencil
 } from 'lucide-react';
 import ReceiptViewModal from '@/components/ReceiptViewModal';
+import EditTransactionModal from '@/components/EditTransactionModal';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
 
@@ -35,6 +36,9 @@ const getActualReceiptType = (r: Receipt): ReceiptType => {
 export default function ReceiptsPage() {
   const [receipts,         setReceipts]         = useState<Receipt[]>([]);
   const [contacts,         setContacts]         = useState<Contact[]>([]);
+  const [products,         setProducts]         = useState<Product[]>([]);
+  const [transactions,     setTransactions]     = useState<Transaction[]>([]);
+  const [editingTx,        setEditingTx]        = useState<Transaction | null>(null);
   const [searchQuery,      setSearchQuery]      = useState('');
   const [filterType,       setFilterType]       = useState<ReceiptType | 'all'>('all');
   const [fromDate,         setFromDate]         = useState<string>('');
@@ -47,6 +51,8 @@ export default function ReceiptsPage() {
   useEffect(() => {
     const raw = getReceipts();
     setContacts(getLocalData('tajer_smart_contacts_v1', []));
+    setProducts(getLocalData('tajer_smart_products_v1', []));
+    setTransactions(getLocalData('tajer_smart_transactions_v1', []));
 
     // إزالة الأوصال التجريبية القديمة والتكرارات
     const seen = new Set<string>();
@@ -65,6 +71,9 @@ export default function ReceiptsPage() {
 
   const reloadReceipts = () => {
     setReceipts(getReceipts());
+    setProducts(getLocalData('tajer_smart_products_v1', []));
+    setContacts(getLocalData('tajer_smart_contacts_v1', []));
+    setTransactions(getLocalData('tajer_smart_transactions_v1', []));
   };
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
@@ -430,17 +439,43 @@ export default function ReceiptsPage() {
                     )}
 
                     {/* أزرار الإجراءات */}
-                    <div className="flex gap-2 pt-1">
+                    <div className="flex gap-2 pt-1 flex-wrap">
                       <button
                         onClick={(e) => { e.stopPropagation(); printThermalReceipt(receipt); }}
-                        className="flex-1 py-2.5 bg-slate-900 text-white rounded-xl font-black text-xs flex items-center justify-center gap-1.5"
+                        className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black text-xs flex items-center justify-center gap-1.5 shadow-sm"
                       >
                         <Printer size={14} />
                         إعادة الطباعة 🖨️
                       </button>
+                      {(actualType === 'SALE' || actualType === 'PURCHASE') && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const foundTx = transactions.find(t => t.id === receipt.id);
+                            const txToEdit: Transaction = foundTx || {
+                              id: receipt.id,
+                              tx_type: receipt.receipt_type as 'SALE' | 'PURCHASE',
+                              contact_id: receipt.contact_id,
+                              contact_name: receipt.contact_name,
+                              total_amount: receipt.total_amount || 0,
+                              paid_amount: receipt.paid_amount || 0,
+                              debt_amount: receipt.debt_amount || 0,
+                              status: (receipt.debt_amount || 0) === 0 ? 'PAID' : (receipt.paid_amount || 0) > 0 ? 'PARTIAL' : 'DEBT',
+                              notes: receipt.note,
+                              items: receipt.items || [],
+                              created_at: receipt.created_at,
+                            };
+                            setEditingTx(txToEdit);
+                          }}
+                          className="py-2.5 px-3 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 border border-amber-300 transition-all shadow-sm"
+                        >
+                          <Pencil size={14} />
+                          تعديل ✏️
+                        </button>
+                      )}
                       <button
                         onClick={(e) => handleDelete(receipt.id, e)}
-                        className="py-2.5 px-4 bg-rose-50 text-rose-700 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 border border-rose-200"
+                        className="py-2.5 px-4 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 border border-rose-200 shadow-sm"
                       >
                         <Trash2 size={14} />
                         حذف
@@ -452,6 +487,18 @@ export default function ReceiptsPage() {
             );
           })}
         </div>
+      )}
+
+      {/* ══ نافذة تعديل الوصل ══ */}
+      {editingTx && (
+        <EditTransactionModal
+          transaction={editingTx}
+          products={products}
+          onClose={() => setEditingTx(null)}
+          onSaved={() => {
+            reloadReceipts();
+          }}
+        />
       )}
 
       {/* Modal تأكيد حذف الكل */}
