@@ -143,6 +143,75 @@ export const MERCHANT_INFO = {
   address: 'تكسبت / الوادي',
 } as const;
 
+export interface AuthUser {
+  name: string;
+  email: string;
+  role: string;
+  merchantName?: string;
+  phone?: string;
+  address?: string;
+  loggedAt?: string;
+}
+
+export function getActiveUser(): AuthUser | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem('tajer_smart_user');
+    if (!raw) return null;
+    const text = raw.startsWith('ENC_V1:')
+      ? (() => {
+          try {
+            const S = 'TajerSmart_Secured_Key_2026_x89!@#';
+            const c = decodeURIComponent(escape(atob(raw.slice(7))));
+            let r = '';
+            for (let i = 0; i < c.length; i++) r += String.fromCharCode(c.charCodeAt(i) ^ S.charCodeAt(i % S.length));
+            return r;
+          } catch { return ''; }
+        })()
+      : raw;
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+export function getActiveUserEmail(): string {
+  const user = getActiveUser();
+  return user?.email?.trim().toLowerCase() || 'admin213@gmail.com';
+}
+
+export function getMerchantInfo() {
+  const email = getActiveUserEmail();
+  if (email === 'tajer@gmail.com') {
+    const u = getActiveUser();
+    return {
+      name:    u?.merchantName || 'متجر التاجر',
+      owner:   u?.name || 'تاجر تجريبي',
+      phone:   u?.phone || '0550000000',
+      address: u?.address || 'الجزائر',
+    };
+  }
+  return MERCHANT_INFO;
+}
+
+// مفاتيح عامة لا يتم عزلها لكل مستخدم (تخص التطبيق نفسه أو جلسة الدخول)
+const GLOBAL_UNSCOPED_KEYS = new Set([
+  'tajer_smart_user',
+  'tajer_smart_logged_in',
+  'pwa_installed_dismissed',
+]);
+
+export function resolveUserScopedKey(key: string): string {
+  if (GLOBAL_UNSCOPED_KEYS.has(key)) return key;
+  const email = getActiveUserEmail();
+  // حساب فوزي شكيمة الأصلي يحتفظ بمفاتيحه الأصلية تماماً 100% دون أي تعديل أو مساس
+  if (email === 'admin213@gmail.com') {
+    return key;
+  }
+  const slug = email.replace(/[^a-zA-Z0-9]/g, '_');
+  return `${key}__u_${slug}`;
+}
+
 // ─── البيانات الافتراضية الفارغة (تم حذف البيانات التجريبية الوهمية كلياً) ─
 const DEFAULT_CONTACTS: Contact[] = [];
 const DEFAULT_PRODUCTS: Product[] = [];
@@ -225,31 +294,37 @@ function _cacheGet<T>(key: string): T | undefined {
 function _cacheSet(key: string, data: unknown) {
   _memCache.set(key, { data, ts: Date.now() });
 }
-// يُصدَّر ليستخدمه cloud-sync عند استلام بيانات السحابة
+// يُصدَّر ليستخدمه cloud-sync عند استلام بيانات السحابة أو عند تسجيل الدخول/الخروج
 export function clearLocalDataCache(key?: string) {
-  if (key) _memCache.delete(key);
-  else _memCache.clear();
+  if (key) {
+    _memCache.delete(key);
+    _memCache.delete(resolveUserScopedKey(key));
+  } else {
+    _memCache.clear();
+  }
 }
 
-// ─── دوال التخزين العامة (المشفرة أمنياً بدقة) ──────────────────────────────
+// ─── دوال التخزين العامة (المشفرة أمنياً بدقة والمعزولة لكل تاجر) ─────────────
 export function getLocalData<T>(key: string, defaultValue: T): T {
   if (typeof window === 'undefined') return defaultValue;
 
+  const scopedKey = resolveUserScopedKey(key);
+
   // ✅ إعادة من الكاش إذا كانت البيانات حديثة
-  const cached = _cacheGet<T>(key);
+  const cached = _cacheGet<T>(scopedKey);
   if (cached !== undefined) return cached;
 
   try {
-    const parsed = getEncryptedLocalData<T>(key, defaultValue);
+    const parsed = getEncryptedLocalData<T>(scopedKey, defaultValue);
 
     let result: T;
     if (Array.isArray(parsed)) {
       const cleanArray = parsed.filter((item: any) => !item.id || !String(item.id).includes('_seed_'));
-      if (key === STORAGE_KEYS.CONTACTS) {
+      if (key.startsWith(STORAGE_KEYS.CONTACTS)) {
         result = cleanArray.map(sanitizeContact) as unknown as T;
-      } else if (key === STORAGE_KEYS.PRODUCTS) {
+      } else if (key.startsWith(STORAGE_KEYS.PRODUCTS)) {
         result = cleanArray.map(sanitizeProduct) as unknown as T;
-      } else if (key === STORAGE_KEYS.TRANSACTIONS) {
+      } else if (key.startsWith(STORAGE_KEYS.TRANSACTIONS)) {
         result = cleanArray.map(sanitizeTransaction) as unknown as T;
       } else {
         result = cleanArray as unknown as T;
@@ -259,7 +334,7 @@ export function getLocalData<T>(key: string, defaultValue: T): T {
     }
 
     // تخزين في الكاش لتجنب إعادة فك التشفير
-    _cacheSet(key, result);
+    _cacheSet(scopedKey, result);
     return result;
   } catch (e) {
     console.error('Error reading encrypted local storage:', e);
@@ -269,11 +344,12 @@ export function getLocalData<T>(key: string, defaultValue: T): T {
 
 export function setLocalData<T>(key: string, value: T): void {
   if (typeof window === 'undefined') return;
+  const scopedKey = resolveUserScopedKey(key);
   try {
     // تحديث الكاش فوراً حتى تقرأ الصفحات البيانات الجديدة مباشرة بدون localStorage
-    _cacheSet(key, value);
+    _cacheSet(scopedKey, value);
     // حفظ مشفر في التخزين المحلي بدون استدعاء لانهائي للمزامنة
-    setEncryptedLocalData<T>(key, value);
+    setEncryptedLocalData<T>(scopedKey, value);
   } catch (e) {
     console.error('Error writing encrypted local storage:', e);
   }
@@ -322,14 +398,16 @@ export function generateReceiptNumber(): string {
   const datePart = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
   const timePart = `${pad(now.getHours())}${pad(now.getMinutes())}`;
   const msPart   = String(now.getMilliseconds()).padStart(3, '0');
-  return `INV-${datePart}-${timePart}${msPart}`;
+  const email = getActiveUserEmail();
+  const prefix = email === 'admin213@gmail.com' ? '' : 'T-';
+  return `INV-${prefix}${datePart}-${timePart}${msPart}`;
 }
 
 // ─── محرك الطباعة الحرارية 80mm (XP-P323B) ────────────────────────────────
 export function buildThermalReceiptHTML(receipt: Receipt): string {
   const fmt = (n: number) => (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const dateStr = formatDateLatin(receipt.created_at);
-  const m = MERCHANT_INFO;
+  const m = getMerchantInfo();
 
   const typeLabels: Record<ReceiptType, string> = {
     SALE:              'وصل بيع',
@@ -387,10 +465,14 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
         loose = (Number(i.quantity) || 0) % realCap;
       } else {
         packs = 0;
-        loose = (Number(i.quantity) || 0) % realCap;
+        // لمنتجات الحبة (غير الكرتون): الكمية = الحبات كلها مباشرةً
+        // استخدام % realCap كان يُعطي دائماً 0 لأن realCap=1 للحبة
+        loose = isPackUnit
+          ? (Number(i.quantity) || 0) % realCap
+          : (Number(i.quantity) || 0);
       }
 
-      const capDisplay   = `${realCap}`;
+      const capDisplay   = isPackUnit ? `${realCap}` : '-';
       const packsDisplay = isPackUnit ? (packs > 0 ? `${packs}` : '-') : '-';
       const looseDisplay = loose > 0 ? `${loose}` : (!isPackUnit ? `${loose}` : '-');
       const lineTotal    = (Number(i.quantity) || 0) * (Number(i.unit_price) || 0);
@@ -865,22 +947,30 @@ export function printThermalReceipt(receipt: Receipt): void {
 // ─── التهيئة الأولية ──────────────────────────────────────────────────────
 export function initStorageIfEmpty(): void {
   if (typeof window === 'undefined') return;
-  if (!localStorage.getItem(STORAGE_KEYS.CONTACTS)) {
+
+  const cKey   = resolveUserScopedKey(STORAGE_KEYS.CONTACTS);
+  const pKey   = resolveUserScopedKey(STORAGE_KEYS.PRODUCTS);
+  const catKey = resolveUserScopedKey(STORAGE_KEYS.PRODUCT_CATEGORIES);
+  const txKey  = resolveUserScopedKey(STORAGE_KEYS.TRANSACTIONS);
+  const payKey = resolveUserScopedKey(STORAGE_KEYS.PAYMENTS);
+  const recKey = resolveUserScopedKey(STORAGE_KEYS.RECEIPTS);
+
+  if (!localStorage.getItem(cKey)) {
     setLocalData(STORAGE_KEYS.CONTACTS, DEFAULT_CONTACTS);
   }
-  if (!localStorage.getItem(STORAGE_KEYS.PRODUCTS)) {
+  if (!localStorage.getItem(pKey)) {
     setLocalData(STORAGE_KEYS.PRODUCTS, DEFAULT_PRODUCTS);
   }
-  if (!localStorage.getItem(STORAGE_KEYS.PRODUCT_CATEGORIES)) {
+  if (!localStorage.getItem(catKey)) {
     setLocalData(STORAGE_KEYS.PRODUCT_CATEGORIES, DEFAULT_PRODUCT_CATEGORIES);
   }
-  if (!localStorage.getItem(STORAGE_KEYS.TRANSACTIONS)) {
+  if (!localStorage.getItem(txKey)) {
     setLocalData(STORAGE_KEYS.TRANSACTIONS, DEFAULT_TRANSACTIONS);
   }
-  if (!localStorage.getItem(STORAGE_KEYS.PAYMENTS)) {
+  if (!localStorage.getItem(payKey)) {
     setLocalData(STORAGE_KEYS.PAYMENTS, []);
   }
-  if (!localStorage.getItem(STORAGE_KEYS.RECEIPTS)) {
+  if (!localStorage.getItem(recKey)) {
     setLocalData(STORAGE_KEYS.RECEIPTS, []);
   }
 
@@ -905,7 +995,7 @@ export function generateAccountStatementText(contactName: string, balance: numbe
     ? `✅ الرصيد المستحق لك لدينا (تطالبنا به): ${Math.abs(balance).toLocaleString('en-US')} د.ج`
     : `✅ الحساب مصفى بالكامل (0 د.ج)`;
 
-  const m = MERCHANT_INFO;
+  const m = getMerchantInfo();
   let msg = `🧾 *كشف حساب — ${m.name}*\n`;
   msg += `👤 *العميل/المورد:* ${contactName}\n`;
   msg += `📅 *التاريخ:* ${dateStr}\n`;

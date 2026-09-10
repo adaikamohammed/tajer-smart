@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { getLocalData, setLocalData } from '@/lib/store';
+import { getLocalData, setLocalData, clearLocalDataCache } from '@/lib/store';
 import { toast } from '@/components/Toast';
 import { Download, LogOut, ShieldCheck, X, RefreshCw, CheckCircle2, WifiOff } from 'lucide-react';
 import { initAutoSyncEngine, subscribeToSyncStatus, syncStoreWithVercelCloud, SyncStatus } from '@/lib/cloud-sync';
@@ -68,11 +68,14 @@ export default function AppHeader() {
   const handleLogout = () => {
     setLocalData('tajer_smart_logged_in', false);
     setLocalData('tajer_smart_user', null);
+    clearLocalDataCache();
     toast('تم تسجيل الخروج بنجاح 👋', 'info');
     router.push('/login');
   };
 
   if (pathname === '/login') return null;
+
+  const isDemoUser = user?.email?.toLowerCase() === 'tajer@gmail.com';
 
   return (
     <header className="app-header border-b border-emerald-800/40 shadow-sm" role="banner" style={{ padding: '0.45rem 0.75rem' }}>
@@ -92,9 +95,15 @@ export default function AppHeader() {
           </div>
 
           <div className="min-w-0 flex-1">
-            <h1 className="font-black text-xs sm:text-sm text-white truncate leading-snug flex items-center gap-1">
+            <h1 className="font-black text-xs sm:text-sm text-white truncate leading-snug flex items-center gap-1.5">
               <span>{user?.name || 'شكيمة فوزي'}</span>
-              <span className="text-[10px] text-emerald-300 font-bold shrink-0">🚛</span>
+              {isDemoUser ? (
+                <span className="text-[9px] bg-indigo-500/40 text-indigo-100 border border-indigo-300/40 px-1.5 py-0.2 rounded-md font-bold shrink-0">
+                  حساب تجريبي 🧪
+                </span>
+              ) : (
+                <span className="text-[10px] text-emerald-300 font-bold shrink-0">🚛</span>
+              )}
             </h1>
           </div>
         </div>

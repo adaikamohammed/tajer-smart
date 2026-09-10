@@ -1,10 +1,12 @@
 -- -------------------------------------------------------------
 -- 📦 قاعدة بيانات "التاجر الذكي المتنقل" المزامنة سحابياً (Tajer Smart Database Schema)
+-- تدعم تعدد التجار وعزل بيانات كل حساب تلقائياً
 -- -------------------------------------------------------------
 
 -- 1. جدول الأشخاص (الموردين والزبائن)
 CREATE TABLE IF NOT EXISTS contacts (
   id TEXT PRIMARY KEY,
+  user_id TEXT DEFAULT 'admin213@gmail.com', -- معرّف الحساب المالك للعنصر
   name TEXT NOT NULL,
   phone TEXT,
   photo_url TEXT,
@@ -20,13 +22,16 @@ CREATE TABLE IF NOT EXISTS contacts (
 -- 2. جدول المنتجات (المخزن والأسعار)
 CREATE TABLE IF NOT EXISTS products (
   id TEXT PRIMARY KEY,
+  user_id TEXT DEFAULT 'admin213@gmail.com', -- معرّف الحساب المالك للعنصر
   name TEXT NOT NULL,
   barcode TEXT,
   photo_url TEXT,
   category TEXT,
-  unit_type TEXT,
+  unit_type TEXT DEFAULT 'piece',
+  pack_quantity NUMERIC DEFAULT 1,
   cost_price NUMERIC DEFAULT 0,     -- سعر الشراء بالجملة
   retail_price NUMERIC DEFAULT 0,   -- سعر البيع بالتجزئة
+  retail_price_2 NUMERIC DEFAULT 0, -- سعر البيع الثاني
   stock_quantity NUMERIC DEFAULT 0,  -- كمية المخزون بالحبة
   min_stock_alert NUMERIC DEFAULT 5, -- حد التنبيه بالنقص
   expiry_date DATE,                  -- تاريخ انتهاء الصلاحية
@@ -39,12 +44,15 @@ CREATE TABLE IF NOT EXISTS products (
 -- 3. سجل العمليات الرئيسية (شراء من مورد / بيع لزبون)
 CREATE TABLE IF NOT EXISTS transactions (
   id TEXT PRIMARY KEY,
+  user_id TEXT DEFAULT 'admin213@gmail.com', -- معرّف الحساب المالك للعنصر
   tx_type TEXT NOT NULL,
   contact_id TEXT,
   contact_name TEXT,
   total_amount NUMERIC NOT NULL,
   paid_amount NUMERIC DEFAULT 0,
   debt_amount NUMERIC DEFAULT 0,
+  previous_balance NUMERIC DEFAULT 0,
+  final_balance NUMERIC DEFAULT 0,
   status TEXT DEFAULT 'PAID',
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
@@ -57,6 +65,10 @@ CREATE TABLE IF NOT EXISTS transaction_items (
   product_id TEXT,
   product_name TEXT,
   quantity NUMERIC NOT NULL,
+  packs_count NUMERIC,
+  loose_count NUMERIC,
+  pack_quantity NUMERIC DEFAULT 1,
+  unit_type TEXT,
   unit_price NUMERIC NOT NULL,  -- السعر الفعلي بالعملية (تجزئة عند البيع / جملة عند الشراء)
   cost_price NUMERIC NOT NULL,  -- سعر التكلفة بالجملة وقت العملية لحساب صافي الأرباح
   created_at TIMESTAMPTZ DEFAULT NOW()
@@ -76,6 +88,7 @@ CREATE TABLE IF NOT EXISTS debt_payments (
 CREATE TABLE IF NOT EXISTS deleted_items (
   id TEXT NOT NULL,
   entity_type TEXT NOT NULL,
+  user_id TEXT DEFAULT 'admin213@gmail.com',
   deleted_at TIMESTAMPTZ DEFAULT NOW(),
   PRIMARY KEY (id, entity_type)
 );

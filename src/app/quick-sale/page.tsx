@@ -231,9 +231,16 @@ function QuickSaleContent() {
       const validTotalAmount = validCart.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
       // تجهيز عناصر الفاتورة مع فحص الكراتين والحبات
       const txItems: TransactionItem[] = validCart.map(ci => {
-        const cap = ci.product.pack_quantity || 1;
-        const packsCount = ci.packsCount !== undefined ? ci.packsCount : Math.floor(ci.quantity / cap);
-        const looseCount = ci.looseCount !== undefined ? ci.looseCount : (ci.quantity % cap);
+        const cap    = ci.product.pack_quantity || 1;
+        const isPack = ci.product.unit_type === 'pack';
+        // للمنتجات من نوع حبة (piece): packsCount=0 وlooseCount=الكمية كاملة
+        // للمنتجات من نوع كرتون (pack): يُقسَّم حسب سعة الكرتون
+        const packsCount = ci.packsCount !== undefined
+          ? ci.packsCount
+          : (isPack ? Math.floor(ci.quantity / cap) : 0);
+        const looseCount = ci.looseCount !== undefined
+          ? ci.looseCount
+          : (isPack ? ci.quantity % cap : ci.quantity);
 
         return {
           product_id: ci.product.id,

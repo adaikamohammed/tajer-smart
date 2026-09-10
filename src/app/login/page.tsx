@@ -2,31 +2,59 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { setLocalData } from '@/lib/store';
+import { setLocalData, clearLocalDataCache, initStorageIfEmpty } from '@/lib/store';
 import { toast } from '@/components/Toast';
-import { Mail, Lock, ArrowLeft, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, ArrowLeft, ShieldCheck, CheckCircle2, UserCheck, Sparkles } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('admin213@gmail.com');
   const [password, setPassword] = useState('123456');
 
+  const cleanEmail = email.trim().toLowerCase();
+
+  const selectAccount = (selectedEmail: string) => {
+    setEmail(selectedEmail);
+    setPassword('123456');
+  };
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (email.trim().toLowerCase() === 'admin213@gmail.com' && password === '123456') {
+    if (cleanEmail === 'admin213@gmail.com' && password === '123456') {
       const merchantData = {
         name: 'شكيمة فوزي',
         email: 'admin213@gmail.com',
         role: 'تاجر متنقل',
+        merchantName: 'التاجر المتنقل',
+        phone: '0662555856',
+        address: 'تكسبت / الوادي',
         loggedAt: new Date().toISOString(),
       };
       setLocalData('tajer_smart_user', merchantData);
       setLocalData('tajer_smart_logged_in', true);
+      clearLocalDataCache();
+      initStorageIfEmpty();
       toast('مرحباً بك يا أستاذ شكيمة فوزي! 👋', 'success');
       router.push('/');
+    } else if (cleanEmail === 'tajer@gmail.com' && password === '123456') {
+      const merchantData = {
+        name: 'التاجر التجريبي',
+        email: 'tajer@gmail.com',
+        role: 'تاجر تجريبي',
+        merchantName: 'متجر التاجر',
+        phone: '0550000000',
+        address: 'الجزائر',
+        loggedAt: new Date().toISOString(),
+      };
+      setLocalData('tajer_smart_user', merchantData);
+      setLocalData('tajer_smart_logged_in', true);
+      clearLocalDataCache();
+      initStorageIfEmpty();
+      toast('مرحباً بك! تم تسجيل الدخول في حساب التاجر التجريبي المنفصل بنجاح 🚀', 'success');
+      router.push('/');
     } else {
-      toast('البريد أو كلمة المرور غير صحيحة! (جرب: admin213@gmail.com / 123456)', 'error');
+      toast('البريد أو كلمة المرور غير صحيحة! تأكد من إدخال admin213@gmail.com أو tajer@gmail.com مع كلمة السر 123456', 'error');
     }
   };
 
@@ -56,12 +84,51 @@ export default function LoginPage() {
         {/* نموذج الدخول */}
         <div className="glass-card p-6 space-y-5 rounded-3xl">
 
-          <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-2xl flex items-start gap-2.5">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-            <div className="text-xs text-emerald-800">
-              <p className="font-black">حساب التاجر المعتمد:</p>
-              <p className="font-semibold mt-0.5">البريد: <code className="bg-emerald-100 px-1.5 py-0.5 rounded text-emerald-900 font-bold">admin213@gmail.com</code></p>
-              <p className="font-semibold">كلمة المرور: <code className="bg-emerald-100 px-1.5 py-0.5 rounded text-emerald-900 font-bold">123456</code></p>
+          {/* بطاقات الحسابات المتوفرة للاختيار السريع */}
+          <div className="space-y-2">
+            <p className="text-xs font-black text-slate-700">اختر الحساب للتجربة بنقرة واحدة:</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              
+              {/* حساب فوزي شكيمة */}
+              <button
+                type="button"
+                onClick={() => selectAccount('admin213@gmail.com')}
+                className={`p-3 rounded-2xl border text-right transition-all flex flex-col justify-between touch-active ${
+                  cleanEmail === 'admin213@gmail.com'
+                    ? 'bg-emerald-50 border-emerald-400 shadow-sm ring-2 ring-emerald-400/30'
+                    : 'bg-white border-slate-200 hover:border-emerald-300'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <span className="font-black text-xs text-slate-900 flex items-center gap-1">
+                    <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+                    فوزي شكيمة
+                  </span>
+                  <span className="text-[9px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">رئيسي</span>
+                </div>
+                <div className="text-[10px] text-slate-500 mt-1 font-mono">admin213@gmail.com</div>
+              </button>
+
+              {/* حساب التاجر التجريبي المستقل */}
+              <button
+                type="button"
+                onClick={() => selectAccount('tajer@gmail.com')}
+                className={`p-3 rounded-2xl border text-right transition-all flex flex-col justify-between touch-active ${
+                  cleanEmail === 'tajer@gmail.com'
+                    ? 'bg-indigo-50 border-indigo-400 shadow-sm ring-2 ring-indigo-400/30'
+                    : 'bg-white border-slate-200 hover:border-indigo-300'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <span className="font-black text-xs text-slate-900 flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                    تاجر تجريبي
+                  </span>
+                  <span className="text-[9px] bg-indigo-100 text-indigo-800 px-1.5 py-0.5 rounded font-bold">منفصل 100%</span>
+                </div>
+                <div className="text-[10px] text-slate-500 mt-1 font-mono">tajer@gmail.com</div>
+              </button>
+
             </div>
           </div>
 
@@ -76,7 +143,7 @@ export default function LoginPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin213@gmail.com"
+                placeholder="tajer@gmail.com"
                 className="form-input text-left dir-ltr font-bold text-slate-800"
               />
             </div>
@@ -98,9 +165,17 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              className="btn btn-primary w-full py-4 text-base shadow-lg touch-active flex items-center justify-center gap-2"
+              className={`btn w-full py-4 text-base shadow-lg touch-active flex items-center justify-center gap-2 ${
+                cleanEmail === 'tajer@gmail.com'
+                  ? 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                  : 'btn-primary'
+              }`}
             >
-              <span>دخول التاجر (شكيمة فوزي)</span>
+              <span>
+                {cleanEmail === 'tajer@gmail.com'
+                  ? 'دخول التاجر التجريبي (حساب منفصل) 🚀'
+                  : 'دخول التاجر (شكيمة فوزي) 🚛'}
+              </span>
               <ArrowLeft className="w-5 h-5" />
             </button>
           </form>

@@ -138,6 +138,18 @@ export async function initTablesIfMissing() {
     await query`ALTER TABLE transaction_items ADD COLUMN IF NOT EXISTS pack_quantity NUMERIC DEFAULT 1;`;
     await query`ALTER TABLE transaction_items ADD COLUMN IF NOT EXISTS unit_type TEXT;`;
 
+    // ─── دعم تعدد التجار وفصل بيانات كل حساب سحابياً ───
+    await query`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS user_id TEXT DEFAULT 'admin213@gmail.com';`;
+    await query`ALTER TABLE products ADD COLUMN IF NOT EXISTS user_id TEXT DEFAULT 'admin213@gmail.com';`;
+    await query`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS user_id TEXT DEFAULT 'admin213@gmail.com';`;
+    await query`ALTER TABLE deleted_items ADD COLUMN IF NOT EXISTS user_id TEXT DEFAULT 'admin213@gmail.com';`;
+
+    // إسناد أي بيانات قديمة لحساب فوزي شكيمة تلقائياً دون ضياع أي بيان
+    await query`UPDATE contacts SET user_id = 'admin213@gmail.com' WHERE user_id IS NULL;`;
+    await query`UPDATE products SET user_id = 'admin213@gmail.com' WHERE user_id IS NULL;`;
+    await query`UPDATE transactions SET user_id = 'admin213@gmail.com' WHERE user_id IS NULL;`;
+    await query`UPDATE deleted_items SET user_id = 'admin213@gmail.com' WHERE user_id IS NULL;`;
+
     return true;
   } catch (err) {
     console.error('Error initializing tables / running migrations:', err);

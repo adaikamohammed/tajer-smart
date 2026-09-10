@@ -1,7 +1,8 @@
 import {
   Contact, Product, Transaction,
   getLocalData, setLocalData, clearLocalDataCache,
-  sanitizeProduct, sanitizeContact, sanitizeTransaction
+  sanitizeProduct, sanitizeContact, sanitizeTransaction,
+  getActiveUserEmail
 } from './store';
 
 const DELETED_KEYS = {
@@ -102,6 +103,7 @@ export async function syncStoreWithVercelCloud(): Promise<{
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         body: JSON.stringify({
+          user_id:              getActiveUserEmail(),
           contacts:             localContacts,
           products:             localProducts,
           transactions:         localTx,
