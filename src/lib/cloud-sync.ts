@@ -55,6 +55,16 @@ function notifySubs() {
 
 // ─── حلقة مزامنة واحدة في المرة (Vercel Postgres Sync) ─────────────────
 let syncInProgress = false;
+let lastSyncTimestamp = 0;
+let debounceTimer: any = null;
+
+export function triggerDebouncedSync(delayMs = 2500) {
+  if (typeof window === 'undefined') return;
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    syncStoreWithVercelCloud();
+  }, delayMs);
+}
 
 export async function syncStoreWithVercelCloud(): Promise<{
   success: boolean;
@@ -184,6 +194,7 @@ export async function syncStoreWithVercelCloud(): Promise<{
       clearLocalDataCache();
       notifySubs();
     }
+    lastSyncTimestamp = Date.now();
     updateStatus('synced');
 
     return {
@@ -235,10 +246,12 @@ export function initAutoSyncEngine() {
   // 1. مزامنة عند فتح التطبيق
   syncStoreWithVercelCloud();
 
-  // 2. مزامنة عند العودة للتبويب
+  // 2. مزامنة عند العودة للتبويب (فقط إذا مر أكثر من 45 ثانية لتفادي الثقل وتجميد الواجهة)
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && navigator.onLine) {
-      syncStoreWithVercelCloud();
+      if (Date.now() - lastSyncTimestamp > 45_000) {
+        syncStoreWithVercelCloud();
+      }
     }
   });
 

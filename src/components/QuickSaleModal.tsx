@@ -13,12 +13,20 @@ import {
   ArrowRight, DollarSign, PackageCheck, PackageX, UserPlus
 } from 'lucide-react';
 
-const fmt = (n: number) => n.toLocaleString('en-US');
+const fmt = (n: number) => {
+  const num = Number(n) || 0;
+  if (num % 1 !== 0) {
+    return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  return num.toLocaleString('en-US');
+};
 
 interface CartItem {
   product: Product;
   quantity: number;
+  originalPrice: number;
   unitPrice: number;
+  discountPercent?: number;
   packsCount?: number;
   looseCount?: number;
 }
@@ -80,19 +88,29 @@ export default function QuickSaleModal({
     return contacts.find(c => c.id === selectedCustomerId) || null;
   }, [contacts, selectedCustomerId]);
 
-  // تصفية المنتجات بالبحث
+  // تصفية المنتجات بالبحث (أول 30 منتجاً للسرعة إذا لم يكن هناك بحث)
   const filteredProducts = useMemo(() => {
-    if (!productSearch.trim()) return products;
+    if (!productSearch.trim()) return products.slice(0, 30);
     const q = productSearch.toLowerCase().trim();
     return products.filter(
       p => p.name.toLowerCase().includes(q) || (p.category && p.category.toLowerCase().includes(q))
     );
   }, [products, productSearch]);
 
-  // حساب الإجمالي مع مراعاة بيع الكراتين والحبات الفردية
+  // إجمالي الفاتورة قبل التخفيض
+  const subtotalAmount = useMemo(() => {
+    return cart.reduce((sum, item) => sum + (item.quantity * (item.originalPrice || item.unitPrice)), 0);
+  }, [cart]);
+
+  // حساب الإجمالي الصافي بعد التخفيض مع مراعاة بيع الكراتين والحبات الفردية
   const totalAmount = useMemo(() => {
     return cart.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
   }, [cart]);
+
+  // إجمالي قيمة التخفيض الممنوحة
+  const totalDiscount = useMemo(() => {
+    return Math.max(0, subtotalAmount - totalAmount);
+  }, [subtotalAmount, totalAmount]);
 
   // إعداد المبلغ المدفوع تلقائياً عند تغيير السلة
   useEffect(() => {
@@ -114,10 +132,44 @@ export default function QuickSaleModal({
         {
           product,
           quantity: 1,
+          originalPrice: product.retail_price,
           unitPrice: product.retail_price,
+          discountPercent: 0,
         },
       ]);
     }
+  };
+
+  // تعديل نسبة التخفيض لصنف معين مع الحفاظ على الفاصلة العشرية
+  const updateCartDiscount = (productId: string, discount: number) => {
+    const validDiscount = Math.max(0, Math.min(100, discount || 0));
+    setCart(prev =>
+      prev.map(ci => {
+        if (ci.product.id === productId) {
+          const orig = ci.originalPrice || ci.product.retail_price;
+          const net = validDiscount > 0
+            ? Math.round((orig * (1 - validDiscount / 100)) * 100) / 100
+            : orig;
+          return { ...ci, discountPercent: validDiscount, unitPrice: net };
+        }
+        return ci;
+      })
+    );
+  };
+
+  // تعديل سعر التجزئة في السلة
+  const updateCartPrice = (productId: string, price: number) => {
+    setCart(prev =>
+      prev.map(ci => {
+        if (ci.product.id === productId) {
+          const p = Math.max(0, price);
+          const orig = ci.originalPrice || ci.product.retail_price;
+          const disc = orig > 0 && p < orig ? Math.round(((orig - p) / orig) * 1000) / 10 : 0;
+          return { ...ci, unitPrice: p, discountPercent: disc };
+        }
+        return ci;
+      })
+    );
   };
 
   // تعديل كمية منتج في السلة
@@ -158,13 +210,6 @@ export default function QuickSaleModal({
         }
         return ci;
       }).filter(Boolean)
-    );
-  };
-
-  // تعديل سعر التجزئة في السلة
-  const updateCartPrice = (productId: string, price: number) => {
-    setCart(prev =>
-      prev.map(ci => (ci.product.id === productId ? { ...ci, unitPrice: price } : ci))
     );
   };
 
@@ -214,11 +259,18 @@ export default function QuickSaleModal({
 
     try {
       const debtAmount = Math.max(0, totalAmount - paidAmount);
+      const validSubtotalAmount = cart.reduce((sum, item) => sum + (item.quantity * (item.originalPrice || item.unitPrice)), 0);
+      const validTotalDiscount = Math.max(0, validSubtotalAmount - totalAmount);
+
       const txItems: TransactionItem[] = cart.map(ci => {
         const cap = ci.product.pack_quantity || 1;
         const isPack = ci.product.unit_type === 'pack';
         const packsCount = ci.packsCount !== undefined ? ci.packsCount : (isPack ? Math.floor(ci.quantity / cap) : 0);
         const looseCount = ci.looseCount !== undefined ? ci.looseCount : (isPack ? ci.quantity % cap : ci.quantity);
+
+        const origPrice = ci.originalPrice || ci.product.retail_price;
+        const discPercent = ci.discountPercent || 0;
+        const discAmount = Math.max(0, origPrice - ci.unitPrice);
 
         return {
           product_id: ci.product.id,
@@ -228,6 +280,9 @@ export default function QuickSaleModal({
           loose_count: looseCount,
           pack_quantity: cap,
           unit_type: ci.product.unit_type || 'piece',
+          original_price: origPrice,
+          discount_percent: discPercent > 0 ? discPercent : undefined,
+          discount_amount: discAmount > 0 ? discAmount : undefined,
           unit_price: ci.unitPrice,
           cost_price: ci.product.cost_price,
         };
@@ -242,6 +297,9 @@ export default function QuickSaleModal({
         tx_type: 'SALE',
         contact_id: selectedContact.id,
         contact_name: selectedContact.name,
+        subtotal_amount: validSubtotalAmount,
+        total_discount: validTotalDiscount,
+        items_count: cart.length,
         total_amount: totalAmount,
         paid_amount: paidAmount,
         debt_amount: debtAmount,
@@ -292,6 +350,9 @@ export default function QuickSaleModal({
         contact_name: selectedContact.name,
         contact_phone: selectedContact.phone,
         items: txItems,
+        subtotal_amount: validSubtotalAmount,
+        total_discount: validTotalDiscount,
+        items_count: cart.length,
         total_amount: totalAmount,
         paid_amount: paidAmount,
         debt_amount: debtAmount,
@@ -610,37 +671,73 @@ export default function QuickSaleModal({
                         </div>
                       )}
 
-                      <div className="flex items-center justify-between gap-1.5 text-xs pt-1 border-t border-slate-100 flex-wrap">
-                        <div className="flex items-center gap-1">
+                      <div className="flex items-center justify-between gap-1.5 text-xs pt-1.5 border-t border-slate-100 flex-wrap">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <span className="text-[10px] font-bold text-slate-500">السعر:</span>
                           <button
                             type="button"
-                            onClick={() => updateCartPrice(p.id, p.retail_price)}
+                            onClick={() => {
+                              const orig = p.retail_price;
+                              setCart(prev => prev.map(item => item.product.id === p.id ? { ...item, originalPrice: orig, unitPrice: orig, discountPercent: 0 } : item));
+                            }}
                             className={`px-2 py-0.5 rounded-lg text-[11px] font-black border transition-all ${
                               ci.unitPrice === p.retail_price ? 'bg-emerald-600 text-white border-transparent' : 'bg-slate-100 text-slate-700 border-slate-200'
                             }`}
                           >
-                            تجزئة 1 ({p.retail_price})
+                            تجزئة 1 ({fmt(p.retail_price)})
                           </button>
                           {(p.retail_price_2 || 0) > 0 && (
                             <button
                               type="button"
-                              onClick={() => updateCartPrice(p.id, p.retail_price_2 || p.retail_price)}
+                              onClick={() => {
+                                const orig = p.retail_price_2!;
+                                setCart(prev => prev.map(item => item.product.id === p.id ? { ...item, originalPrice: orig, unitPrice: orig, discountPercent: 0 } : item));
+                              }}
                               className={`px-2 py-0.5 rounded-lg text-[11px] font-black border transition-all ${
                                 ci.unitPrice === p.retail_price_2 ? 'bg-sky-600 text-white border-transparent' : 'bg-slate-100 text-slate-700 border-slate-200'
                               }`}
                             >
-                              تجزئة 2 ({p.retail_price_2})
+                              تجزئة 2 ({fmt(p.retail_price_2 || 0)})
                             </button>
                           )}
-                          <input
-                            type="number"
-                            min="0"
-                            value={ci.unitPrice}
-                            onChange={e => updateCartPrice(p.id, +e.target.value)}
-                            onFocus={e => e.target.select()}
-                            className="w-16 form-input py-0.5 px-1 text-[11px] font-black text-emerald-700 tabnum bg-white border-slate-300"
-                          />
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              value={ci.unitPrice}
+                              onChange={e => updateCartPrice(p.id, parseFloat(e.target.value) || 0)}
+                              onFocus={e => e.target.select()}
+                              className="w-18 form-input py-0.5 px-1 text-xs font-black text-emerald-700 tabnum bg-white border-emerald-300 rounded-lg text-center"
+                            />
+                            <span className="text-[10px] text-slate-400">د.ج</span>
+                          </div>
+
+                          {/* 🏷️ إدخال التخفيض المئوي */}
+                          <div className="inline-flex items-center gap-1 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded-lg">
+                            <span className="text-[10px] font-black text-rose-700">تخفيض:</span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="any"
+                              placeholder="0"
+                              value={ci.discountPercent ? ci.discountPercent : ''}
+                              onChange={e => updateCartDiscount(p.id, parseFloat(e.target.value) || 0)}
+                              onFocus={e => e.target.select()}
+                              className="w-11 text-center bg-transparent text-xs font-black text-rose-700 tabnum outline-none"
+                            />
+                            <span className="text-[10px] font-black text-rose-500">%</span>
+                          </div>
+                        </div>
+
+                        <div className="font-black text-xs text-slate-900 tabnum">
+                          {ci.discountPercent && ci.discountPercent > 0 && (
+                            <span className="text-[10px] text-slate-400 line-through mr-1">
+                              {fmt(ci.quantity * (ci.originalPrice || p.retail_price))}
+                            </span>
+                          )}
+                          <span>{fmt(ci.quantity * ci.unitPrice)} د.ج</span>
                         </div>
                       </div>
 
@@ -663,8 +760,20 @@ export default function QuickSaleModal({
           {/* ── 💵 4. حساب الفاتورة والدفع ── */}
           {cart.length > 0 && (
             <div className="bg-slate-900 text-white p-4 rounded-2xl space-y-3 shadow-lg">
+              {totalDiscount > 0 && (
+                <div className="flex items-center justify-between text-xs text-slate-300 pb-1 border-b border-slate-800">
+                  <span>المجموع قبل التخفيض:</span>
+                  <span className="font-bold tabnum">{fmt(subtotalAmount)} د.ج</span>
+                </div>
+              )}
+              {totalDiscount > 0 && (
+                <div className="flex items-center justify-between text-xs text-rose-400 pb-1 border-b border-slate-800 font-black">
+                  <span>إجمالي التخفيض:</span>
+                  <span className="tabnum">-{fmt(totalDiscount)} د.ج</span>
+                </div>
+              )}
               <div className="flex items-center justify-between text-sm">
-                <span className="font-bold text-slate-300">إجمالي الفاتورة:</span>
+                <span className="font-bold text-slate-300">{totalDiscount > 0 ? 'المبلغ الصافي المطلوب:' : 'إجمالي الفاتورة:'}</span>
                 <span className="font-black text-2xl text-emerald-400 tabnum">{fmt(totalAmount)} <span className="text-xs">د.ج</span></span>
               </div>
 

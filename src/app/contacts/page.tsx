@@ -320,13 +320,26 @@ export default function ContactsPage() {
               </p>
             </div>
 
-            <Link
-              href={`/quick-sale?customerId=${viewingContact.id}`}
-              className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-md touch-active block text-center"
-            >
-              <Zap size={16} className="fill-amber-300 text-amber-300 inline-block" />
-              <span>⚡ بيع سريع فوري لهذا الزبون (صفحة واسعة)</span>
-            </Link>
+            <div className="space-y-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setQuickSaleCustomerId(viewingContact.id);
+                  setShowQuickSale(true);
+                }}
+                className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-md touch-active"
+              >
+                <Zap size={16} className="fill-amber-300 text-amber-300 inline-block" />
+                <span>⚡ بيع سريع فوري لهذا الزبون (مباشر دون مغادرة الصفحة)</span>
+              </button>
+
+              <Link
+                href={`/quick-sale?customerId=${viewingContact.id}&returnTo=/contacts`}
+                className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-[11px] flex items-center justify-center gap-1 text-center transition-all"
+              >
+                <span>أو فتح شاشة البيع الواسعة مع حفظ مسار العودة ↗</span>
+              </Link>
+            </div>
 
             <div className="grid grid-cols-3 gap-2">
               {viewingContact.phone && (

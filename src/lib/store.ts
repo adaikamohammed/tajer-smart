@@ -60,6 +60,9 @@ export interface TransactionItem {
   loose_count?: number;
   pack_quantity?: number;
   unit_type?: string;
+  original_price?: number;
+  discount_percent?: number;
+  discount_amount?: number;
   unit_price: number;
   cost_price: number;
 }
@@ -69,6 +72,10 @@ export interface Transaction {
   tx_type: 'PURCHASE' | 'SALE';
   contact_id?: string;
   contact_name?: string;
+  subtotal_amount?: number;
+  total_discount?: number;
+  items_count?: number;
+  total_pieces?: number;
   total_amount: number;
   paid_amount: number;
   debt_amount: number;
@@ -100,6 +107,10 @@ export interface Receipt {
   contact_name?: string;
   contact_phone?: string;
   items?: TransactionItem[];
+  subtotal_amount?: number;
+  total_discount?: number;
+  items_count?: number;
+  total_pieces?: number;
   total_amount?: number;
   paid_amount?: number;
   debt_amount?: number;
@@ -262,6 +273,10 @@ export function sanitizeProduct(p: any): Product {
 export function sanitizeTransaction(t: any): Transaction {
   return {
     ...t,
+    subtotal_amount: t.subtotal_amount !== undefined ? Number(t.subtotal_amount) : undefined,
+    total_discount: t.total_discount !== undefined ? Number(t.total_discount) : undefined,
+    items_count: t.items_count !== undefined ? Number(t.items_count) : undefined,
+    total_pieces: t.total_pieces !== undefined ? Number(t.total_pieces) : undefined,
     total_amount: Number(t.total_amount) || 0,
     paid_amount: Number(t.paid_amount) || 0,
     debt_amount: Number(t.debt_amount) || 0,
@@ -270,6 +285,9 @@ export function sanitizeTransaction(t: any): Transaction {
     items: Array.isArray(t.items) ? t.items.map((i: any) => ({
       ...i,
       quantity: Number(i.quantity) || 0,
+      original_price: i.original_price !== undefined ? Number(i.original_price) : undefined,
+      discount_percent: i.discount_percent !== undefined ? Number(i.discount_percent) : undefined,
+      discount_amount: i.discount_amount !== undefined ? Number(i.discount_amount) : undefined,
       unit_price: Number(i.unit_price) || 0,
       cost_price: Number(i.cost_price) || 0,
       packs_count: i.packs_count !== undefined ? Number(i.packs_count) : undefined,
@@ -403,6 +421,71 @@ export function generateReceiptNumber(): string {
   return `INV-${prefix}${datePart}-${timePart}${msPart}`;
 }
 
+// ─── توليد باركود Code 128 بصيغة SVG نقي بدون مكتبات خارجية ────────────────
+export function generateBarcodeSVG(text: string): string {
+  if (!text) return '';
+  const clean = text.replace(/[^\x20-\x7E]/g, '');
+  if (!clean) return '';
+
+  const CODE128_PATTERNS = [
+    '212222','222122','222221','121223','121322','131222','122213','122312','132212','221213',
+    '221312','231212','112232','122132','122231','113222','123122','123221','223211','221132',
+    '221231','213212','223112','312131','311222','321122','321221','312212','322112','322211',
+    '212123','212321','232121','111323','131123','131321','112313','132113','132311','211313',
+    '231113','231311','112133','112331','132131','113123','113321','133121','313121','211331',
+    '231131','213113','213311','213131','311123','311321','331121','312113','312311','332111',
+    '314111','221411','431111','111224','111422','121124','121421','141122','141221','112214',
+    '112412','122114','122411','142112','142211','241211','221114','413111','241112','134111',
+    '111242','121142','121241','114212','124112','124211','411212','421112','421211','212141',
+    '214121','412121','111143','111341','131141','114113','114311','411113','411311','113141',
+    '114131','311141','411131','211412','211214','211232','2331112'
+  ];
+
+  const START_B = 104;
+  const STOP = 106;
+  let checksum = START_B;
+  const codes: number[] = [START_B];
+
+  for (let i = 0; i < clean.length; i++) {
+    const code = clean.charCodeAt(i) - 32;
+    codes.push(code);
+    checksum += code * (i + 1);
+  }
+  codes.push(checksum % 103);
+  codes.push(STOP);
+
+  let patternStr = '';
+  for (const c of codes) {
+    if (c >= 0 && c < CODE128_PATTERNS.length) {
+      patternStr += CODE128_PATTERNS[c];
+    }
+  }
+
+  let totalModules = 0;
+  for (let i = 0; i < patternStr.length; i++) {
+    totalModules += parseInt(patternStr[i], 10);
+  }
+
+  const barHeight = 44;
+  const moduleWidth = 2;
+  const totalSvgWidth = totalModules * moduleWidth;
+
+  let currentX = 0;
+  let rects = '';
+  let isBar = true;
+
+  for (let i = 0; i < patternStr.length; i++) {
+    const w = parseInt(patternStr[i], 10) * moduleWidth;
+    if (isBar) {
+      rects += `<rect x="${currentX}" y="0" width="${w}" height="${barHeight}" fill="#000"/>`;
+    }
+    currentX += w;
+    isBar = !isBar;
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalSvgWidth} ${barHeight}" width="180" height="42" style="display:block;margin:0 auto;">${rects}</svg>`;
+}
+
 // ─── محرك الطباعة الحرارية 80mm (XP-P323B) ────────────────────────────────
 export function buildThermalReceiptHTML(receipt: Receipt): string {
   const fmt = (n: number) => (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -450,6 +533,12 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
   if (!isDirectDebt && receipt.items && receipt.items.length > 0) {
     const validItems = receipt.items.filter(i => (Number(i.quantity) || 0) > 0);
     const storedProds: Product[] = getLocalData<Product[]>('tajer_smart_products_v1', []);
+
+    let totalPacksCount = 0;
+    let totalLooseCount = 0;
+    let computedGrossTotal = 0;
+    let computedDiscountTotal = 0;
+
     const rows = validItems.map(i => {
       const prodMatch = storedProds.find((p: Product) => p.id === i.product_id || p.name.trim() === i.product_name?.trim());
       const realCap = Number(i.pack_quantity || prodMatch?.pack_quantity) || 1;
@@ -465,30 +554,45 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
         loose = (Number(i.quantity) || 0) % realCap;
       } else {
         packs = 0;
-        // لمنتجات الحبة (غير الكرتون): الكمية = الحبات كلها مباشرةً
-        // استخدام % realCap كان يُعطي دائماً 0 لأن realCap=1 للحبة
-        loose = isPackUnit
-          ? (Number(i.quantity) || 0) % realCap
-          : (Number(i.quantity) || 0);
+        loose = (Number(i.quantity) || 0);
       }
+
+      totalPacksCount += packs;
+      totalLooseCount += loose;
+
+      const origPrice = Number(i.original_price || i.unit_price) || 0;
+      const lineGross = (Number(i.quantity) || 0) * origPrice;
+      const lineNet   = (Number(i.quantity) || 0) * (Number(i.unit_price) || 0);
+      computedGrossTotal += lineGross;
+      computedDiscountTotal += Math.max(0, lineGross - lineNet);
 
       const capDisplay   = isPackUnit ? `${realCap}` : '-';
       const packsDisplay = isPackUnit ? (packs > 0 ? `${packs}` : '-') : '-';
       const looseDisplay = loose > 0 ? `${loose}` : (!isPackUnit ? `${loose}` : '-');
-      const lineTotal    = (Number(i.quantity) || 0) * (Number(i.unit_price) || 0);
+      const hasDiscount  = (i.discount_percent && i.discount_percent > 0) || (origPrice > (Number(i.unit_price) || 0));
 
       return `
     <tr>
-      <td class="col-name">${i.product_name}</td>
+      <td class="col-name">
+        ${i.product_name}
+        ${hasDiscount && i.discount_percent ? `<div class="item-disc-tag">خصم %${i.discount_percent}</div>` : ''}
+      </td>
       <td class="col-pack">${packsDisplay}</td>
       <td class="col-cap">${capDisplay}</td>
       <td class="col-loose">${looseDisplay}</td>
       <td class="col-price">${fmt(i.unit_price)}</td>
-      <td class="col-total">${fmt(lineTotal)}</td>
+      <td class="col-total">${fmt(lineNet)}</td>
     </tr>`;
     }).join('');
 
     const currentGoods = receipt.total_amount ?? 0;
+    const grossTotal = receipt.subtotal_amount !== undefined && receipt.subtotal_amount > 0
+      ? receipt.subtotal_amount
+      : (computedGrossTotal > 0 ? computedGrossTotal : currentGoods);
+    const totalDiscount = receipt.total_discount !== undefined && receipt.total_discount > 0
+      ? receipt.total_discount
+      : (computedDiscountTotal > 0 ? computedDiscountTotal : Math.max(0, grossTotal - currentGoods));
+
     let prevBal = receipt.previous_balance;
     let finalBal = receipt.final_balance;
 
@@ -507,6 +611,8 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
       finalBal = totalDue - paidToday;
     }
 
+    const unpaidFromGoods = Math.max(0, currentGoods - paidToday);
+
     let prevBalLabel = 'الدين القديم:';
     let paidLabel = 'المبلغ المدفوع:';
     let finalBalLabel = 'الدين الجديد:';
@@ -518,22 +624,42 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
     <table class="items-table">
       <thead>
         <tr>
-          <th class="col-name">المنتج</th>
+          <th class="col-name">البيان</th>
           <th class="col-pack">كرتونة</th>
           <th class="col-cap">السعة</th>
           <th class="col-loose">حبة</th>
-          <th class="col-price">السعر</th>
+          <th class="col-price">س.الوحدة</th>
           <th class="col-total">المجموع</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>
-    <div class="summary-box">
-      <div class="summary-row"><span class="label">البضاعة الحالية:</span><span class="val">${fmt(currentGoods)} د.ج</span></div>
-      ${prevBal !== 0 ? `<div class="summary-row"><span class="label">${prevBalLabel}</span><span class="val">${fmt(Math.abs(prevBal))} د.ج</span></div>` : ''}
-      <div class="summary-row"><span class="label">${paidLabel}</span><span class="val">${fmt(paidToday)} د.ج</span></div>
-      <div class="summary-row total-balance-row"><span class="label">${finalBalLabel}</span><span class="val">${fmt(Math.abs(finalBal))} د.ج</span></div>
-    </div>`;
+
+    <!-- ملخص الوصل (شبكة عمودين مستوحاة من الوصل المرفق) -->
+    <div class="receipt-summary-grid">
+      <div class="summary-col">
+        <div class="summary-item"><span class="lbl">عدد السلع:</span> <span class="val bold">${validItems.length}</span></div>
+        <div class="summary-item"><span class="lbl">المبلغ المدفوع:</span> <span class="val">${fmt(paidToday)}</span></div>
+        <div class="summary-item"><span class="lbl">الباقي:</span> <span class="val">${fmt(unpaidFromGoods)}</span></div>
+      </div>
+      <div class="summary-col">
+        <div class="summary-item"><span class="lbl">المجموع:</span> <span class="val">${fmt(grossTotal)}</span></div>
+        <div class="summary-item"><span class="lbl">التخفيض:</span> <span class="val ${totalDiscount > 0 ? 'text-disc' : ''}">${totalDiscount > 0 ? fmt(totalDiscount) : '0.00'}</span></div>
+        ${totalPacksCount > 0 ? `<div class="summary-item"><span class="lbl">الكراتين:</span> <span class="val bold">${totalPacksCount}</span></div>` : ''}
+      </div>
+    </div>
+
+    <!-- صندوق المبلغ الصافي (عريض وبارز كلياً كما في صورة الوصل) -->
+    <div class="net-total-banner">
+      <div class="net-title">المبلغ الصافي :</div>
+      <div class="net-amount">${fmt(currentGoods)} <span class="currency">د.ج</span></div>
+    </div>
+
+    ${(prevBal !== 0 || finalBal !== 0) ? `
+    <div class="debt-box">
+      ${prevBal !== 0 ? `<div class="debt-row"><span class="lbl">${prevBalLabel}</span><span class="val">${fmt(Math.abs(prevBal))} د.ج</span></div>` : ''}
+      <div class="debt-row total-balance-row"><span class="lbl">${finalBalLabel}</span><span class="val">${fmt(Math.abs(finalBal))} د.ج</span></div>
+    </div>` : ''}`;
   }
 
   // ─ وصل تسديد دين ─
@@ -623,32 +749,32 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
     padding-bottom: 5px;
     margin-bottom: 6px;
   }
-  .merchant-name  { font-size: 23px; font-weight: 900; line-height: 1.2; }
-  .merchant-owner { font-size: 17px; font-weight: 900; margin-top: 2px; }
-  .merchant-sub   { font-size: 13px; font-weight: 800; margin-top: 2px; color: #111; }
+  .merchant-name  { font-size: 22px; font-weight: 900; line-height: 1.2; }
+  .merchant-owner { font-size: 16px; font-weight: 900; margin-top: 2px; }
+  .merchant-sub   { font-size: 12px; font-weight: 800; margin-top: 2px; color: #222; }
 
   /* ── نوع الوصل ── */
   .receipt-type {
     text-align: center;
-    font-size: 19px;
+    font-size: 18px;
     font-weight: 900;
     background: #000;
     color: #fff;
-    padding: 6px 0;
-    margin: 6px 0;
+    padding: 5px 0;
+    margin: 5px 0;
     letter-spacing: 1px;
   }
   .receipt-id {
     text-align: center;
     font-size: 11px;
     font-weight: 800;
-    color: #222;
+    color: #333;
     margin-bottom: 2px;
     word-break: break-all;
   }
   .receipt-date {
     text-align: center;
-    font-size: 17px;
+    font-size: 14px;
     font-weight: 900;
     color: #000;
     margin-bottom: 5px;
@@ -660,22 +786,11 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 5px;
-    font-size: 15px;
+    margin-bottom: 4px;
+    font-size: 14px;
   }
   .label { font-weight: 800; color: #111; }
-  .value { font-weight: 900; font-size: 16px; }
-
-  /* ── صندوق الإجمالي ── */
-  .total-box {
-    text-align: center;
-    border: 3px double #000;
-    padding: 6px 4px;
-    margin: 6px 0;
-    font-size: 21px;
-    font-weight: 900;
-    letter-spacing: 0.5px;
-  }
+  .value { font-weight: 900; font-size: 15px; }
 
   /* ── جدول المنتجات ── */
   .section-title {
@@ -696,7 +811,7 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
     color: #ffffff !important;
     padding: 4px 0.5px;
     font-weight: 900 !important;
-    font-size: 12px !important;
+    font-size: 11.5px !important;
     letter-spacing: -0.3px;
     white-space: nowrap;
     overflow: visible !important;
@@ -705,17 +820,100 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
     padding: 4px 0.5px;
     border-bottom: 1px dashed #555;
     font-weight: 900;
-    font-size: 12px;
+    font-size: 11.5px;
     color: #000;
   }
-  .items-table .col-name { width: 28%; text-align: right; word-break: normal; white-space: normal; line-height: 1.15; font-weight: 900; font-size: 12px; }
-  .items-table .col-pack { width: 13%; text-align: center; font-size: 12px; font-weight: 900; }
-  .items-table .col-cap  { width: 13%; text-align: center; font-size: 12px; font-weight: 900; }
-  .items-table td.col-cap{ color: #1e293b; }
-  .items-table .col-loose{ width: 10%; text-align: center; font-size: 12px; font-weight: 900; }
-  .items-table .col-price{ width: 18%; text-align: center; font-size: 12px; font-weight: 900; }
-  .items-table .col-total{ width: 18%; text-align: center; font-size: 12px; font-weight: 900; }
-  .items-table tr:nth-child(even) td { background: #f0f0f0; }
+  .items-table .col-name { width: 30%; text-align: right; word-break: normal; white-space: normal; line-height: 1.15; font-weight: 900; }
+  .items-table .col-pack { width: 12%; text-align: center; font-weight: 900; }
+  .items-table .col-cap  { width: 12%; text-align: center; font-weight: 900; color: #1e293b; }
+  .items-table .col-loose{ width: 10%; text-align: center; font-weight: 900; }
+  .items-table .col-price{ width: 18%; text-align: center; font-weight: 900; }
+  .items-table .col-total{ width: 18%; text-align: center; font-weight: 900; }
+  .items-table tr:nth-child(even) td { background: #f4f4f4; }
+  .item-disc-tag { font-size: 9.5px; color: #b91c1c; font-weight: 900; margin-top: 1px; }
+
+  /* ── شبكة ملخص الوصل (عمودين مستوحاة من الوصل المرفق) ── */
+  .receipt-summary-grid {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 6px 0;
+    padding: 6px 4px;
+    border-top: 1px solid #000;
+    border-bottom: 1px solid #000;
+    font-size: 12.5px;
+    font-weight: 800;
+  }
+  .summary-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .summary-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .summary-item .lbl { color: #222; font-weight: 800; font-size: 12px; }
+  .summary-item .val { font-weight: 900; font-size: 13px; }
+  .summary-item .val.bold { font-size: 14px; }
+  .text-disc { color: #b91c1c; font-weight: 900; }
+
+  /* ── صندوق المبلغ الصافي العريض البارز ── */
+  .net-total-banner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border: 3px double #000;
+    border-radius: 6px;
+    padding: 6px 8px;
+    margin: 6px 0;
+    background: #fff;
+  }
+  .net-title {
+    font-size: 17px;
+    font-weight: 900;
+    color: #000;
+  }
+  .net-amount {
+    font-size: 21px;
+    font-weight: 900;
+    color: #000;
+    letter-spacing: 0.5px;
+  }
+  .net-amount .currency { font-size: 13px; }
+
+  /* ── صندوق الديون ── */
+  .debt-box {
+    border: 2px solid #000;
+    border-radius: 6px;
+    padding: 5px 6px;
+    margin: 6px 0;
+    background: #fff;
+  }
+  .debt-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    font-weight: 800;
+    padding: 3px 0;
+    border-bottom: 1px dashed #ccc;
+  }
+  .debt-row:last-child { border-bottom: none; }
+  .debt-row.total-balance-row {
+    background: #000 !important;
+    color: #fff !important;
+    padding: 4px 6px;
+    border-radius: 4px;
+    margin-top: 3px;
+  }
+  .debt-row.total-balance-row .lbl,
+  .debt-row.total-balance-row .val {
+    color: #fff !important;
+    font-weight: 900;
+  }
 
   /* ── صندوق الدين المباشر ── */
   .debt-direct-box {
@@ -747,47 +945,6 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
     border-top: 1px solid #eee;
   }
 
-  /* ── ملخص الفاتورة والدين ── */
-  .summary-box {
-    margin-top: 6px;
-    border: 2px solid #000;
-    border-radius: 6px;
-    padding: 5px 6px;
-    background: #fff;
-  }
-  .summary-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 12px;
-    font-weight: 800;
-    padding: 3px 0;
-    border-bottom: 1px dashed #ccc;
-    color: #000;
-  }
-  .summary-row:last-child {
-    border-bottom: none;
-  }
-  .summary-row.highlight {
-    background: #f1f5f9;
-    padding: 3px 4px;
-    border-radius: 4px;
-    font-size: 12.5px;
-    font-weight: 900;
-  }
-  .summary-row.total-balance-row {
-    background: #000 !important;
-    padding: 5px 6px;
-    border-radius: 4px;
-    font-size: 13px;
-    font-weight: 900;
-    margin-top: 4px;
-  }
-  .summary-row.total-balance-row,
-  .summary-row.total-balance-row .label,
-  .summary-row.total-balance-row .val {
-    color: #ffffff !important;
-  }
   .status-box {
     text-align: center;
     border: 3px solid #000;
@@ -797,7 +954,7 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
     margin: 6px 0;
   }
 
-  /* ── الذيل ── */
+  /* ── الذيل والباركود ── */
   .footer {
     margin-top: 8px;
     border-top: 1px solid #ddd;
@@ -806,8 +963,15 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
     font-size: 13px;
     font-weight: 800;
   }
+  .slogan-box {
+    text-align: center;
+    margin: 6px 0;
+    padding: 4px 0;
+  }
+  .slogan-title { font-size: 13px; font-weight: 900; color: #000; }
+  .slogan-sub   { font-size: 12px; font-weight: 900; color: #333; margin-top: 2px; }
   .legal-notice {
-    font-size: 12px;
+    font-size: 11.5px;
     font-weight: 800;
     line-height: 1.35;
     border: 1px solid #ddd;
@@ -816,10 +980,31 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
     text-align: center;
     background: #fafafa;
   }
-  .thanks-msg {
-    font-size: 15px;
+  .barcode-wrapper {
+    text-align: center;
+    margin: 6px 0 4px;
+    padding: 6px 4px;
+    border-top: 1px solid #ddd;
+    border-bottom: 1px solid #ddd;
+  }
+  .barcode-id {
+    font-size: 12px;
     font-weight: 900;
-    margin-top: 3px;
+    letter-spacing: 1px;
+    margin: 3px 0 6px;
+  }
+  .barcode-grid {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    font-weight: 800;
+    color: #111;
+    margin-top: 2px;
+  }
+  .thanks-msg {
+    font-size: 14px;
+    font-weight: 900;
+    margin-top: 6px;
   }
 
   /* ── أزرار التحكم في الطباعة ── */
@@ -843,23 +1028,6 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
     cursor: pointer;
     text-align: center;
     text-decoration: none;
-  }
-  .rawbt-btn {
-    background: #15803d;
-  }
-  .rawbt-btn-alt {
-    background: #0369a1;
-  }
-  .help-box {
-    margin-top: 10px;
-    background: #fef3c7;
-    border: 1px solid #f59e0b;
-    color: #92400e;
-    padding: 10px;
-    border-radius: 6px;
-    font-size: 12px;
-    line-height: 1.6;
-    text-align: right;
   }
 </style>
 <script>
@@ -916,9 +1084,25 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
   ${statementHTML}
 
   <div class="footer">
-    <div class="legal-notice">
-      📌 <b>تنبيه:</b> يُرجى تفقد البضاعة خلال 24 ساعة من تاريخ الشراء، ولا يُقبل الاسترجاع بعد انقضاء المهلة.
+    <div class="slogan-box">
+      <div class="slogan-title">💎 أفضل الماركات بأقل الأسعار 💎</div>
+      <div class="slogan-sub">*** تغفل دقيقة يجدك الجديد ***</div>
+      <div class="legal-notice">الرجاء الاحتفاظ بالوصل وتقديمه عند الاحتجاج</div>
     </div>
+
+    <div class="barcode-wrapper">
+      ${generateBarcodeSVG(receipt.id)}
+      <div class="barcode-id">${receipt.id}</div>
+      <div class="barcode-grid">
+        <div><b>الزبون:</b> ${receipt.contact_name || 'زبون عام'}</div>
+        <div><b>البائع:</b> ${m.owner}</div>
+      </div>
+      <div class="barcode-grid">
+        <div><b>سند رقم:</b> ${receipt.id.replace(/^INV-[A-Z]*-?/, '')}</div>
+        <div><b>التاريخ:</b> ${dateStr}</div>
+      </div>
+    </div>
+
     <div class="thanks-msg">شكراً لتعاملكم معنا 🌹</div>
   </div>
 
