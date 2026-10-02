@@ -1,5 +1,5 @@
 import {
-  Contact, Product, Transaction,
+  Contact, Product, Transaction, Receipt,
   getLocalData, setLocalData, clearLocalDataCache,
   sanitizeProduct, sanitizeContact, sanitizeTransaction,
   getActiveUserEmail
@@ -183,8 +183,59 @@ export async function syncStoreWithVercelCloud(): Promise<{
       const authoritative = (data.transactions as any[])
         .filter(t => t.id && !isSeed(t.id))
         .map(t => sanitizeTransaction({ ...t, items: cleanTxItems(t.items) }));
-      if (JSON.stringify(authoritative) !== JSON.stringify(rawTx)) {
-        setLocalData('tajer_smart_transactions_v1', authoritative);
+
+      // دمج آمن: الأولوية لبيانات السيرفر مع الاحتفاظ بالمعاملات المحلية غير المحذوفة
+      const txMap = new Map<string, Transaction>();
+      authoritative.forEach(tx => txMap.set(tx.id, tx));
+
+      const deadTxSet = new Set(deletedTransactions);
+      localTx.forEach(ltx => {
+        if (!txMap.has(ltx.id) && !deadTxSet.has(ltx.id)) {
+          txMap.set(ltx.id, ltx);
+        }
+      });
+
+      const mergedTransactions = Array.from(txMap.values()).sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+
+      if (JSON.stringify(mergedTransactions) !== JSON.stringify(rawTx)) {
+        setLocalData('tajer_smart_transactions_v1', mergedTransactions);
+        changed = true;
+      }
+
+      // مزامنة وتحديث أرشيف الأوصال tajer_smart_receipts_v1 تلقائياً
+      const localReceipts: Receipt[] = getLocalData('tajer_smart_receipts_v1', []);
+      const receiptMap = new Map<string, Receipt>();
+      localReceipts.forEach(r => { if (r.id && !isSeed(r.id)) receiptMap.set(r.id, r); });
+
+      mergedTransactions.forEach(tx => {
+        if (!receiptMap.has(tx.id)) {
+          receiptMap.set(tx.id, {
+            id: tx.id,
+            receipt_type: tx.tx_type === 'SALE' ? 'SALE' : 'PURCHASE',
+            contact_id: tx.contact_id,
+            contact_name: tx.contact_name,
+            items: tx.items,
+            subtotal_amount: tx.subtotal_amount,
+            total_discount: tx.total_discount,
+            items_count: tx.items_count,
+            total_amount: tx.total_amount,
+            paid_amount: tx.paid_amount,
+            debt_amount: tx.debt_amount,
+            previous_balance: tx.previous_balance,
+            final_balance: tx.final_balance,
+            note: tx.notes,
+            created_at: tx.created_at,
+          });
+        }
+      });
+
+      const updatedReceipts = Array.from(receiptMap.values()).sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      if (JSON.stringify(updatedReceipts) !== JSON.stringify(localReceipts)) {
+        setLocalData('tajer_smart_receipts_v1', updatedReceipts);
         changed = true;
       }
     }

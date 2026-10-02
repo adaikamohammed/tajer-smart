@@ -6,6 +6,7 @@ import {
   printThermalReceipt, generateReceiptNumber, Contact, Product, Transaction,
   Receipt, ReceiptType, MERCHANT_INFO,
 } from '@/lib/store';
+import { subscribeToCloudChanges, syncStoreWithVercelCloud } from '@/lib/cloud-sync';
 import { toast } from '@/components/Toast';
 import {
   Receipt as ReceiptIcon, Search, Trash2, Printer,
@@ -49,24 +50,31 @@ export default function ReceiptsPage() {
   const [showDeleteAll,    setShowDeleteAll]    = useState(false);
 
   useEffect(() => {
-    const raw = getReceipts();
-    setContacts(getLocalData('tajer_smart_contacts_v1', []));
-    setProducts(getLocalData('tajer_smart_products_v1', []));
-    setTransactions(getLocalData('tajer_smart_transactions_v1', []));
+    const refreshData = () => {
+      const raw = getReceipts();
+      setContacts(getLocalData('tajer_smart_contacts_v1', []));
+      setProducts(getLocalData('tajer_smart_products_v1', []));
+      setTransactions(getLocalData('tajer_smart_transactions_v1', []));
 
-    // إزالة الأوصال التجريبية القديمة والتكرارات
-    const seen = new Set<string>();
-    const cleanReceipts = raw.filter(r => {
-      if (!r.id || String(r.id).includes('_seed_') || String(r.id).includes('REC-SEED')) return false;
-      if (seen.has(r.id)) return false;
-      seen.add(r.id);
-      return true;
-    });
+      // إزالة الأوصال التجريبية القديمة والتكرارات
+      const seen = new Set<string>();
+      const cleanReceipts = raw.filter(r => {
+        if (!r.id || String(r.id).includes('_seed_') || String(r.id).includes('REC-SEED')) return false;
+        if (seen.has(r.id)) return false;
+        seen.add(r.id);
+        return true;
+      });
 
-    if (cleanReceipts.length !== raw.length) {
-      setLocalData('tajer_smart_receipts_v1', cleanReceipts);
-    }
-    setReceipts(cleanReceipts);
+      if (cleanReceipts.length !== raw.length) {
+        setLocalData('tajer_smart_receipts_v1', cleanReceipts);
+      }
+      setReceipts(cleanReceipts);
+    };
+
+    refreshData();
+    syncStoreWithVercelCloud();
+    const unsub = subscribeToCloudChanges(refreshData);
+    return () => unsub();
   }, []);
 
   const reloadReceipts = () => {

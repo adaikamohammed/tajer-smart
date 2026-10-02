@@ -5,6 +5,7 @@ import {
   getLocalData, setLocalData, Product, Contact, Transaction, TransactionItem,
   printThermalReceipt, generateReceiptNumber, saveReceipt,
 } from '@/lib/store';
+import { triggerDebouncedSync } from '@/lib/cloud-sync';
 import { SearchableSelect } from '@/components/SearchableSelect';
 import { toast } from '@/components/Toast';
 import {
@@ -364,6 +365,7 @@ export default function QuickSaleModal({
 
       // 4. حفظ الوصل دائماً في أرشيف الأوصال حتى يظهر في صفحة الأوصال وسجل حساب الشخص
       saveReceipt(receiptObj);
+      triggerDebouncedSync(300);
 
       // طباعة حرارية إذا طلب التاجر
       if (shouldPrint) {

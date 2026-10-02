@@ -153,15 +153,16 @@ export async function POST(req: Request) {
 
     if (validTransactions.length > 0) {
       await Promise.all(validTransactions.map(async (tx: any) => {
+        const txCreatedAt = tx.created_at ? new Date(tx.created_at) : new Date();
         await query`
           INSERT INTO transactions (id, user_id, tx_type, contact_id, contact_name,
                                     total_amount, paid_amount, debt_amount,
                                     previous_balance, final_balance,
-                                    status, notes)
+                                    status, notes, created_at)
           VALUES (${tx.id}, ${userId}, ${tx.tx_type}, ${tx.contact_id || null}, ${tx.contact_name || null},
                   ${tx.total_amount || 0}, ${tx.paid_amount || 0}, ${tx.debt_amount || 0},
                   ${tx.previous_balance || 0}, ${tx.final_balance || 0},
-                  ${tx.status || 'PAID'}, ${tx.notes || null})
+                  ${tx.status || 'PAID'}, ${tx.notes || null}, ${txCreatedAt})
           ON CONFLICT (id) DO UPDATE SET
             user_id          = EXCLUDED.user_id,
             tx_type          = EXCLUDED.tx_type,
@@ -173,7 +174,8 @@ export async function POST(req: Request) {
             previous_balance = EXCLUDED.previous_balance,
             final_balance    = EXCLUDED.final_balance,
             status           = EXCLUDED.status,
-            notes            = EXCLUDED.notes;
+            notes            = EXCLUDED.notes,
+            created_at       = COALESCE(transactions.created_at, EXCLUDED.created_at);
         `;
         if (tx.items?.length > 0) {
           // 1. مسح أي سجلات قديمة للمعاملة في القاعدة قبل إعادة الإدخال النظيف لمنع التكرار

@@ -17,6 +17,7 @@ import {
 } from '@/lib/store';
 import { SearchableSelect } from '@/components/SearchableSelect';
 import { toast } from '@/components/Toast';
+import { triggerDebouncedSync } from '@/lib/cloud-sync';
 import {
   TrendingUp, AlertTriangle, MessageCircle,
   ArrowUpRight, ArrowDownLeft, X,
@@ -195,6 +196,7 @@ export default function HomePage() {
     setLocalData('tajer_smart_products_v1', upProds);
     setLocalData('tajer_smart_contacts_v1', upConts);
     setLocalData('tajer_smart_transactions_v1', upTx);
+    triggerDebouncedSync(300);
     setShowSaleModal(false);
     setSelectedProductId(''); setSelectedCustomerId(''); setSaleQty(1); setSalePacks(1); setSaleLoose(0); setSaleUnitPrice(0); setSalePaid(0);
     toast(debt > 0 ? `✅ تم البيع لـ ${cust.name} — دين: ${fmt(debt)} د.ج` : `✅ تم البيع لـ ${cust.name} نقداً بنجاح!`);
@@ -253,6 +255,7 @@ export default function HomePage() {
     setLocalData('tajer_smart_products_v1', upProds);
     setLocalData('tajer_smart_contacts_v1', upConts);
     setLocalData('tajer_smart_transactions_v1', upTx);
+    triggerDebouncedSync(300);
     setShowBuyModal(false);
     setBuyPacks(1); setBuyLoose(0);
     toast('✅ تم تسجيل الشراء وحفظ الوصل وزيادة المخزون بنجاح!');

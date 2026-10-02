@@ -6,6 +6,7 @@ import {
   getLocalData, setLocalData, Product, Contact, Transaction, TransactionItem,
   printThermalReceipt, generateReceiptNumber, saveReceipt, smartMatchText,
 } from '@/lib/store';
+import { triggerDebouncedSync } from '@/lib/cloud-sync';
 import { SearchableSelect } from '@/components/SearchableSelect';
 import { toast } from '@/components/Toast';
 import {
@@ -387,6 +388,7 @@ function QuickSaleContent() {
       };
 
       saveReceipt(receipt);
+      triggerDebouncedSync(300);
 
       if (printAfter) {
         printThermalReceipt(receipt);

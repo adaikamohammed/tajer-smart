@@ -6,14 +6,14 @@ import {
   getLocalData, setLocalData, Contact, Product, Transaction, DebtPayment,
   createWhatsAppLink, generateAccountStatementText,
   printThermalReceipt, generateReceiptNumber, Receipt as ReceiptType,
-  deleteReceipt, formatDateLatin, getReceipts,
+  deleteReceipt, formatDateLatin, getReceipts, smartMatchText,
 } from '@/lib/store';
 import { queueDeletedContact, subscribeToCloudChanges, syncStoreWithVercelCloud } from '@/lib/cloud-sync';
 import { toast } from '@/components/Toast';
 import {
   Users, UserPlus, Phone, MessageCircle,
   Search, X, Camera, MapPin, Tag, AlertTriangle,
-  Edit2, Trash2, Receipt, Copy, Check, ArrowRight, Zap, Printer, Eye, Pencil
+  Edit2, Trash2, Receipt, Copy, Check, ArrowRight, Zap, Printer, Eye, Pencil, RefreshCw
 } from 'lucide-react';
 import QuickSaleModal from '@/components/QuickSaleModal';
 import ReceiptViewModal from '@/components/ReceiptViewModal';
@@ -90,6 +90,8 @@ export default function ContactsPage() {
       setReceipts(getReceipts());
     };
     refreshData();
+    // مزامنة تلقائية مع السحابة لجلب أي أوصال أو معاملات جديدة تم تسجيلها
+    syncStoreWithVercelCloud();
     const unsubscribe = subscribeToCloudChanges(refreshData);
     return () => unsubscribe();
   }, []);
@@ -265,11 +267,14 @@ export default function ContactsPage() {
   const viewingContactRecords = useMemo(() => {
     if (!viewingContact) return [];
     const vId = viewingContact.id;
-    const vName = viewingContact.name?.trim().toLowerCase();
+    const vName = viewingContact.name?.trim() || '';
 
     const matchesContact = (itemContactId?: string, itemContactName?: string) => {
       if (itemContactId && itemContactId === vId) return true;
-      if (itemContactName && vName && itemContactName.trim().toLowerCase() === vName) return true;
+      if (itemContactName && vName) {
+        if (itemContactName.trim().toLowerCase() === vName.toLowerCase()) return true;
+        if (smartMatchText(itemContactName, vName) || smartMatchText(vName, itemContactName)) return true;
+      }
       return false;
     };
 
@@ -459,6 +464,21 @@ export default function ContactsPage() {
                 <Receipt className="w-4 h-4 text-emerald-600" />
                 سجل الأوصال والتعاملات المباشرة ({viewingContactRecords.length} وصل)
               </h3>
+              <button
+                type="button"
+                onClick={async () => {
+                  toast('🔄 جارٍ جلب وتحديث الأوصال من السحابة...', 'info');
+                  const res = await syncStoreWithVercelCloud();
+                  if (res && res.success) {
+                    toast('✅ تم تحديث الأوصال بنجاح!', 'success');
+                  }
+                }}
+                className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-[11px] font-black flex items-center gap-1 transition-all shadow-sm"
+                title="تحديث الأوصال من السحابة"
+              >
+                <RefreshCw size={12} />
+                <span>تحديث السحاب 🔄</span>
+              </button>
             </div>
 
             {viewingContactRecords.length === 0 ? (
