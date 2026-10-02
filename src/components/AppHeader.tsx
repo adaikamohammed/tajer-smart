@@ -114,10 +114,21 @@ export default function AppHeader() {
           <button
             type="button"
             onClick={async () => {
-              toast('🔄 جارٍ توحيد قاعدة البيانات والمزامنة الفورية...', 'info');
+              toast('🔄 جارٍ المزامنة وتحديث التطبيق...', 'info');
+              if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+                try {
+                  const reg = await navigator.serviceWorker.getRegistration();
+                  if (reg) {
+                    await reg.update();
+                    if (reg.waiting) {
+                      reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+                    }
+                  }
+                } catch (_) {}
+              }
               const res = await syncStoreWithVercelCloud();
               if (res.success) {
-                toast('✅ تم تحديث وتوحيد البيانات مع السحاب بنجاح!', 'success');
+                toast('✅ تم تحديث وتوحيد البيانات بنجاح!', 'success');
               } else {
                 toast('⚠️ تعذر المزامنة: ' + (res.errorDetails || 'تأكد من الاتصال'), 'error');
               }

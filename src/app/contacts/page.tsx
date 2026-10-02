@@ -471,6 +471,15 @@ export default function ContactsPage() {
                   const res = await syncStoreWithVercelCloud();
                   if (res && res.success) {
                     toast('✅ تم تحديث الأوصال بنجاح!', 'success');
+                    const freshContacts: Contact[] = getLocalData('tajer_smart_contacts_v1', []);
+                    const freshTx: Transaction[]   = getLocalData('tajer_smart_transactions_v1', []);
+                    setContacts(freshContacts);
+                    setTransactions(freshTx);
+                    setReceipts(getReceipts());
+                    if (viewingContact) {
+                      const updated = freshContacts.find(c => c.id === viewingContact.id);
+                      if (updated) setViewingContact(updated);
+                    }
                   }
                 }}
                 className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-[11px] font-black flex items-center gap-1 transition-all shadow-sm"
@@ -551,17 +560,32 @@ export default function ContactsPage() {
                             <Eye size={13} className="shrink-0" />
                             <span>معاينة 👁️</span>
                           </button>
-                          {record.rawTx && (
-                            <button
-                              type="button"
-                              onClick={() => setEditingTx(record.rawTx!)}
-                              className="flex-1 py-1.5 px-1 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-xl text-[11px] font-black flex items-center justify-center gap-1 shadow-sm transition-all touch-active"
-                              title="تعديل الوصل"
-                            >
-                              <Pencil size={13} className="shrink-0" />
-                              <span>تعديل ✏️</span>
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const txToEdit: Transaction = record.rawTx || {
+                                id: record.id,
+                                tx_type: rObj.receipt_type === 'PURCHASE' ? 'PURCHASE' : 'SALE',
+                                contact_id: viewingContact.id,
+                                contact_name: viewingContact.name,
+                                total_amount: rObj.total_amount || 0,
+                                paid_amount: rObj.paid_amount || 0,
+                                debt_amount: rObj.debt_amount || 0,
+                                previous_balance: rObj.previous_balance,
+                                final_balance: rObj.final_balance,
+                                status: (rObj.debt_amount || 0) === 0 ? 'PAID' : (rObj.paid_amount || 0) > 0 ? 'PARTIAL' : 'DEBT',
+                                notes: rObj.note,
+                                items: rObj.items || [],
+                                created_at: rObj.created_at || record.date,
+                              };
+                              setEditingTx(txToEdit);
+                            }}
+                            className="flex-1 py-1.5 px-1 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-xl text-[11px] font-black flex items-center justify-center gap-1 shadow-sm transition-all touch-active"
+                            title="تعديل الوصل"
+                          >
+                            <Pencil size={13} className="shrink-0" />
+                            <span>تعديل ✏️</span>
+                          </button>
                           <button
                             type="button"
                             onClick={() => handleDeleteReceipt(record.id)}
