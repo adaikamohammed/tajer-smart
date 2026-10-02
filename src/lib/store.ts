@@ -955,56 +955,28 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
   }
 
   /* ── الذيل والباركود ── */
+  /* ── الذيل والتنبيه الرسمي ── */
   .footer {
-    margin-top: 8px;
-    border-top: 1px solid #ddd;
-    padding-top: 5px;
+    margin-top: 6px;
+    padding-top: 4px;
     text-align: center;
-    font-size: 13px;
-    font-weight: 800;
   }
-  .slogan-box {
-    text-align: center;
-    margin: 6px 0;
-    padding: 4px 0;
-  }
-  .slogan-title { font-size: 13px; font-weight: 900; color: #000; }
-  .slogan-sub   { font-size: 12px; font-weight: 900; color: #333; margin-top: 2px; }
   .legal-notice {
     font-size: 11.5px;
     font-weight: 800;
-    line-height: 1.35;
-    border: 1px solid #ddd;
-    padding: 4px 5px;
-    margin: 5px 0;
+    line-height: 1.4;
+    border: 1px solid #bbb;
+    border-radius: 4px;
+    padding: 5px 6px;
+    margin: 6px 0;
     text-align: center;
-    background: #fafafa;
-  }
-  .barcode-wrapper {
-    text-align: center;
-    margin: 6px 0 4px;
-    padding: 6px 4px;
-    border-top: 1px solid #ddd;
-    border-bottom: 1px solid #ddd;
-  }
-  .barcode-id {
-    font-size: 12px;
-    font-weight: 900;
-    letter-spacing: 1px;
-    margin: 3px 0 6px;
-  }
-  .barcode-grid {
-    display: flex;
-    justify-content: space-between;
-    font-size: 11px;
-    font-weight: 800;
-    color: #111;
-    margin-top: 2px;
+    background: #fdfdfd;
   }
   .thanks-msg {
     font-size: 14px;
     font-weight: 900;
     margin-top: 6px;
+    text-align: center;
   }
 
   /* ── أزرار التحكم في الطباعة ── */
@@ -1084,25 +1056,7 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
   ${statementHTML}
 
   <div class="footer">
-    <div class="slogan-box">
-      <div class="slogan-title">💎 أفضل الماركات بأقل الأسعار 💎</div>
-      <div class="slogan-sub">*** تغفل دقيقة يجدك الجديد ***</div>
-      <div class="legal-notice">الرجاء الاحتفاظ بالوصل وتقديمه عند الاحتجاج</div>
-    </div>
-
-    <div class="barcode-wrapper">
-      ${generateBarcodeSVG(receipt.id)}
-      <div class="barcode-id">${receipt.id}</div>
-      <div class="barcode-grid">
-        <div><b>الزبون:</b> ${receipt.contact_name || 'زبون عام'}</div>
-        <div><b>البائع:</b> ${m.owner}</div>
-      </div>
-      <div class="barcode-grid">
-        <div><b>سند رقم:</b> ${receipt.id.replace(/^INV-[A-Z]*-?/, '')}</div>
-        <div><b>التاريخ:</b> ${dateStr}</div>
-      </div>
-    </div>
-
+    <div class="legal-notice">📌 تنبيه: يُرجى تفقد البضاعة خلال 24 ساعة من تاريخ الشراء، ولا يُقبل الاسترجاع بعد انقضاء المهلة.</div>
     <div class="thanks-msg">شكراً لتعاملكم معنا 🌹</div>
   </div>
 

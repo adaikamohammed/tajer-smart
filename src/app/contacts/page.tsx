@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import {
   getLocalData, setLocalData, Contact, Product, Transaction, DebtPayment,
   createWhatsAppLink, generateAccountStatementText,
   printThermalReceipt, generateReceiptNumber, Receipt as ReceiptType,
-  deleteReceipt, formatDateLatin,
+  deleteReceipt, formatDateLatin, getReceipts,
 } from '@/lib/store';
 import { queueDeletedContact, subscribeToCloudChanges, syncStoreWithVercelCloud } from '@/lib/cloud-sync';
 import { toast } from '@/components/Toast';
@@ -46,6 +46,9 @@ export default function ContactsPage() {
   const [payments,     setPayments]     = useState<DebtPayment[]>(() =>
     typeof window !== 'undefined' ? getLocalData('tajer_smart_payments_v1', []) : []
   );
+  const [receipts,     setReceipts]     = useState<ReceiptType[]>(() =>
+    typeof window !== 'undefined' ? getReceipts() : []
+  );
 
   const [filterType,     setFilterType]     = useState<'all' | 'customer' | 'supplier'>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
@@ -84,6 +87,7 @@ export default function ContactsPage() {
       setProducts(getLocalData('tajer_smart_products_v1', []));
       setTransactions(getLocalData('tajer_smart_transactions_v1', []));
       setPayments(getLocalData('tajer_smart_payments_v1', []));
+      setReceipts(getReceipts());
     };
     refreshData();
     const unsubscribe = subscribeToCloudChanges(refreshData);
@@ -98,6 +102,7 @@ export default function ContactsPage() {
     const freshContacts: Contact[] = getLocalData('tajer_smart_contacts_v1', []);
     setTransactions(freshTransactions);
     setContacts(freshContacts);
+    setReceipts(getReceipts());
     if (viewingContact) {
       setViewingContact(freshContacts.find(c => c.id === viewingContact.id) || null);
     }
@@ -256,6 +261,89 @@ export default function ContactsPage() {
     })
     .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
 
+  // ─── 🧾 تجميع كافة تعاملات وأوصال هذا الشخص (معاملات + أرشيف الأوصال) مع المطابقة المزدوجة بالمعرّف والاسم ───
+  const viewingContactRecords = useMemo(() => {
+    if (!viewingContact) return [];
+    const vId = viewingContact.id;
+    const vName = viewingContact.name?.trim().toLowerCase();
+
+    const matchesContact = (itemContactId?: string, itemContactName?: string) => {
+      if (itemContactId && itemContactId === vId) return true;
+      if (itemContactName && vName && itemContactName.trim().toLowerCase() === vName) return true;
+      return false;
+    };
+
+    const map = new Map<string, {
+      id: string;
+      rawTx?: Transaction;
+      receipt: ReceiptType;
+      date: string;
+    }>();
+
+    // 1. من جدول المعاملات
+    transactions
+      .filter(t => matchesContact(t.contact_id, t.contact_name))
+      .forEach(tx => {
+        const rObj: ReceiptType = {
+          id: tx.id,
+          receipt_type: tx.tx_type === 'SALE' ? 'SALE' : 'PURCHASE',
+          contact_id: viewingContact.id,
+          contact_name: viewingContact.name,
+          contact_phone: viewingContact.phone,
+          items: tx.items,
+          subtotal_amount: tx.subtotal_amount,
+          total_discount: tx.total_discount,
+          items_count: tx.items_count,
+          total_amount: tx.total_amount,
+          paid_amount: tx.paid_amount,
+          debt_amount: tx.debt_amount,
+          previous_balance: tx.previous_balance,
+          final_balance: tx.final_balance,
+          note: tx.notes,
+          created_at: tx.created_at,
+        };
+        map.set(tx.id, { id: tx.id, rawTx: tx, receipt: rObj, date: tx.created_at });
+      });
+
+    // 2. من أرشيف الأوصال الحرارية المحفوظة (حتى لا يضيع أي وصل طُبع)
+    receipts
+      .filter(r => matchesContact(r.contact_id, r.contact_name))
+      .forEach(r => {
+        if (map.has(r.id)) {
+          const existing = map.get(r.id)!;
+          if (r.items && r.items.length > 0 && (!existing.receipt.items || existing.receipt.items.length === 0)) {
+            existing.receipt.items = r.items;
+          }
+          return;
+        }
+
+        // فحص إذا كانت مسجلة مسبقاً بنفس التوقيت والمبلغ لتفادي أي تكرار
+        let isDuplicate = false;
+        for (const val of map.values()) {
+          const timeDiff = Math.abs(new Date(val.date).getTime() - new Date(r.created_at).getTime());
+          if (val.receipt.total_amount === r.total_amount && timeDiff < 15000) {
+            isDuplicate = true;
+            break;
+          }
+        }
+        if (isDuplicate) return;
+
+        map.set(r.id, {
+          id: r.id,
+          receipt: {
+            ...r,
+            contact_id: viewingContact.id,
+            contact_name: viewingContact.name,
+          },
+          date: r.created_at,
+        });
+      });
+
+    return Array.from(map.values()).sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+  }, [viewingContact, transactions, receipts]);
+
   return (
     <div className="space-y-4">
 
@@ -366,43 +454,57 @@ export default function ContactsPage() {
           </div>
 
           <div className="glass-card p-4 space-y-3">
-            <h3 className="font-black text-sm text-slate-800 flex items-center gap-2">
-              <Receipt className="w-4 h-4 text-emerald-600" />
-              سجل التعاملات المباشرة (المبيعات والمشتريات)
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="font-black text-sm text-slate-800 flex items-center gap-2">
+                <Receipt className="w-4 h-4 text-emerald-600" />
+                سجل الأوصال والتعاملات المباشرة ({viewingContactRecords.length} وصل)
+              </h3>
+            </div>
 
-            {transactions.filter(t => t.contact_id === viewingContact.id).length === 0 ? (
+            {viewingContactRecords.length === 0 ? (
               <p className="text-xs text-slate-400 font-bold p-4 bg-slate-50 rounded-xl text-center">لا توجد عمليات بيع أو شراء مدونة بعد لهذا الشخص</p>
             ) : (
               <div className="space-y-3">
-                {transactions.filter(t => t.contact_id === viewingContact.id).map(tx => {
-                  const rObj: ReceiptType = {
-                    id: tx.id,
-                    receipt_type: tx.tx_type === 'SALE' ? 'SALE' : 'PURCHASE',
-                    contact_id: viewingContact.id,
-                    contact_name: viewingContact.name,
-                    contact_phone: viewingContact.phone,
-                    items: tx.items,
-                    total_amount: tx.total_amount,
-                    paid_amount: tx.paid_amount,
-                    debt_amount: tx.debt_amount,
-                    note: tx.notes,
-                    created_at: tx.created_at,
-                  };
+                {viewingContactRecords.map(record => {
+                  const rObj = record.receipt;
+                  const isSale = rObj.receipt_type === 'SALE';
+                  const isPurchase = rObj.receipt_type === 'PURCHASE';
+                  const isDirectDebt = rObj.receipt_type === 'DIRECT_DEBT';
+                  const isPayment = rObj.receipt_type === 'DEBT_PAYMENT';
+
+                  const badgeClass = isSale
+                    ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                    : isPurchase
+                    ? 'text-indigo-700 bg-indigo-50 border-indigo-200'
+                    : isDirectDebt
+                    ? 'text-rose-700 bg-rose-50 border-rose-200'
+                    : isPayment
+                    ? 'text-amber-700 bg-amber-50 border-amber-200'
+                    : 'text-slate-700 bg-slate-50 border-slate-200';
+
+                  const badgeText = isSale
+                    ? '🧾 وصل بيع'
+                    : isPurchase
+                    ? '🧾 وصل شراء'
+                    : isDirectDebt
+                    ? '📌 دين مباشر'
+                    : isPayment
+                    ? '💵 تسديد دين'
+                    : '🧾 وصل';
 
                   return (
-                    <div key={tx.id} className="p-3.5 rounded-2xl bg-white border-2 border-slate-200 shadow-sm space-y-2.5">
+                    <div key={record.id} className="p-3.5 rounded-2xl bg-white border-2 border-slate-200 shadow-sm space-y-2.5">
                       {/* رأس الوصل الحراري */}
                       <div className="flex items-center justify-between gap-2 border-b border-slate-200 pb-2 flex-wrap sm:flex-nowrap">
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5 font-black text-xs flex-wrap">
-                            <span className={tx.tx_type === 'SALE' ? 'text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 shrink-0' : 'text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200 shrink-0'}>
-                              {tx.tx_type === 'SALE' ? '🧾 وصل بيع' : '🧾 وصل شراء'}
+                            <span className={`${badgeClass} px-2 py-0.5 rounded-md border shrink-0`}>
+                              {badgeText}
                             </span>
-                            <span className="font-mono text-slate-500 text-[11px] font-bold truncate">#{tx.id.length > 12 ? tx.id.slice(-8) : tx.id}</span>
+                            <span className="font-mono text-slate-500 text-[11px] font-bold truncate">#{record.id.length > 14 ? record.id.slice(-10) : record.id}</span>
                           </div>
                           <span className="text-[10px] text-slate-400 font-bold block mt-0.5">
-                            📅 {formatDateLatin(tx.created_at)}
+                            📅 {formatDateLatin(record.date)}
                           </span>
                         </div>
 
@@ -418,16 +520,27 @@ export default function ContactsPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => setEditingTx(tx)}
-                            className="px-2.5 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-xl text-xs font-black flex items-center gap-1 shadow-sm transition-all shrink-0"
-                            title="تعديل الوصل"
+                            onClick={() => setViewingReceiptForModal(rObj)}
+                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-xs font-black flex items-center gap-1 shadow-sm transition-all shrink-0"
+                            title="معاينة الوصل"
                           >
-                            <Pencil size={13} />
-                            <span>تعديل ✏️</span>
+                            <Eye size={13} />
+                            <span>معاينة 👁️</span>
                           </button>
+                          {record.rawTx && (
+                            <button
+                              type="button"
+                              onClick={() => setEditingTx(record.rawTx!)}
+                              className="px-2.5 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-xl text-xs font-black flex items-center gap-1 shadow-sm transition-all shrink-0"
+                              title="تعديل الوصل"
+                            >
+                              <Pencil size={13} />
+                              <span>تعديل ✏️</span>
+                            </button>
+                          )}
                           <button
                             type="button"
-                            onClick={() => handleDeleteReceipt(tx.id)}
+                            onClick={() => handleDeleteReceipt(record.id)}
                             className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-black flex items-center gap-1 shadow-sm transition-all shrink-0"
                             title="حذف الوصل"
                           >
@@ -437,52 +550,64 @@ export default function ContactsPage() {
                         </div>
                       </div>
 
-                      {/* 📊 جدول تفاصيل المواد 5 أعمدة */}
-                      <div className="overflow-x-auto rounded-xl border border-slate-200">
-                        <table className="w-full text-right text-[11px]">
-                          <thead className="bg-slate-100/80 text-slate-700 font-black border-b border-slate-200">
-                            <tr>
-                              <th className="p-1.5 text-right">المنتج</th>
-                              <th className="p-1.5 text-center">كرتونة</th>
-                              <th className="p-1.5 text-center">حبة</th>
-                              <th className="p-1.5 text-center">السعر</th>
-                              <th className="p-1.5 text-left">المجموع</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
-                            {tx.items.map((item, idx) => {
-                              const cap = item.pack_quantity || 1;
-                              const isPack = item.unit_type === 'pack';
-                              const packs = isPack ? (item.packs_count ?? Math.floor(item.quantity / cap)) : 0;
-                              const loose = isPack ? (item.loose_count ?? (item.quantity % cap)) : item.quantity;
-                              const loosePrice = isPack ? (item.unit_price / cap) : item.unit_price;
-                              const lineTotal = isPack
-                                ? (packs * item.unit_price) + (loose * loosePrice)
-                                : (item.quantity * item.unit_price);
+                      {/* 📊 جدول تفاصيل المواد 5 أعمدة إذا وجدت */}
+                      {rObj.items && rObj.items.length > 0 ? (
+                        <div className="overflow-x-auto rounded-xl border border-slate-200">
+                          <table className="w-full text-right text-[11px]">
+                            <thead className="bg-slate-100/80 text-slate-700 font-black border-b border-slate-200">
+                              <tr>
+                                <th className="p-1.5 text-right">المنتج</th>
+                                <th className="p-1.5 text-center">كرتونة</th>
+                                <th className="p-1.5 text-center">حبة</th>
+                                <th className="p-1.5 text-center">السعر</th>
+                                <th className="p-1.5 text-left">المجموع</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
+                              {rObj.items.map((item, idx) => {
+                                const cap = item.pack_quantity || 1;
+                                const isPack = item.unit_type === 'pack' || (item.packs_count !== undefined && item.packs_count > 0) || cap > 1;
+                                const packs = isPack ? (item.packs_count ?? Math.floor((item.quantity || 0) / cap)) : 0;
+                                const loose = isPack ? (item.loose_count ?? ((item.quantity || 0) % cap)) : item.quantity;
+                                const loosePrice = isPack ? ((item.unit_price || 0) / cap) : item.unit_price;
+                                const lineTotal = isPack
+                                  ? (packs * (item.unit_price || 0)) + (loose * loosePrice)
+                                  : ((item.quantity || 0) * (item.unit_price || 0));
 
-                              return (
-                                <tr key={idx} className="hover:bg-slate-50/50">
-                                  <td className="p-1.5 font-bold text-slate-900">{item.product_name}</td>
-                                  <td className="p-1.5 text-center font-black tabnum text-indigo-700">{isPack ? `${packs} 📦` : '-'}</td>
-                                  <td className="p-1.5 text-center font-black tabnum text-emerald-700">{loose > 0 || !isPack ? `${loose} 🥛` : '-'}</td>
-                                  <td className="p-1.5 text-center font-black tabnum">{fmt(item.unit_price)}</td>
-                                  <td className="p-1.5 text-left font-black tabnum text-slate-900">{fmt(lineTotal)} د.ج</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                                return (
+                                  <tr key={idx} className="hover:bg-slate-50/50">
+                                    <td className="p-1.5 font-bold text-slate-900">{item.product_name}</td>
+                                    <td className="p-1.5 text-center font-black tabnum text-indigo-700">{isPack ? `${packs} 📦` : '-'}</td>
+                                    <td className="p-1.5 text-center font-black tabnum text-emerald-700">{loose > 0 || !isPack ? `${loose} 🥛` : '-'}</td>
+                                    <td className="p-1.5 text-center font-black tabnum">{fmt(item.unit_price || 0)}</td>
+                                    <td className="p-1.5 text-left font-black tabnum text-slate-900">{fmt(lineTotal)} د.ج</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : isPayment ? (
+                        <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 font-bold">
+                          💵 وصل تسديد دين بقيمة: {fmt(rObj.paid_amount || rObj.total_amount || 0)} د.ج
+                          {rObj.note ? ` — ملاحظة: ${rObj.note}` : ''}
+                        </div>
+                      ) : isDirectDebt ? (
+                        <div className="p-2.5 bg-rose-50 rounded-xl border border-rose-200 text-xs text-rose-900 font-bold">
+                          📌 وصل دين مباشر بقيمة: {fmt(rObj.debt_amount || rObj.total_amount || 0)} د.ج
+                          {rObj.note ? ` — ملاحظة: ${rObj.note}` : ''}
+                        </div>
+                      ) : null}
 
                       {/* ملخص الحساب والأرقام */}
-                      <div className="flex items-center justify-between pt-1 text-xs border-t border-slate-100 font-bold bg-slate-50 p-2 rounded-xl">
+                      <div className="flex items-center justify-between pt-1 text-xs border-t border-slate-100 font-bold bg-slate-50 p-2 rounded-xl flex-wrap gap-2">
                         <div className="flex items-center gap-3">
-                          <span className="text-slate-600">الإجمالي: <strong className="tabnum text-slate-900 text-sm">{fmt(tx.total_amount)} د.ج</strong></span>
-                          <span className="text-emerald-700">المدفوع: <strong className="tabnum">{fmt(tx.paid_amount)} د.ج</strong></span>
+                          <span className="text-slate-600">الإجمالي: <strong className="tabnum text-slate-900 text-sm">{fmt(rObj.total_amount ?? 0)} د.ج</strong></span>
+                          <span className="text-emerald-700">المدفوع: <strong className="tabnum">{fmt(rObj.paid_amount ?? 0)} د.ج</strong></span>
                         </div>
-                        {tx.debt_amount > 0 && (
+                        {(rObj.debt_amount ?? 0) > 0 && (
                           <span className="text-rose-700 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200">
-                            الدين: <strong className="tabnum">{fmt(tx.debt_amount)} د.ج</strong>
+                            الدين: <strong className="tabnum">{fmt(rObj.debt_amount ?? 0)} د.ج</strong>
                           </span>
                         )}
                       </div>
@@ -821,6 +946,7 @@ export default function ContactsPage() {
         onSuccess={() => {
           setContacts(getLocalData('tajer_smart_contacts_v1', []));
           setTransactions(getLocalData('tajer_smart_transactions_v1', []));
+          setReceipts(getReceipts());
           if (viewingContact) {
             const updated = getLocalData('tajer_smart_contacts_v1', []).find((x: Contact) => x.id === viewingContact.id);
             if (updated) setViewingContact(updated);
@@ -841,11 +967,20 @@ export default function ContactsPage() {
             setProducts(freshProducts);
             setContacts(freshContacts);
             setTransactions(freshTx);
+            setReceipts(getReceipts());
             if (viewingContact) {
               const updated = freshContacts.find(x => x.id === viewingContact.id);
               if (updated) setViewingContact(updated);
             }
           }}
+        />
+      )}
+
+      {/* ══ مودال معاينة الوصل الحراري ══ */}
+      {viewingReceiptForModal && (
+        <ReceiptViewModal
+          receipt={viewingReceiptForModal}
+          onClose={() => setViewingReceiptForModal(null)}
         />
       )}
     </div>
