@@ -434,7 +434,7 @@ export default function ContactsPage() {
               </Link>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {viewingContact.phone && (
                 <a href={`tel:${viewingContact.phone}`} className="py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-xl font-black text-xs flex items-center justify-center gap-1 border border-blue-200">
                   <Phone size={14} /> اتصال 📞
@@ -515,56 +515,60 @@ export default function ContactsPage() {
                   return (
                     <div key={record.id} className="p-3.5 rounded-2xl bg-white border-2 border-slate-200 shadow-sm space-y-2.5">
                       {/* رأس الوصل الحراري */}
-                      <div className="flex items-center justify-between gap-2 border-b border-slate-200 pb-2 flex-wrap sm:flex-nowrap">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 font-black text-xs flex-wrap">
-                            <span className={`${badgeClass} px-2 py-0.5 rounded-md border shrink-0`}>
+                      <div className="border-b border-slate-200 pb-2.5 space-y-2">
+                        {/* السطر الأول: نوع الوصل، رقمه وتاريخه */}
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-1.5 font-black text-xs min-w-0">
+                            <span className={`${badgeClass} px-2 py-0.5 rounded-md border shrink-0 text-[11px]`}>
                               {badgeText}
                             </span>
-                            <span className="font-mono text-slate-500 text-[11px] font-bold truncate">#{record.id.length > 14 ? record.id.slice(-10) : record.id}</span>
+                            <span className="font-mono text-slate-600 text-[11px] font-bold truncate">
+                              #{record.id.length > 14 ? record.id.slice(-10) : record.id}
+                            </span>
                           </div>
-                          <span className="text-[10px] text-slate-400 font-bold block mt-0.5">
+                          <span className="text-[10px] text-slate-500 font-bold bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200 shrink-0">
                             📅 {formatDateLatin(record.date)}
                           </span>
                         </div>
 
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        {/* السطر الثاني: أزرار الإجراءات الأربعة تملأ العرض بنظام مرن داخل حدود الشاشة 100% */}
+                        <div className="flex items-center gap-1.5 w-full">
                           <button
                             type="button"
                             onClick={() => printThermalReceipt(rObj)}
-                            className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black flex items-center gap-1 shadow-sm transition-all shrink-0"
+                            className="flex-1 py-1.5 px-1 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[11px] font-black flex items-center justify-center gap-1 shadow-sm transition-all touch-active"
                             title="طباعة الوصل الحراري"
                           >
-                            <Printer size={13} />
+                            <Printer size={13} className="shrink-0" />
                             <span>طباعة 🖨️</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => setViewingReceiptForModal(rObj)}
-                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-xs font-black flex items-center gap-1 shadow-sm transition-all shrink-0"
+                            className="flex-1 py-1.5 px-1 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-[11px] font-black flex items-center justify-center gap-1 shadow-sm transition-all touch-active"
                             title="معاينة الوصل"
                           >
-                            <Eye size={13} />
+                            <Eye size={13} className="shrink-0" />
                             <span>معاينة 👁️</span>
                           </button>
                           {record.rawTx && (
                             <button
                               type="button"
                               onClick={() => setEditingTx(record.rawTx!)}
-                              className="px-2.5 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-xl text-xs font-black flex items-center gap-1 shadow-sm transition-all shrink-0"
+                              className="flex-1 py-1.5 px-1 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-xl text-[11px] font-black flex items-center justify-center gap-1 shadow-sm transition-all touch-active"
                               title="تعديل الوصل"
                             >
-                              <Pencil size={13} />
+                              <Pencil size={13} className="shrink-0" />
                               <span>تعديل ✏️</span>
                             </button>
                           )}
                           <button
                             type="button"
                             onClick={() => handleDeleteReceipt(record.id)}
-                            className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-black flex items-center gap-1 shadow-sm transition-all shrink-0"
+                            className="flex-1 py-1.5 px-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-[11px] font-black flex items-center justify-center gap-1 shadow-sm transition-all touch-active"
                             title="حذف الوصل"
                           >
-                            <Trash2 size={13} />
+                            <Trash2 size={13} className="shrink-0" />
                             <span>حذف 🗑️</span>
                           </button>
                         </div>
@@ -572,7 +576,7 @@ export default function ContactsPage() {
 
                       {/* 📊 جدول تفاصيل المواد 5 أعمدة إذا وجدت */}
                       {rObj.items && rObj.items.length > 0 ? (
-                        <div className="overflow-x-auto rounded-xl border border-slate-200">
+                        <div className="overflow-x-auto rounded-xl border border-slate-200 max-w-full">
                           <table className="w-full text-right text-[11px]">
                             <thead className="bg-slate-100/80 text-slate-700 font-black border-b border-slate-200">
                               <tr>
