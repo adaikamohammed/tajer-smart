@@ -6,7 +6,7 @@ import {
   createWhatsAppLink, generateAccountStatementText,
   printThermalReceipt, generateReceiptNumber, formatDateLatin, saveReceipt,
 } from '@/lib/store';
-import { subscribeToCloudChanges } from '@/lib/cloud-sync';
+import { subscribeToCloudChanges, triggerDebouncedSync } from '@/lib/cloud-sync';
 import { toast } from '@/components/Toast';
 import {
   Receipt, ArrowUpRight, ArrowDownLeft,
@@ -206,8 +206,11 @@ export default function DebtsPage() {
       return c;
     });
 
+    const invoiceId = generateReceiptNumber();
+    const createdAt = new Date().toISOString();
+
     const newTx: Transaction = {
-      id: 'tx_' + Date.now(),
+      id: invoiceId,
       tx_type: newDebtDir === 'to_us' ? 'SALE' : 'PURCHASE',
       contact_id: targetContact.id,
       contact_name: targetContact.name,
@@ -225,14 +228,15 @@ export default function DebtsPage() {
         unit_price: numAmount,
         cost_price: numAmount,
       }],
-      created_at: new Date().toISOString(),
+      created_at: createdAt,
     };
 
-    const newTxList = [newTx, ...transactions];
+    const currentTx: Transaction[] = getLocalData('tajer_smart_transactions_v1', transactions);
+    const newTxList = [newTx, ...currentTx.filter(t => t.id !== invoiceId)];
 
-    // حفظ وصل الدين المباشر في الأرشيف
+    // حفظ وصل الدين المباشر في الأرشيف بنفس المعرّف الموحد
     const directReceipt = {
-      id: generateReceiptNumber(),
+      id: invoiceId,
       receipt_type: 'DIRECT_DEBT' as const,
       contact_id: targetContact.id,
       contact_name: targetContact.name,
@@ -244,13 +248,14 @@ export default function DebtsPage() {
       previous_balance: targetContact.balance || 0,
       final_balance: (targetContact.balance || 0) + debtDelta,
       note: newDebtNote.trim() || 'تسجيل دين مباشر',
-      created_at: newTx.created_at,
+      created_at: createdAt,
     };
     saveReceipt(directReceipt);
 
     // حفظ البيانات محلياً
     setLocalData('tajer_smart_contacts_v1', finalContacts);
     setLocalData('tajer_smart_transactions_v1', newTxList);
+    triggerDebouncedSync(300);
 
     // تحديث الحالة من localStorage مباشرة لضمان التحديث الفوري
     const freshContacts = getLocalData<Contact[]>('tajer_smart_contacts_v1', []);

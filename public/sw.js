@@ -1,5 +1,5 @@
 // 🌐 Service Worker للتطبيق الذكي — العمل 100% بدون نت (Offline PWA) ومزامنة التحديثات الفورية
-const CACHE_NAME = 'tajer-smart-v7';
+const CACHE_NAME = 'tajer-smart-v8';
 const STATIC_ASSETS = [
   '/',
   '/inventory',

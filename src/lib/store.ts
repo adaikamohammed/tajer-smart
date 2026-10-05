@@ -390,13 +390,28 @@ export function saveProductCategory(newCat: string): string[] {
 
 // ─── دوال أرشيف الأوصال ──────────────────────────────────────────────────
 export function getReceipts(): Receipt[] {
-  return getLocalData<Receipt[]>(STORAGE_KEYS.RECEIPTS, []);
+  const list = getLocalData<Receipt[]>(STORAGE_KEYS.RECEIPTS, []);
+  let hasBloat = false;
+  const clean = list.map(r => {
+    if ((r as any).html_snapshot) {
+      hasBloat = true;
+      const { html_snapshot, ...rest } = r as any;
+      return rest as Receipt;
+    }
+    return r;
+  });
+  if (hasBloat && typeof window !== 'undefined') {
+    setLocalData(STORAGE_KEYS.RECEIPTS, clean);
+  }
+  return clean;
 }
 
 export function saveReceipt(receipt: Receipt): void {
+  const cleanReceipt = { ...receipt };
+  delete (cleanReceipt as any).html_snapshot;
   const existing = getReceipts();
-  const filtered = existing.filter(r => r.id !== receipt.id);
-  setLocalData(STORAGE_KEYS.RECEIPTS, [receipt, ...filtered]);
+  const filtered = existing.filter(r => r.id !== cleanReceipt.id);
+  setLocalData(STORAGE_KEYS.RECEIPTS, [cleanReceipt, ...filtered]);
 }
 
 export function deleteReceipt(id: string): void {
@@ -1070,8 +1085,8 @@ export function buildThermalReceiptHTML(receipt: Receipt): string {
 /** فتح نافذة طباعة حرارية وحفظ الوصل في الأرشيف تلقائياً */
 export function printThermalReceipt(receipt: Receipt): void {
   const html = buildThermalReceiptHTML(receipt);
-  // حفظ في الأرشيف
-  saveReceipt({ ...receipt, html_snapshot: html });
+  // حفظ في الأرشيف كبيانات خفيفة الوزن
+  saveReceipt(receipt);
   // فتح نافذة الطباعة
   const win = window.open('', '_blank', 'width=400,height=700');
   if (!win) {
@@ -1150,7 +1165,14 @@ export function generateAccountStatementText(contactName: string, balance: numbe
 export function cancelTransaction(txId: string): boolean {
   const transactions: Transaction[] = getLocalData('tajer_smart_transactions_v1', []);
   const txIndex = transactions.findIndex(t => t.id === txId);
-  if (txIndex === -1) return false;
+  if (txIndex === -1) {
+    const receipts: Receipt[] = getLocalData('tajer_smart_receipts_v1', []);
+    const updatedReceipts = receipts.filter(r => r.id !== txId && (!r.note || !r.note.includes(txId)));
+    if (updatedReceipts.length !== receipts.length) {
+      setLocalData('tajer_smart_receipts_v1', updatedReceipts);
+    }
+    return false;
+  }
 
   const tx = transactions[txIndex];
 

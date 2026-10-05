@@ -26,13 +26,6 @@ export async function POST(req: Request) {
 
     await initTablesIfMissing();
 
-    // ─── 0. التطهير السحابي التلقائي لكافة البيانات الوهمية القديمة ───
-    await query`DELETE FROM contacts WHERE id LIKE '%_seed_%';`;
-    await query`DELETE FROM products WHERE id LIKE '%_seed_%';`;
-    await query`DELETE FROM transactions WHERE id LIKE '%_seed_%';`;
-    await query`DELETE FROM transaction_items WHERE product_id LIKE '%_seed_%' OR transaction_id LIKE '%_seed_%';`;
-    await query`DELETE FROM deleted_items WHERE id LIKE '%_seed_%';`;
-
     const body = await req.json();
     const {
       user_id,
@@ -158,10 +151,12 @@ export async function POST(req: Request) {
           INSERT INTO transactions (id, user_id, tx_type, contact_id, contact_name,
                                     total_amount, paid_amount, debt_amount,
                                     previous_balance, final_balance,
+                                    subtotal_amount, total_discount, items_count,
                                     status, notes, created_at)
           VALUES (${tx.id}, ${userId}, ${tx.tx_type}, ${tx.contact_id || null}, ${tx.contact_name || null},
                   ${tx.total_amount || 0}, ${tx.paid_amount || 0}, ${tx.debt_amount || 0},
                   ${tx.previous_balance || 0}, ${tx.final_balance || 0},
+                  ${tx.subtotal_amount || 0}, ${tx.total_discount || 0}, ${tx.items_count || (tx.items?.length || 0)},
                   ${tx.status || 'PAID'}, ${tx.notes || null}, ${txCreatedAt})
           ON CONFLICT (id) DO UPDATE SET
             user_id          = EXCLUDED.user_id,
@@ -173,19 +168,23 @@ export async function POST(req: Request) {
             debt_amount      = EXCLUDED.debt_amount,
             previous_balance = EXCLUDED.previous_balance,
             final_balance    = EXCLUDED.final_balance,
+            subtotal_amount  = EXCLUDED.subtotal_amount,
+            total_discount   = EXCLUDED.total_discount,
+            items_count      = EXCLUDED.items_count,
             status           = EXCLUDED.status,
             notes            = EXCLUDED.notes,
             created_at       = COALESCE(transactions.created_at, EXCLUDED.created_at);
         `;
         if (tx.items?.length > 0) {
-          // 1. مسح أي سجلات قديمة للمعاملة في القاعدة قبل إعادة الإدخال النظيف لمنع التكرار
+          // مسح أي سجلات قديمة للمعاملة في القاعدة قبل إعادة الإدخال النظيف لمنع التكرار
           await query`DELETE FROM transaction_items WHERE transaction_id = ${tx.id};`;
           await Promise.all((tx.items as any[]).map((item: any) => query`
-            INSERT INTO transaction_items (transaction_id, product_id, product_name, quantity, packs_count, loose_count, pack_quantity, unit_type, unit_price, cost_price)
+            INSERT INTO transaction_items (transaction_id, product_id, product_name, quantity, packs_count, loose_count, pack_quantity, unit_type, unit_price, cost_price, original_price, discount_percent, discount_amount)
             VALUES (${tx.id}, ${item.product_id || null}, ${item.product_name || null},
                     ${item.quantity || 0}, ${item.packs_count || null}, ${item.loose_count || null},
                     ${item.pack_quantity ? (Number(item.pack_quantity) || 1) : 1}, ${item.unit_type || null},
-                    ${item.unit_price || 0}, ${item.cost_price || 0});
+                    ${item.unit_price || 0}, ${item.cost_price || 0},
+                    ${item.original_price || item.unit_price || 0}, ${item.discount_percent || 0}, ${item.discount_amount || 0});
           `));
         }
       }));
@@ -221,7 +220,15 @@ export async function POST(req: Request) {
       });
       return {
         ...tx,
-        items: cleanItems,
+        subtotal_amount: tx.subtotal_amount !== undefined ? Number(tx.subtotal_amount) : undefined,
+        total_discount: tx.total_discount !== undefined ? Number(tx.total_discount) : undefined,
+        items_count: tx.items_count !== undefined ? Number(tx.items_count) : undefined,
+        items: cleanItems.map((item: any) => ({
+          ...item,
+          original_price: item.original_price !== undefined ? Number(item.original_price) : undefined,
+          discount_percent: item.discount_percent !== undefined ? Number(item.discount_percent) : undefined,
+          discount_amount: item.discount_amount !== undefined ? Number(item.discount_amount) : undefined,
+        })),
       };
     });
 

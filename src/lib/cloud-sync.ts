@@ -53,8 +53,8 @@ function notifySubs() {
   subs.forEach(cb => { try { cb(); } catch (_) {} });
 }
 
-// ─── حلقة مزامنة واحدة في المرة (Vercel Postgres Sync) ─────────────────
 let syncInProgress = false;
+let hasPendingSync = false;
 let lastSyncTimestamp = 0;
 let debounceTimer: any = null;
 
@@ -80,6 +80,7 @@ export async function syncStoreWithVercelCloud(): Promise<{
   }
 
   if (syncInProgress) {
+    hasPendingSync = true;
     return { success: true, contactsCount: 0, productsCount: 0, transactionsCount: 0 };
   }
   syncInProgress = true;
@@ -102,6 +103,39 @@ export async function syncStoreWithVercelCloud(): Promise<{
     const deletedProducts:     string[] = getLocalData(DELETED_KEYS.PRODUCTS, []);
     const deletedTransactions: string[] = getLocalData(DELETED_KEYS.TRANSACTIONS, []);
 
+    // ─── استرجاع تلقائي للأوصال الحرارية التي فُقدت معاملاتها قبل المزامنة ───
+    const localReceiptsForSync: Receipt[] = getLocalData('tajer_smart_receipts_v1', []);
+    const txIdSet = new Set(localTx.map(t => t.id));
+    const deadTxSetInitial = new Set(deletedTransactions);
+    const missingTxFromReceipts: Transaction[] = [];
+
+    localReceiptsForSync.forEach(r => {
+      if (r.id && !txIdSet.has(r.id) && !deadTxSetInitial.has(r.id) && !isSeed(r.id)) {
+        if (r.receipt_type === 'SALE' || r.receipt_type === 'PURCHASE' || r.receipt_type === 'DIRECT_DEBT') {
+          missingTxFromReceipts.push({
+            id: r.id,
+            tx_type: r.receipt_type === 'PURCHASE' ? 'PURCHASE' : 'SALE',
+            contact_id: r.contact_id,
+            contact_name: r.contact_name,
+            subtotal_amount: r.subtotal_amount,
+            total_discount: r.total_discount,
+            items_count: r.items_count,
+            total_amount: r.total_amount || 0,
+            paid_amount: r.paid_amount || 0,
+            debt_amount: r.debt_amount || 0,
+            previous_balance: r.previous_balance,
+            final_balance: r.final_balance,
+            status: (r.debt_amount || 0) === 0 ? 'PAID' : (r.paid_amount || 0) > 0 ? 'PARTIAL' : 'DEBT',
+            notes: r.note,
+            items: r.items || [],
+            created_at: r.created_at,
+          });
+        }
+      }
+    });
+
+    const allTxToSend = [...localTx, ...missingTxFromReceipts];
+
     // ─── 2. إرسال البيانات المحلية للسيرفر (PUSH) ────────────────────────
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
@@ -116,7 +150,7 @@ export async function syncStoreWithVercelCloud(): Promise<{
           user_id:              getActiveUserEmail(),
           contacts:             localContacts,
           products:             localProducts,
-          transactions:         localTx,
+          transactions:         allTxToSend,
           deleted_contacts:     deletedContacts,
           deleted_products:     deletedProducts,
           deleted_transactions: deletedTransactions,
@@ -142,29 +176,53 @@ export async function syncStoreWithVercelCloud(): Promise<{
     if (deletedProducts.length     > 0) setLocalData(DELETED_KEYS.PRODUCTS, []);
     if (deletedTransactions.length > 0) setLocalData(DELETED_KEYS.TRANSACTIONS, []);
 
-    // ─── 3. نموذج "السحاب حاكم" — استبدال المحلي بما رجعه السيرفر بالكامل ─
-    // السيرفر هو مصدر الحقيقة الوحيد. بعد رفع البيانات الجديدة، نستبدل المحلي
-    // بالكامل بما أعاده السيرفر. هذا يضمن تطابق جميع الأجهزة مع قاعدة البيانات.
-
+    // ─── 3. دمج آمن وقراءة أحدث بيانات محلية من جديد لمنع مسح أي عملية حدثت أثناء المزامنة ───
     let changed = false;
 
     if (Array.isArray(data.products)) {
-      // السيرفر يرجع فقط البيانات النظيفة الصحيحة — نحفظها مباشرة بعد التطبيع
-      const authoritative = (data.products as any[])
+      const currentFreshProducts: Product[] = getLocalData('tajer_smart_products_v1', []);
+      const prodMap = new Map<string, Product>();
+
+      // نبدأ ببيانات السيرفر
+      (data.products as any[])
         .filter(p => p.id && !isSeed(p.id))
-        .map(sanitizeProduct);
-      if (JSON.stringify(authoritative) !== JSON.stringify(rawProducts)) {
-        setLocalData('tajer_smart_products_v1', authoritative);
+        .map(sanitizeProduct)
+        .forEach(p => prodMap.set(p.id, p));
+
+      // الاحتفاظ بأي منتج محلي أضيف أثناء المزامنة
+      const deadProdSet = new Set(deletedProducts);
+      currentFreshProducts.forEach(lp => {
+        if (!deadProdSet.has(lp.id) && !isSeed(lp.id) && !prodMap.has(lp.id)) {
+          prodMap.set(lp.id, lp);
+        }
+      });
+
+      const mergedProducts = Array.from(prodMap.values());
+      if (JSON.stringify(mergedProducts) !== JSON.stringify(currentFreshProducts)) {
+        setLocalData('tajer_smart_products_v1', mergedProducts);
         changed = true;
       }
     }
 
     if (Array.isArray(data.contacts)) {
-      const authoritative = (data.contacts as any[])
+      const currentFreshContacts: Contact[] = getLocalData('tajer_smart_contacts_v1', []);
+      const contactMap = new Map<string, Contact>();
+
+      (data.contacts as any[])
         .filter(c => c.id && !isSeed(c.id))
-        .map(sanitizeContact);
-      if (JSON.stringify(authoritative) !== JSON.stringify(rawContacts)) {
-        setLocalData('tajer_smart_contacts_v1', authoritative);
+        .map(sanitizeContact)
+        .forEach(c => contactMap.set(c.id, c));
+
+      const deadContactSet = new Set(deletedContacts);
+      currentFreshContacts.forEach(lc => {
+        if (!deadContactSet.has(lc.id) && !isSeed(lc.id) && !contactMap.has(lc.id)) {
+          contactMap.set(lc.id, lc);
+        }
+      });
+
+      const mergedContacts = Array.from(contactMap.values());
+      if (JSON.stringify(mergedContacts) !== JSON.stringify(currentFreshContacts)) {
+        setLocalData('tajer_smart_contacts_v1', mergedContacts);
         changed = true;
       }
     }
@@ -184,13 +242,15 @@ export async function syncStoreWithVercelCloud(): Promise<{
         .filter(t => t.id && !isSeed(t.id))
         .map(t => sanitizeTransaction({ ...t, items: cleanTxItems(t.items) }));
 
-      // دمج آمن: الأولوية لبيانات السيرفر مع الاحتفاظ بالمعاملات المحلية غير المحذوفة
       const txMap = new Map<string, Transaction>();
       authoritative.forEach(tx => txMap.set(tx.id, tx));
 
+      // 🔴 جوهر الحل: إعادة قراءة المعاملات المحلية الحالية (currentFreshTx)
+      // بدلاً من المتغير القديم localTx، حتى لا تُمحى أي عملية أُضيفت أثناء اتصال الشبكة!
+      const currentFreshTx: Transaction[] = getLocalData('tajer_smart_transactions_v1', []);
       const deadTxSet = new Set(deletedTransactions);
-      localTx.forEach(ltx => {
-        if (!txMap.has(ltx.id) && !deadTxSet.has(ltx.id)) {
+      currentFreshTx.forEach(ltx => {
+        if (!txMap.has(ltx.id) && !deadTxSet.has(ltx.id) && !isSeed(ltx.id)) {
           txMap.set(ltx.id, ltx);
         }
       });
@@ -199,7 +259,7 @@ export async function syncStoreWithVercelCloud(): Promise<{
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
 
-      if (JSON.stringify(mergedTransactions) !== JSON.stringify(rawTx)) {
+      if (JSON.stringify(mergedTransactions) !== JSON.stringify(currentFreshTx)) {
         setLocalData('tajer_smart_transactions_v1', mergedTransactions);
         changed = true;
       }
@@ -241,7 +301,6 @@ export async function syncStoreWithVercelCloud(): Promise<{
     }
 
     if (changed) {
-      // مسح الكاش لإجبار الصفحات على قراءة البيانات الجديدة فور وصولها من السحابة
       clearLocalDataCache();
       notifySubs();
     }
@@ -264,6 +323,13 @@ export async function syncStoreWithVercelCloud(): Promise<{
     };
   } finally {
     syncInProgress = false;
+    // إذا طُلبت مزامنة أثناء انشغال المزامنة السابقة، تشغيلها فوراً لضمان عدم ضياع أي طلبية
+    if (hasPendingSync) {
+      hasPendingSync = false;
+      setTimeout(() => {
+        syncStoreWithVercelCloud();
+      }, 100);
+    }
   }
 }
 

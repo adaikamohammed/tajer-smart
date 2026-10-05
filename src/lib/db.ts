@@ -46,7 +46,10 @@ export function getNeonSql() {
   return neon(dbUrl);
 }
 
+let isDbInitialized = false;
+
 export async function initTablesIfMissing() {
+  if (isDbInitialized) return true;
   const query = getNeonSql();
   if (!query) return false;
   try {
@@ -133,10 +136,16 @@ export async function initTablesIfMissing() {
     await query`ALTER TABLE products ADD COLUMN IF NOT EXISTS retail_price_2 NUMERIC DEFAULT 0;`;
     await query`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS previous_balance NUMERIC DEFAULT 0;`;
     await query`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS final_balance NUMERIC DEFAULT 0;`;
+    await query`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS subtotal_amount NUMERIC DEFAULT 0;`;
+    await query`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS total_discount NUMERIC DEFAULT 0;`;
+    await query`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS items_count NUMERIC DEFAULT 0;`;
     await query`ALTER TABLE transaction_items ADD COLUMN IF NOT EXISTS packs_count NUMERIC;`;
     await query`ALTER TABLE transaction_items ADD COLUMN IF NOT EXISTS loose_count NUMERIC;`;
     await query`ALTER TABLE transaction_items ADD COLUMN IF NOT EXISTS pack_quantity NUMERIC DEFAULT 1;`;
     await query`ALTER TABLE transaction_items ADD COLUMN IF NOT EXISTS unit_type TEXT;`;
+    await query`ALTER TABLE transaction_items ADD COLUMN IF NOT EXISTS original_price NUMERIC DEFAULT 0;`;
+    await query`ALTER TABLE transaction_items ADD COLUMN IF NOT EXISTS discount_percent NUMERIC DEFAULT 0;`;
+    await query`ALTER TABLE transaction_items ADD COLUMN IF NOT EXISTS discount_amount NUMERIC DEFAULT 0;`;
 
     // ─── دعم تعدد التجار وفصل بيانات كل حساب سحابياً ───
     await query`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS user_id TEXT DEFAULT 'admin213@gmail.com';`;
@@ -150,6 +159,7 @@ export async function initTablesIfMissing() {
     await query`UPDATE transactions SET user_id = 'admin213@gmail.com' WHERE user_id IS NULL;`;
     await query`UPDATE deleted_items SET user_id = 'admin213@gmail.com' WHERE user_id IS NULL;`;
 
+    isDbInitialized = true;
     return true;
   } catch (err) {
     console.error('Error initializing tables / running migrations:', err);

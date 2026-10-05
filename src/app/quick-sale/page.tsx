@@ -318,9 +318,12 @@ function QuickSaleContent() {
       const previousBalance = customPrevBalance;
       const finalBalance = totalRemainingBalance;
 
-      // المعاملة
+      const invoiceId = generateReceiptNumber();
+      const createdAt = new Date().toISOString();
+
+      // المعاملة الموحدة بنفس رقم الوصل الدقيق
       const newTx: Transaction = {
-        id: 'tx_' + Date.now(),
+        id: invoiceId,
         tx_type: 'SALE',
         contact_id: selectedContact.id,
         contact_name: selectedContact.name,
@@ -335,24 +338,26 @@ function QuickSaleContent() {
         status: debtAmount > 0 ? (totalCashToday > 0 ? 'PARTIAL' : 'DEBT') : 'PAID',
         items: txItems,
         notes: note.trim() || undefined,
-        created_at: new Date().toISOString(),
+        created_at: createdAt,
       };
 
-      // تحديث المخزون (يسمح بالسالب في حالة البيع الزائد لحين الشراء)
-      const updatedProducts = products.map(p => {
+      // تحديث المخزون بقراءة أحدث بيانات من التخزين المحلي
+      const currentProducts: Product[] = getLocalData('tajer_smart_products_v1', products);
+      const updatedProducts = currentProducts.map(p => {
         const cartMatch = validCart.find(ci => ci.product.id === p.id);
         if (cartMatch) {
           return {
             ...p,
             stock_quantity: p.stock_quantity - cartMatch.quantity,
-            last_sold_at: new Date().toISOString(),
+            last_sold_at: createdAt,
           };
         }
         return p;
       });
 
       // تحديث ديون الزبون برصيد الحصيلة الجديد
-      const updatedContacts = contacts.map(c => {
+      const currentContacts: Contact[] = getLocalData('tajer_smart_contacts_v1', contacts);
+      const updatedContacts = currentContacts.map(c => {
         if (c.id === selectedContact.id) {
           return {
             ...c,
@@ -362,14 +367,15 @@ function QuickSaleContent() {
         return c;
       });
 
-      const updatedTx = [newTx, ...transactions];
+      const currentTx: Transaction[] = getLocalData('tajer_smart_transactions_v1', transactions);
+      const updatedTx = [newTx, ...currentTx.filter(t => t.id !== invoiceId)];
 
       setLocalData('tajer_smart_products_v1', updatedProducts);
       setLocalData('tajer_smart_contacts_v1', updatedContacts);
       setLocalData('tajer_smart_transactions_v1', updatedTx);
 
       const receipt = {
-        id: generateReceiptNumber(),
+        id: invoiceId,
         receipt_type: 'SALE' as const,
         contact_id: selectedContact.id,
         contact_name: selectedContact.name,
@@ -384,7 +390,7 @@ function QuickSaleContent() {
         previous_balance: previousBalance,
         final_balance: finalBalance,
         note: note.trim() || undefined,
-        created_at: newTx.created_at,
+        created_at: createdAt,
       };
 
       saveReceipt(receipt);

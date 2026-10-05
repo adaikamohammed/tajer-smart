@@ -166,16 +166,24 @@ export default function HomePage() {
     const debt  = Math.max(0, total - salePaid);
     const status = debt === 0 ? 'PAID' : salePaid > 0 ? 'PARTIAL' : 'DEBT';
 
+    const invoiceId = generateReceiptNumber();
+    const createdAt = new Date().toISOString();
+
     const newTx: Transaction = {
-      id: 'tx_' + Date.now(), tx_type: 'SALE',
-      contact_id: cust.id, contact_name: cust.name,
-      total_amount: total, paid_amount: salePaid, debt_amount: debt, status,
+      id: invoiceId,
+      tx_type: 'SALE',
+      contact_id: cust.id,
+      contact_name: cust.name,
+      total_amount: total,
+      paid_amount: salePaid,
+      debt_amount: debt,
+      status,
       items: [{ product_id: prod.id, product_name: prod.name, quantity: totalPieces, unit_price: price, cost_price: prod.cost_price }],
-      created_at: new Date().toISOString(),
+      created_at: createdAt,
     };
 
     saveReceipt({
-      id: generateReceiptNumber(),
+      id: invoiceId,
       receipt_type: 'SALE',
       contact_id: cust.id,
       contact_name: cust.name,
@@ -183,14 +191,19 @@ export default function HomePage() {
       total_amount: total,
       paid_amount: salePaid,
       debt_amount: debt,
-      created_at: newTx.created_at,
+      created_at: createdAt,
     });
 
-    const upProds = products.map(p => p.id === prod.id
-      ? { ...p, stock_quantity: Math.max(0, p.stock_quantity - totalPieces), last_sold_at: new Date().toISOString() } : p);
-    const upConts = contacts.map(c => c.id === cust.id && debt > 0
+    const currentProds: Product[] = getLocalData('tajer_smart_products_v1', products);
+    const upProds = currentProds.map(p => p.id === prod.id
+      ? { ...p, stock_quantity: Math.max(0, p.stock_quantity - totalPieces), last_sold_at: createdAt } : p);
+
+    const currentConts: Contact[] = getLocalData('tajer_smart_contacts_v1', contacts);
+    const upConts = currentConts.map(c => c.id === cust.id && debt > 0
       ? { ...c, balance: c.balance + debt } : c);
-    const upTx = [newTx, ...transactions];
+
+    const currentTx: Transaction[] = getLocalData('tajer_smart_transactions_v1', transactions);
+    const upTx = [newTx, ...currentTx.filter(t => t.id !== invoiceId)];
 
     setProducts(upProds); setContacts(upConts); setTransactions(upTx);
     setLocalData('tajer_smart_products_v1', upProds);
@@ -227,29 +240,44 @@ export default function HomePage() {
     const debt  = Math.max(0, total - buyPaid);
     const status = debt === 0 ? 'PAID' : buyPaid > 0 ? 'PARTIAL' : 'DEBT';
 
+    const invoiceId = generateReceiptNumber();
+    const createdAt = new Date().toISOString();
+
     const newTx: Transaction = {
-      id: 'tx_' + Date.now(), tx_type: 'PURCHASE',
-      contact_id: supp?.id, contact_name: supp?.name ?? 'مورد نقدي',
-      total_amount: total, paid_amount: buyPaid, debt_amount: debt, status,
+      id: invoiceId,
+      tx_type: 'PURCHASE',
+      contact_id: supp?.id,
+      contact_name: supp?.name ?? 'مورد نقدي',
+      total_amount: total,
+      paid_amount: buyPaid,
+      debt_amount: debt,
+      status,
       items: [{ product_id: prod.id, product_name: prod.name, quantity: totalPieces, unit_price: buyCostPrice, cost_price: buyCostPrice }],
-      created_at: new Date().toISOString(),
+      created_at: createdAt,
     };
 
     saveReceipt({
-      id: generateReceiptNumber(),
+      id: invoiceId,
       receipt_type: 'PURCHASE',
       contact_id: supp?.id,
       contact_name: supp?.name ?? 'مورد نقدي',
       items: newTx.items,
-      total_amount: total, paid_amount: buyPaid, debt_amount: debt,
-      created_at: newTx.created_at,
+      total_amount: total,
+      paid_amount: buyPaid,
+      debt_amount: debt,
+      created_at: createdAt,
     });
 
-    const upProds = products.map(p => p.id === prod.id
-      ? { ...p, stock_quantity: p.stock_quantity + totalPieces, cost_price: buyCostPrice, expiry_date: buyExpiry || p.expiry_date, last_purchased_at: new Date().toISOString() } : p);
-    const upConts = contacts.map(c => supp && c.id === supp.id && debt > 0
+    const currentProds: Product[] = getLocalData('tajer_smart_products_v1', products);
+    const upProds = currentProds.map(p => p.id === prod.id
+      ? { ...p, stock_quantity: p.stock_quantity + totalPieces, cost_price: buyCostPrice, expiry_date: buyExpiry || p.expiry_date, last_purchased_at: createdAt } : p);
+
+    const currentConts: Contact[] = getLocalData('tajer_smart_contacts_v1', contacts);
+    const upConts = currentConts.map(c => supp && c.id === supp.id && debt > 0
       ? { ...c, balance: c.balance - debt } : c);
-    const upTx = [newTx, ...transactions];
+
+    const currentTx: Transaction[] = getLocalData('tajer_smart_transactions_v1', transactions);
+    const upTx = [newTx, ...currentTx.filter(t => t.id !== invoiceId)];
 
     setProducts(upProds); setContacts(upConts); setTransactions(upTx);
     setLocalData('tajer_smart_products_v1', upProds);
