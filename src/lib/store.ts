@@ -188,7 +188,7 @@ export function getActiveUser(): AuthUser | null {
 
 export function getActiveUserEmail(): string {
   const user = getActiveUser();
-  return user?.email?.trim().toLowerCase() || 'admin213@gmail.com';
+  return user?.email?.trim().toLowerCase() || '';
 }
 
 export function getMerchantInfo() {
@@ -215,10 +215,7 @@ const GLOBAL_UNSCOPED_KEYS = new Set([
 export function resolveUserScopedKey(key: string): string {
   if (GLOBAL_UNSCOPED_KEYS.has(key)) return key;
   const email = getActiveUserEmail();
-  // حساب فوزي شكيمة الأصلي يحتفظ بمفاتيحه الأصلية تماماً 100% دون أي تعديل أو مساس
-  if (email === 'admin213@gmail.com') {
-    return key;
-  }
+  if (!email) return key;
   const slug = email.replace(/[^a-zA-Z0-9]/g, '_');
   return `${key}__u_${slug}`;
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getNeonSql, getDbConnectionString, getAvailableDbKeys, initTablesIfMissing } from '@/lib/db';
+import { isAccountFrozen, DEFAULT_SUSPENSION_INFO } from '@/lib/access-control';
 
 export async function GET() {
   const dbUrl = getDbConnectionString();
@@ -37,7 +38,19 @@ export async function POST(req: Request) {
       deleted_transactions = []
     } = body;
 
-    const userId = (user_id || 'admin213@gmail.com').trim().toLowerCase();
+    const userId = (user_id || '').trim().toLowerCase();
+
+    // ─── فحص أمني قاطع: منع الحسابات المجمدة من أي وصول أو مزامنة للبيانات ───
+    if (isAccountFrozen(userId)) {
+      return NextResponse.json({
+        success: false,
+        blocked: true,
+        code: 'ACCOUNT_FROZEN',
+        error: DEFAULT_SUSPENSION_INFO.message,
+        details: DEFAULT_SUSPENSION_INFO,
+      }, { status: 403 });
+    }
+
     const isFawzi = userId === 'admin213@gmail.com';
 
     const delC  = (deleted_contacts  as string[]).filter(Boolean);

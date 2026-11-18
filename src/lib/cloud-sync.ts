@@ -4,6 +4,8 @@ import {
   sanitizeProduct, sanitizeContact, sanitizeTransaction,
   getActiveUserEmail
 } from './store';
+import { isAccountFrozen } from './access-control';
+import { executeRemoteWipe } from './remote-wipe';
 
 const DELETED_KEYS = {
   CONTACTS:     'tajer_deleted_contacts_v1',
@@ -83,6 +85,19 @@ export async function syncStoreWithVercelCloud(): Promise<{
     hasPendingSync = true;
     return { success: true, contactsCount: 0, productsCount: 0, transactionsCount: 0 };
   }
+
+  // ─── فحص أمني فوري: تجميد الحساب ومسح البيانات عن بُعد إذا كان الحساب مجمداً ───
+  const activeEmail = getActiveUserEmail();
+  if (isAccountFrozen(activeEmail)) {
+    executeRemoteWipe('تم تجميد هذا الحساب بسبب عدم سداد المستحقات المالية.');
+    updateStatus('error');
+    return {
+      success: false,
+      errorDetails: 'تم تجميد هذا الحساب لعدم سداد المستحقات',
+      contactsCount: 0, productsCount: 0, transactionsCount: 0
+    };
+  }
+
   syncInProgress = true;
   updateStatus('syncing');
 
@@ -161,6 +176,17 @@ export async function syncStoreWithVercelCloud(): Promise<{
     }
 
     const data = await res.json();
+
+    // ─── استجابة السيرفر بالحظر والتجميد: تنفيذ أمر التدمير الذاتي والمسح الفوري ───
+    if (res.status === 403 || data.blocked || data.code === 'ACCOUNT_FROZEN') {
+      executeRemoteWipe(data.error || 'تم تجميد هذا الحساب لعدم سداد المستحقات المالية.');
+      updateStatus('error');
+      return {
+        success: false,
+        errorDetails: data.error || 'تم تجميد الحساب وحظر الوصول للبيانات',
+        contactsCount: 0, productsCount: 0, transactionsCount: 0,
+      };
+    }
 
     if (!res.ok || !data.success) {
       updateStatus('error');
